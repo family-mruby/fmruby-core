@@ -199,6 +199,28 @@ class FmrbApp
   %a{fmrb.internal}
   def closable?: () -> bool
 
+  # 閉じるボタンで終われるかを決める <<en>> Decide whether the close button ends it
+  #
+  # 画面全体を持つ作りのアプリ (デスクトップ) は、右上の角が普通の UI なので
+  # `false` にします。この設定が見るのは**閉じるボタンのクリックだけ**で、
+  # `false` なら角を押しても `stop` しません。
+  # ```ruby
+  # def on_create
+  #   self.closable = false
+  # end
+  # ```
+  # <<en>>
+  # An app that owns the whole screen (the desktop) sets `false`, because its
+  # top-right corner is ordinary UI. The setting is read for **a click on the**
+  # **close button only**; with `false` pressing the corner does not `stop`.
+  # ```ruby
+  # def on_create
+  #   self.closable = false
+  # end
+  # ```
+  %a{fmrb.internal}
+  def closable=: (bool v) -> void
+
   # 枠なしの Window か (window_frame = "none") <<en>> Whether the window has no frame
   #
   # 枠・タイトルバー・閉じるボタンが無く、user area は Window 全体、地は透ける色。
@@ -219,6 +241,26 @@ class FmrbApp
   # pad = resizable? ? 9 : 0
   # ```
   def resizable?: () -> bool
+
+  # 右下に空けておく幅 <<en>> Pixels to keep free at the bottom-right
+  #
+  # 右下の角に何かを描くアプリ (状態行・スクロールバー) が、右端と下端に空ける
+  # ドット数。大きさを変えられる Window では印と掴む範囲の分の 9 を返し、
+  # **全画面と大きさを変えられない Window では 0** です (定数ではなく毎回
+  # 答える)。
+  # ```ruby
+  # right = @area_w - resize_corner - 2
+  # ```
+  # <<en>>
+  # How many pixels an app that draws into the bottom-right corner (a status
+  # line, a scrollbar) keeps free at the right and bottom. 9 for a window
+  # that can be resized, covering the mark and the grab area, and **0 for a**
+  # **fullscreen or fixed-size window**; it is asked each time.
+  # ```ruby
+  # right = @area_w - resize_corner - 2
+  # ```
+  %a{fmrb.internal}
+  def resize_corner: () -> Integer
 
   # ---- 呼ばれるところ (書きかえて使う) ----
 
@@ -896,6 +938,53 @@ class FmrbApp
   # ```
   def clear_user_area_raw: (Integer color) -> void
 
+  # 部品箱を外す <<en>> Detach a widget box
+  #
+  # Window の大きさが変わるアプリが、部品を作り直す前に古い `FmrbUI` を外す
+  # ために呼ぶ。外さないと `clear_user_area` が古い座標のまま描き直し続ける。
+  # (新しく作った `FmrbUI` は自分で付く。)
+  # ```ruby
+  # def on_resize(w, h)
+  #   detach_ui(@ui) if @ui
+  #   @ui = FmrbUI.new(self)
+  #   build_widgets
+  # end
+  # ```
+  # <<en>>
+  # Called by an app whose window can be resized, before it builds its
+  # widgets again, to drop the old `FmrbUI`. Left attached, `clear_user_area`
+  # keeps repainting it at the old coordinates. (A new `FmrbUI` attaches
+  # itself.)
+  # ```ruby
+  # def on_resize(w, h)
+  #   detach_ui(@ui) if @ui
+  #   @ui = FmrbUI.new(self)
+  #   build_widgets
+  # end
+  # ```
+  %a{fmrb.internal}
+  def detach_ui: (FmrbUI ui) -> void
+
+  # 大きさ変更の印を描く <<en>> Draw the resize mark
+  #
+  # w x h の Window の右下の角に、タイトルバーの色の三角を描く。大きさを
+  # 変えられる Window の `draw_window_frame` が自分で描くので、**呼ぶのは枠を**
+  # **自前で描くアプリだけ**で、枠線より前に呼ぶ。`window_gfx` に描くので、
+  # 画面のないアプリでは使えない。
+  # ```ruby
+  # draw_resize_mark(w, h)
+  # ```
+  # <<en>>
+  # Draws a triangle in the title bar colour in the bottom-right corner of a
+  # w x h window. `draw_window_frame` draws it for a resizable window, so **only**
+  # **an app that draws its own frame calls it**, before the border. It draws
+  # on `window_gfx`, so it does not work for an app with no canvas.
+  # ```ruby
+  # draw_resize_mark(w, h)
+  # ```
+  %a{fmrb.internal}
+  def draw_resize_mark: (Integer w, Integer h) -> void
+
   # ---- テーマの色 (system_conf.toml の [theme]) ----
 
   # 紙の色 <<en>> page background from the system theme
@@ -977,6 +1066,44 @@ class FmrbApp
   # ```
   %a{fmrb.internal}
   def scrollbar_hit: (Integer click_x, Integer click_y) -> Symbol?
+
+  # ホイールが求める行数 <<en>> Rows the wheel asks for
+  #
+  # **符号つき**で、正は一覧の先頭へ (ホイールを奥へ回した向き)。ホイールの
+  # イベントでなければ、また delta が 0 なら **nil**。1 刻みの行数は
+  # 端末の設定 (system_conf.toml の `wheel_lines`) で、アプリが決めない。
+  # スクロールバーの部品はホイールに答えない。
+  # ```ruby
+  # rows = wheel_rows(ev)
+  # @scroll -= rows if rows
+  # ```
+  # <<en>>
+  # **Signed**; positive scrolls toward the start of a list (the wheel pushed
+  # away). **nil** when the event is not a wheel, or its delta is 0. The rows
+  # per notch is the machine's setting (`wheel_lines` in system_conf.toml),
+  # not the app's. The scrollbar widget does not answer the wheel.
+  # ```ruby
+  # rows = wheel_rows(ev)
+  # @scroll -= rows if rows
+  # ```
+  %a{fmrb.internal}
+  def wheel_rows: (event ev) -> Integer?
+
+  # ホイールの刻みの数 <<en>> Wheel notches
+  #
+  # 行数にしない刻みそのもの (符号は `wheel_rows` と同じ)。1 行の高さが
+  # 文字の行と違う一覧 (タイルの並び) に使う。ホイールでなければ nil。
+  # ```ruby
+  # n = wheel_notches(ev)
+  # ```
+  # <<en>>
+  # The raw notch count, signed as `wheel_rows`. For a list whose rows are
+  # not text rows (a row of tiles). nil when the event is not a wheel.
+  # ```ruby
+  # n = wheel_notches(ev)
+  # ```
+  %a{fmrb.internal}
+  def wheel_notches: (event ev) -> Integer?
 
   # Window を動かす <<en>> Move the window
   #
@@ -1065,6 +1192,127 @@ class FmrbApp
   # ```
   %a{fmrb.internal}
   def delete_canvas_gfx: (FmrbGfx gfx) -> void
+
+  # ---- 設定と覚えておくこと ----
+
+  # アプリ自身の設定ファイルを読む <<en>> Read the app's own settings file
+  #
+  # `/home/<app_handle_name>.toml` を Hash (鍵は文字列) にして返す。
+  # **ファイルが無いか、TOML でないときは `{}`** (後者はログに出る)。
+  # ```ruby
+  # city = app_settings["city"]
+  # ```
+  # <<en>>
+  # Returns `/home/<app_handle_name>.toml` as a Hash with String keys.
+  # **It is `{}` when there is no file or it is not TOML** (the latter is
+  # logged).
+  # ```ruby
+  # city = app_settings["city"]
+  # ```
+  %a{fmrb.internal}
+  def app_settings: () -> Hash[String, untyped]
+
+  # 設定ファイルの鍵を書き換える <<en>> Rewrite keys in the settings file
+  #
+  # values は 鍵 => 値 の Hash。**渡した鍵の行だけ**を書き換え、ほかの行は
+  # そのまま残す (ファイルが無ければ作る)。鍵は `"city"` のほか
+  # `"section.key"` の形も使え、値が nil なら鍵を消す。
+  #
+  # **書いて読み直せたら、読み直した Hash** を返し、**書けなかったとき・**
+  # **読み直して値が違うとき・TOML でないファイルのときは nil** (その場合
+  # ファイルは触らない。理由は `FmrbToml.error`)。
+  # ```ruby
+  # save_app_settings({ "city" => name })
+  # ```
+  # <<en>>
+  # values is a Hash of key => value. **Only the lines of the keys given**
+  # are rewritten and the rest stay as they are (the file is made when it is
+  # missing). A key is `"city"` or `"section.key"`, and a nil value removes
+  # it.
+  #
+  # **It returns the Hash read back after writing, and nil when it could not**
+  # **write, the read-back differs, or the file is not TOML** (the file is not
+  # touched then; `FmrbToml.error` says why).
+  # ```ruby
+  # save_app_settings({ "city" => name })
+  # ```
+  %a{fmrb.internal}
+  def save_app_settings: (Hash[untyped, untyped] values) -> Hash[String, untyped]?
+
+  # 設定ファイルの場所 <<en>> Where the settings file is
+  #
+  # ```ruby
+  # app_settings_path   #=> "/home/weather.toml"
+  # ```
+  %a{fmrb.internal}
+  def app_settings_path: () -> String
+
+  # アプリの名前 (ファイルの名に使う) <<en>> The app's handle name
+  #
+  # `.app.toml` の `app_handle_name`、無ければファイル名から `.app.rb` を
+  # 除いたもの (`/app/test/step_sensor.app.rb` なら `step_sensor`)、それも
+  # 無ければ `name`。
+  # ```ruby
+  # app_handle_name   #=> "step_sensor"
+  # ```
+  # <<en>>
+  # The `app_handle_name` of the `.app.toml`, else the file name without
+  # `.app.rb` (`step_sensor` for `/app/test/step_sensor.app.rb`), else `name`.
+  # ```ruby
+  # app_handle_name   #=> "step_sensor"
+  # ```
+  %a{fmrb.internal}
+  def app_handle_name: () -> String
+
+  # 次に開くときのために覚えたことを読む <<en>> Read what the app remembered
+  #
+  # `/tmp/<who>.state.toml` を Hash (鍵は文字列) で返す。**再起動 (実機は電源、**
+  # **PC はプログラム、ブラウザはページ) で消える**ので、ユーザの設定は
+  # `app_settings` に置く。値は文字列・整数・true/false だけが残る。
+  # `who` (省略すると `app_handle_name`) は、1 つのアプリの中の部分が自分の
+  # 名前で持つときに渡す。ファイルが無いか TOML でなければ `{}`。
+  # ```ruby
+  # dir = app_state("file_manager")["dir"]
+  # ```
+  # <<en>>
+  # Returns `/tmp/<who>.state.toml` as a Hash with String keys. **It is gone**
+  # **after a restart** (power on a device, the program on a PC, the page in a
+  # browser), so the user's settings belong in `app_settings`. Only strings,
+  # integers and true/false are kept. `who` (`app_handle_name` when left out)
+  # is for a part of a program that keeps its own state. `{}` when the file
+  # is missing or not TOML.
+  # ```ruby
+  # dir = app_state("file_manager")["dir"]
+  # ```
+  %a{fmrb.internal}
+  def app_state: (?String who) -> Hash[String, untyped]
+
+  # 覚えておくことを書く <<en>> Remember values for the next opening
+  #
+  # 読んだ Hash に values を重ねて書く。**値が変わらなければ書かない**。
+  # 文字列・整数・true/false 以外の値は**黙って飛ばされる**。
+  # 書けた (すでに同じだった場合も) なら true、書けなければ false。
+  # ```ruby
+  # save_app_state({ "dir" => "/home" })
+  # ```
+  # <<en>>
+  # Merges values into what was read and writes it. **Nothing is written when**
+  # **no value changed.** Values that are not a string, integer or true/false
+  # are **skipped silently**. Returns true when the file holds the values
+  # (written now or already the same) and false when it could not be written.
+  # ```ruby
+  # save_app_state({ "dir" => "/home" })
+  # ```
+  %a{fmrb.internal}
+  def save_app_state: (Hash[untyped, untyped] values, ?String who) -> bool
+
+  # 覚えておくことのファイルの場所 <<en>> Where the remembered values are kept
+  #
+  # ```ruby
+  # app_state_path   #=> "/tmp/weather.state.toml"
+  # ```
+  %a{fmrb.internal}
+  def app_state_path: (?String who) -> String
 
   # ---- キーの調べかた (on_event の中で使う) ----
 
@@ -1161,6 +1409,32 @@ class FmrbApp
   %a{fmrb.internal}
   def clear_timer: (Integer timer_id) -> void
 
+  # 待ちを今すぐ終える <<en>> End the wait now
+  #
+  # **on_control や on_event の中で呼ぶ**。待ちを終わらせて、すぐ `on_update` に
+  # 戻る。メッセージを受けて、予定より早く動かなければならないと分かった
+  # ときに使う。**on_update の中で呼んでも何も起きない** (次の待ちを
+  # 決め直すところなので)。
+  # ```ruby
+  # def on_control(msg)
+  #   @due = Machine.board_millis + 200
+  #   request_early_update
+  # end
+  # ```
+  # <<en>>
+  # **Call it from inside on_control or on_event.** It ends the wait so the
+  # loop reaches `on_update` at once; use it when a message shows the app has
+  # to act sooner than planned. **From on_update it does nothing**, because the
+  # next wait is worked out there anyway.
+  # ```ruby
+  # def on_control(msg)
+  #   @due = Machine.board_millis + 200
+  #   request_early_update
+  # end
+  # ```
+  %a{fmrb.internal}
+  def request_early_update: () -> void
+
   # 知らせを受け取るようにする <<en>> Start receiving a kind of notice
   #
   # その名前で配られたものが `on_control` に届くようになる。
@@ -1207,23 +1481,73 @@ class FmrbApp
 
   # 他のアプリに伝言を送る <<en>> Send a message to another app
   #
-  # 特定の相手に直接送る。**1 通 176 バイトまで**は `publish` と同じ。
+  # 特定の相手 (dest_pid) に直接送る。data は MessagePack に詰められる値
+  # (ふつうは Hash) で、**詰めたあとの大きさが 176 バイトまで**は
+  # `publish` と同じ。msg_type は `FmrbConst::MSG_TYPE_APP_CONTROL`。
+  #
+  # **送れたら true、相手の待ち行列が無い (pid が違う・もう終わった) か、1 秒**
+  # **待っても入らなければ false** (ログにも出る)。176 バイトを超えると
+  # ArgumentError。送り手の pid は中身に入らないので、返事がほしいときは
+  # 自分で入れる (`"re" => FmrbApp.pid`)。
+  #
+  # 受け手は `"cmd"` に文字列を持つ Hash だけを読む。`resize`・`moved`・
+  # `suspend`・`resume`・`stop`・`quit_request` など土台が決めている cmd は
+  # 土台が処理し、**それ以外の cmd は Hash のまま `on_control` に届く**
+  # (定義していれば)。`"cmd"` の無い Hash や、Hash でないものは黙って
+  # 捨てられる。
   # ```ruby
   # send_message(pid,
   #   FmrbConst::MSG_TYPE_APP_CONTROL,
-  #   { "cmd" => "hello" })
+  #   { "cmd" => "hello",
+  #     "re" => FmrbApp.pid })
   # ```
   # <<en>>
-  # Sends straight to one process. The same **176-byte** limit as `publish`.
+  # Sends straight to one process (dest_pid). data is any value MessagePack
+  # can pack (usually a Hash), and **the packed size may be 176 bytes at most**,
+  # the same limit as `publish`. msg_type is `FmrbConst::MSG_TYPE_APP_CONTROL`.
+  #
+  # **It returns true when sent, and false when the target has no queue**
+  # **(wrong pid, already ended) or does not take it within one second** (also
+  # logged). Over 176 bytes raises ArgumentError. The sender's pid is not put
+  # in the message; add it yourself when you want a reply
+  # (`"re" => FmrbApp.pid`).
+  #
+  # The receiver reads only a Hash whose `"cmd"` is a String. The cmd names
+  # the base owns (`resize`, `moved`, `suspend`, `resume`, `stop`,
+  # `quit_request`, ...) are handled by the base, and **any other cmd reaches**
+  # **`on_control` as the Hash** (if defined). A Hash without `"cmd"`, or
+  # anything that is not a Hash, is dropped silently.
   # ```ruby
   # send_message(pid,
   #   FmrbConst::MSG_TYPE_APP_CONTROL,
-  #   { "cmd" => "hello" })
+  #   { "cmd" => "hello",
+  #     "re" => FmrbApp.pid })
   # ```
   %a{fmrb.internal}
-  def send_message: (Integer dest_pid, Integer msg_type, untyped data) -> void
+  def send_message: (Integer dest_pid, Integer msg_type, untyped data) -> bool
 
   # ---- ファイル ----
+
+  # 描画側にファイルを送る (画面なしでも) <<en>> Put a file on the graphics side
+  #
+  # `FmrbGfx#sync_file` と同じ転送を、**画面を持たないアプリ**からできる形
+  # にしたもの。大きさと CRC32 を比べて、違うときだけ送る。`dest:` (省略
+  # すると同じパス) は描画側での置き場所。成功で true、失敗で false。
+  # ```ruby
+  # sync_file("/home/a.wav",
+  #           dest: "/cache/a.wav")
+  # ```
+  # <<en>>
+  # The same transfer as `FmrbGfx#sync_file`, for an app **with no canvas**.
+  # It compares size and CRC32 and sends only when they differ. `dest:` (the
+  # same path when left out) is the place on the graphics side. true on
+  # success, false on failure.
+  # ```ruby
+  # sync_file("/home/a.wav",
+  #           dest: "/cache/a.wav")
+  # ```
+  %a{fmrb.internal}
+  def sync_file: (String path, ?dest: String) -> bool
 
   # ファイルを選ぶ Window を出してもらう <<en>> Ask for a file chooser
   #
@@ -1338,6 +1662,33 @@ class FmrbApp
   def move_to: (String to) -> String?
 
   # ---- 後片づけの調子 ----
+
+  # ひまな時に片づけをするようにする <<en>> Collect garbage while idle
+  #
+  # 拍を崩したくないアプリ (曲を鳴らす・動かし続ける) で `true` にする。
+  # 回収が**待っている間に小分けで**進み、途中で 100 ms 以上止まることが
+  # 減る。**世代別の回収が切れ、戻らない**。1 回の小分けが終わるまでは
+  # メッセージが待たされる。使えない環境ではログに出て、何も変えずに
+  # `idle_gc` が false のままになる。
+  # ```ruby
+  # def on_create
+  #   self.idle_gc = true
+  # end
+  # ```
+  # <<en>>
+  # Set `true` in an app that has to keep a rhythm (playing a song,
+  # animating). Collection runs **in small steps while the app waits**, so the
+  # stops of 100 ms or more in the middle of a phrase become rare. **The**
+  # **generational mode goes off and does not come back**, and a message waits
+  # until the running step ends. Where it is unavailable it logs and leaves
+  # everything as it was, with `idle_gc` still false.
+  # ```ruby
+  # def on_create
+  #   self.idle_gc = true
+  # end
+  # ```
+  %a{fmrb.internal}
+  def idle_gc=: (bool enable) -> void
 
   # ひまな時に片づけをするか <<en>> Whether to tidy up when idle
   #

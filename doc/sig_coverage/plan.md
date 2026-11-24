@@ -1,6 +1,6 @@
 # sig (API の型定義) を充実させる
 
-> 状態: 進行中 | 更新: 2026-11-24 | `sig/*.rbs` を、アプリを書く人と AI ホストの両方が頼れる所まで埋める。抜けを数える道具 (S0)・書き方の型紙 (S1) を先に作り、アプリがよく使う順に足す (S2〜S5)。調査の数字は 2 章、決定は 7 章 (上流由来のファイルも直接直す・キーワード引数は今のまま・道具は最初は報告だけ)。S0〜S3 済 (道具 `rake sig:coverage`、型紙は sig/README.md、FmrbConst・Math・Machine・GC・乱数・File・Dir・Time・IO、書き方の欠けは 0、report/s0.md〜s3.md)。次は S4 (UI の部品・FmrbApp の残り・音)
+> 状態: 進行中 | 更新: 2026-11-24 | `sig/*.rbs` を、アプリを書く人と AI ホストの両方が頼れる所まで埋める。抜けを数える道具 (S0)・書き方の型紙 (S1) を先に作り、アプリがよく使う順に足す (S2〜S5)。調査の数字は 2 章、決定は 7 章 (上流由来のファイルも直接直す・キーワード引数は今のまま・道具は最初は報告だけ)。S0〜S3 済 (道具 `rake sig:coverage`、型紙は sig/README.md、FmrbConst・Math・Machine・GC・乱数・File・Dir・Time・IO、書き方の欠けは 0、report/s0.md〜s3.md)。S4a 済。次は S4b (音・タイル・P5)
 
 ## 1. 目的
 
@@ -165,6 +165,14 @@ C で定義したメソッド (`mrb_define_method`) は、この調査では数�
   `FmrbUI#label`・`button`・`toggle`・`stepper`・`text_field` のキーワードと省略できる引数、`TileMap#render` と
   `TileRing.new` の必須キーワード。直した後の sim で、正しい呼び方が指摘されず、引数の足りない呼び方だけが
   指摘されることを確認。`File.open(path)` の誤検知 (S2c) も消えた。
+- **S4a 済 (2026-11-25、report/s4a.md)**: 44 メソッドを足した (`FmrbUI` の `scrollbar`・`set_range`・`direction`・`bg`、
+  `FmrbUI::Scrollbar`、`FmrbApp` の設定・状態・ホイール・閉じるボタンほか 16、`Kernel` のメッセージ 4、`FmrbI18n` 3、
+  `FmrbAssoc` 5 と定数 6)。既にあるシグネチャの直し: `FmrbUI.new` のキーワード、`enum` の `index:`、`HitAreas#add` の data、
+  `FmrbApp#send_message` の戻り値 (bool)、`FmrbI18n.truncate_to` の省略できる引数、`FmrbGfx#sync_file` の `dest:`。
+  FmrbUI の内側 73 個 (各部品の `.new`・`draw_widget`・`press` ほかと、基底の受け皿) は載せない一覧へ (決定 11)。
+  sig は 79 クラス・1,058 メソッド、実装にあって sig に無い Ruby は 612 → 499。親の検収: 名前を実装と照合、sim の
+  エディタで正しい呼び方 11 個が指摘されず、引数の足りない 2 個だけ指摘、シェルで `FmrbAssoc.resolve`・`truncate_to`。
+  **見つかった不具合の疑い**: `Kernel.send_message` などの構造体が本体と違う (doc/reference/TODO.md、ユーザの判断待ち)。
 - **定型の作業は Sonnet のサブに任せる** (2026-11-24 ユーザ)。S2a が試しで、質に問題は無かった。指示書に
   「読んだ実装のファイルと行を報告に書く」「確かめていないことを分けて書く」を入れ、親は名前と値を実装と機械的に
   突き合わせる。道具の変更と、型紙で足りない判断が要る所は Opus。
