@@ -1264,7 +1264,7 @@ class FmrbApp
   %a{fmrb.internal}
   def app_handle_name: () -> String
 
-  # 次に開くときのために覚えたことを読む <<en>> Read what the app remembered
+  # 覚えたことを読む (再起動で消える) <<en>> Read what the app remembered (lost on restart)
   #
   # `/tmp/<who>.state.toml` を Hash (鍵は文字列) で返す。**再起動 (実機は電源、**
   # **PC はプログラム、ブラウザはページ) で消える**ので、ユーザの設定は
@@ -1287,7 +1287,7 @@ class FmrbApp
   %a{fmrb.internal}
   def app_state: (?String who) -> Hash[String, untyped]
 
-  # 覚えておくことを書く <<en>> Remember values for the next opening
+  # 次に開くときまで覚える (再起動で消える) <<en>> Remember for the next opening (lost on restart)
   #
   # 読んだ Hash に values を重ねて書く。**値が変わらなければ書かない**。
   # 文字列・整数・true/false 以外の値は**黙って飛ばされる**。

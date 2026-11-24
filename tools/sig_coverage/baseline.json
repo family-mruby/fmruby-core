@@ -20,7 +20,7 @@
     "impl_c_unresolved": 0,
     "doc_methods": 1233,
     "doc_no_summary": 0,
-    "doc_long_summary": 0,
+    "doc_long_summary": 1,
     "doc_no_en": 0,
     "doc_no_long": 0,
     "doc_no_example": 0,
@@ -132,7 +132,9 @@
       "Log.write_pos"
     ],
     "doc_no_summary": [],
-    "doc_long_summary": [],
+    "doc_long_summary": [
+      "FmrbApp#save_app_state"
+    ],
     "doc_no_en": [],
     "doc_no_long": [],
     "doc_no_example": [],

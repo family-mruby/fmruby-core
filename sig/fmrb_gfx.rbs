@@ -57,7 +57,7 @@ module FmrbText
   # @gfx.fit_text(name, w, "..", nil,
   #               :default)
   # ```
-  def fit_text: (String text, Integer width) -> String
+  def fit_text: (String text, Integer width, ?String mark, ?Integer? mark_w, ?Symbol? family) -> String
 
   # 文字を最大 2 行に折る <<en>> Wrap a text into at most two lines
   #
@@ -607,6 +607,9 @@ class FmrbGfx
   # `FmrbGfx.rgb_to_332(255, 0, 0)` で好きな色を指定できます。
   #
   # 描いたものは `present` を呼ぶまで画面に出ません。
+  # 5 番目の引数を渡すと、字の背景をその色で塗ります (省くと塗らない)。
+  # `mixed: true` は、選んでいるフォントに関わらず、英数字を 6x8、
+  # 日本語を 8x8 のフォントで描きます。
   #
   # ```ruby
   # class MyApp < FmrbApp
@@ -624,6 +627,9 @@ class FmrbGfx
   # colour made with `FmrbGfx.rgb_to_332(255, 0, 0)`.
   #
   # Nothing appears on the screen until `present` is called.
+  # A fifth argument paints the background of the characters in that colour
+  # (none when left out). `mixed: true` draws ASCII with the 6x8 font and
+  # Japanese with the 8x8 one, whatever font is selected.
   #
   # ```ruby
   # class MyApp < FmrbApp
@@ -635,7 +641,7 @@ class FmrbGfx
   # end
   # ```
   %a{fmrb.internal}
-  def draw_text: (Integer x, Integer y, String text, Integer color) -> FmrbGfx
+  def draw_text: (Integer x, Integer y, String text, Integer color, ?Integer? bg_color, ?mixed: bool) -> FmrbGfx
 
 # draw_text の省略なしの形 <<en>> draw_text with nothing left out
 #
