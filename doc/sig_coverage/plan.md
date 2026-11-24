@@ -1,6 +1,6 @@
 # sig (API の型定義) を充実させる
 
-> 状態: 進行中 | 更新: 2026-11-24 | `sig/*.rbs` を、アプリを書く人と AI ホストの両方が頼れる所まで埋める。抜けを数える道具 (S0)・書き方の型紙 (S1) を先に作り、アプリがよく使う順に足す (S2〜S5)。調査の数字は 2 章、決定は 7 章 (上流由来のファイルも直接直す・キーワード引数は今のまま・道具は最初は報告だけ)。S0・S1 済 (道具 `rake sig:coverage`、型紙は sig/README.md、report/s0.md・s1.md)。次は S2
+> 状態: 進行中 | 更新: 2026-11-24 | `sig/*.rbs` を、アプリを書く人と AI ホストの両方が頼れる所まで埋める。抜けを数える道具 (S0)・書き方の型紙 (S1) を先に作り、アプリがよく使う順に足す (S2〜S5)。調査の数字は 2 章、決定は 7 章 (上流由来のファイルも直接直す・キーワード引数は今のまま・道具は最初は報告だけ)。S0・S1・S2a 済 (道具 `rake sig:coverage`、型紙は sig/README.md、FmrbConst と Math、report/s0.md〜s2a.md)。次は S2b (Machine・乱数・GC・文字列ほか・ファイル)
 
 ## 1. 目的
 
@@ -130,7 +130,16 @@ C で定義したメソッド (`mrb_define_method`) は、この調査では数�
 | S5 | **データ・機器・通信の残り**: `JSON` (`Digger` も)・`MessagePack`・`FmrbToml`・`FmrbColors`・`Digest::SHA256`・`Fmrb::Fft`・`Fmrb::Raycast`・`I2C`・`FmrbNet`・`FmrbHw`・卓のゲームの部品 (`TableClient`)・Asterism の残り全部 (`Connection`・`Credentials` ほか、ROS 2 の橋、`FmrbAsterism` のモジュール関数)・storage のライブラリ (`FmrbReceiveConf`・`Unit8Encoder`) | 同上。機器の無い端末でどうなるか (失敗のしかた) が書いてある |
 | S6 | **まとめの確認**: 全体を通して、エディタ (補完・F1)、ファームと storage の大きさ、AI ホストの通し (決まった頼み 10 個ほどを、足す前の版と比べる)。`doc/reference/` に「sig の書き方と数え方」を残す | 大きさの増分が記録されている。頼みの結果の比較が報告にある |
 
-- 各段は、サブ (Opus) が書いて親が検収する (fmrb-dev-flow 4 章)。検収では、足した型のうち数件を親が実装と
+- **S2a 済 (2026-11-24、report/s2a.md)**: `FmrbConst` の定数 162 と `bt_mac` (`sig/fmrb_const.rbs`)、`Math` の関数 26・
+  `PI`・`E`・`DomainError` (`sig/math.rbs`)。アプリが使う未定義の定数は 76 → 18。親の検収: 定数の名前 162・
+  キーの番号の値 87・`Math` の関数名 26 が実装と全部一致、例の値 11 個が合う、sim (Retro) で `FmrbConst::KEY_U`・
+  `Math.sq` の補完と要約、`byteslice` の Ctrl+E (1 引数と範囲は通り、3 引数だけ指摘) を確認。型データベースは
+  要約 65,104 バイト・シグネチャ 33,679・名前 9,129、定数 191。定数の長文は F1 に出ない (ヘルプの生成が定数を
+  扱わない) ので、定数は要約だけ。書かなかった内部用の定数: `APP_CTRL_*`・`MAX_PATH_LEN`・`LED_ERR_*`。
+- **定型の作業は Sonnet のサブに任せる** (2026-11-24 ユーザ)。S2a が試しで、質に問題は無かった。指示書に
+  「読んだ実装のファイルと行を報告に書く」「確かめていないことを分けて書く」を入れ、親は名前と値を実装と機械的に
+  突き合わせる。道具の変更と、型紙で足りない判断が要る所は Opus。
+- 各段は、サブが書いて親が検収する (fmrb-dev-flow 4 章)。検収では、足した型のうち数件を親が実装と
   突き合わせる。
 - 段ごとの確認は `rake regress` と `rake ti:test`、sig を直した後のビルドは `rake clean` から (sig/README)。
   重い道具 (`regress:size` など) は S6 にまとめる。
