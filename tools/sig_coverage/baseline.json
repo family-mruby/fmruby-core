@@ -18,12 +18,12 @@
     "impl_c": 306,
     "impl_c_missing": 53,
     "impl_c_unresolved": 0,
-    "doc_methods": 780,
+    "doc_methods": 778,
     "doc_no_summary": 0,
     "doc_long_summary": 0,
     "doc_no_en": 0,
     "doc_no_long": 0,
-    "doc_no_example": 2,
+    "doc_no_example": 0,
     "doc_bold_across": 0
   },
   "items": {
@@ -890,10 +890,7 @@
     "doc_long_summary": [],
     "doc_no_en": [],
     "doc_no_long": [],
-    "doc_no_example": [
-      "FmrbApp#destroy",
-      "FmrbApp#main_loop"
-    ],
+    "doc_no_example": [],
     "doc_bold_across": []
   }
 }

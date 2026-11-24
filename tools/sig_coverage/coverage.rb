@@ -486,7 +486,9 @@ module SigCoverage
           next unless text.start_with?("#")
           fence = !fence if text.match?(/\A#\s*```/)
           next if fence
-          doc[:bold_across] << "#{File.basename(f)}:#{i + 1}" if text.scan("**").size.odd?
+          # not the ** of an inline code span (a glob written as `**`)
+          prose = text.gsub(/`[^`]*`/, "")
+          doc[:bold_across] << "#{File.basename(f)}:#{i + 1}" if prose.scan("**").size.odd?
         end
       end
       @result[:doc] = doc

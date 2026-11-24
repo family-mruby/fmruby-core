@@ -111,6 +111,13 @@
 - name: JSON.wasm_build?
   reason: JSON's own (decision 15).
 
+- name: FmrbApp#destroy
+  reason: >-
+    Called by start when the app ends; no app or template calls it, so there
+    is no safe example to give (doc/sig_coverage S3). Its summary stays.
+- name: FmrbApp#main_loop
+  reason: Called by start; apps do not call it (doc/sig_coverage S3).
+
 # ---- names that are errors on purpose -----------------------------------
 
 - name: "#no_such_method"
