@@ -1,6 +1,6 @@
 # sig (API の型定義) を充実させる
 
-> 状態: 進行中 | 更新: 2026-11-24 | `sig/*.rbs` を、アプリを書く人と AI ホストの両方が頼れる所まで埋める。抜けを数える道具 (S0)・書き方の型紙 (S1) を先に作り、アプリがよく使う順に足す (S2〜S5)。調査の数字は 2 章、決定は 7 章 (上流由来のファイルも直接直す・キーワード引数は今のまま・道具は最初は報告だけ)。S0〜S3 済 (道具 `rake sig:coverage`、型紙は sig/README.md、FmrbConst・Math・Machine・GC・乱数・File・Dir・Time・IO、書き方の欠けは 0、report/s0.md〜s3.md)。S5a 済。次は S5b (Asterism の残り・ROS 2 の橋・卓のゲームの部品)
+> 状態: 進行中 | 更新: 2026-11-24 | `sig/*.rbs` を、アプリを書く人と AI ホストの両方が頼れる所まで埋める。抜けを数える道具 (S0)・書き方の型紙 (S1) を先に作り、アプリがよく使う順に足す (S2〜S5)。調査の数字は 2 章、決定は 7 章 (上流由来のファイルも直接直す・キーワード引数は今のまま・道具は最初は報告だけ)。S0〜S3 済 (道具 `rake sig:coverage`、型紙は sig/README.md、FmrbConst・Math・Machine・GC・乱数・File・Dir・Time・IO、書き方の欠けは 0、report/s0.md〜s3.md)。S0〜S5 済 (sig 125 クラス・1,470 メソッド)。次は S6 (まとめの確認) と S7 (サイトの公開)
 
 ## 1. 目的
 
@@ -127,7 +127,7 @@ C で定義したメソッド (`mrb_define_method`) は、この調査では数�
 | S2 (済 2026-11-25) | **最初に使う範囲**: `FmrbConst` (キーの番号・テーマの色・`BOARD`)、`Machine` (時刻・待ち)、`Math`、乱数、`GC`、`String`・`Array`・`Float` の足りない分、`File`・`Dir`・`Time` | S0 の (1) で、この範囲の「無い」が 0。AI ホストへの決まった頼み (時間で動くアニメーション、ファイルの読み書き) が調べ物なしか 1 回で正しく返る |
 | S3 (済 2026-11-25) | **例の無い 92 件と長文の無い 3 件を埋め、行をまたぐ強調 42 行を直す** (道具に「強調が行をまたぐ」を足す): `fmrb_app`・`fmrb_gfx`・`fmrb_system`・`fmrb_ui` ほか (英語の無い要約は、数え直すと 0 件だった) | S0 の (3) の「例なし」「長文なし」が 0 (わざと載せない分を除く) |
 | S4 (済 2026-11-25) | **部品と音**: `FmrbUI` の部品 (label・button・toggle・stepper・text_field・スクロールバー。アプリが呼ぶ分)、`FmrbApp` の残り、Kernel のメッセージ 4 件、`MmlPlayer`・`SmfPlayer`・`FmrbMidi` (送り先はアプリが呼ぶ分)・`FmrbAudio` (マイク)、`TileMap`・`P5` の残り、`FmrbI18n`・`FmrbAssoc` | S0 の (2) で、この範囲の「無い」が、わざと載せない分だけになる。決まった頼み (ボタンと入力欄のある画面、MML を鳴らす) |
-| S5 | **データ・機器・通信の残り**: `JSON` (`Digger` も)・`MessagePack`・`FmrbToml`・`FmrbColors`・`Digest::SHA256`・`Fmrb::Fft`・`Fmrb::Raycast`・`I2C`・`FmrbNet`・`FmrbHw`・卓のゲームの部品 (`TableClient`)・Asterism の残り全部 (`Connection`・`Credentials` ほか、ROS 2 の橋、`FmrbAsterism` のモジュール関数)・storage のライブラリ (`FmrbReceiveConf`・`Unit8Encoder`) | 同上。機器の無い端末でどうなるか (失敗のしかた) が書いてある |
+| S5 (済 2026-11-25) | **データ・機器・通信の残り**: `JSON` (`Digger` も)・`MessagePack`・`FmrbToml`・`FmrbColors`・`Digest::SHA256`・`Fmrb::Fft`・`Fmrb::Raycast`・`I2C`・`FmrbNet`・`FmrbHw`・卓のゲームの部品 (`TableClient`)・Asterism の残り全部 (`Connection`・`Credentials` ほか、ROS 2 の橋、`FmrbAsterism` のモジュール関数)・storage のライブラリ (`FmrbReceiveConf`・`Unit8Encoder`) | 同上。機器の無い端末でどうなるか (失敗のしかた) が書いてある |
 | S6 | **まとめの確認**: 全体を通して、エディタ (補完・F1)、ファームと storage の大きさ、AI ホストの通し (決まった頼み 10 個ほどを、足す前の版と比べる)。`doc/reference/` に「sig の書き方と数え方」を残す | 大きさの増分が記録されている。頼みの結果の比較が報告にある |
 
 - **S2a 済 (2026-11-24、report/s2a.md)**: `FmrbConst` の定数 162 と `bt_mac` (`sig/fmrb_const.rbs`)、`Math` の関数 26・
@@ -190,6 +190,16 @@ C で定義したメソッド (`mrb_define_method`) は、この調査では数�
   JSON (読み取り・書き出し・2 種類の例外・Digger)、MessagePack、TOML (読み取りとエラーの文)、色の名前、`FmrbHw`、
   `FmrbNet.ip_address`、FFT とレイキャストの例外が記述どおり。`I2C`・`GPIO`・`Digest` は sim に無い (記述どおり)。
   迷ったものとして残る: `FmrbReceiveConf` の 4 つ、`BMI270`・`RMT`・`Net::HTTP`・`URI`・`MbedTLS::Digest`、例外のクラス。
+- **S5b 済 (2026-11-25、report/s5b.md)**: 226 メソッドを足した (`Asterism` の関数 6、`Connection` 29 ほか核のクラス、
+  `Credentials`・`Types`・`Pubs`・`Sequences`・`Status`・`Profile`、`FmrbAsterism` の関数 10、ROS 2 の橋
+  (`sig/asterism_ros.rbs`、約 80)、`TableClient` (`sig/fmrb_table_client.rbs`、37))。A6b の型 13 個を決定 22 の形に直した
+  (`Link.new` のキーワード、`expose` の `methods:`、`[]`・`status_of` の `timeout:`、`publish`・`subscribe` ほか)。
+  内側 56 個は載せない一覧へ。sig は 125 クラス・1,470 メソッド、実装にあって sig に無い Ruby は 293 → 6。
+  親の検収: 要約が変わっていないことを機械的に照合、変えたシグネチャを実装の定義と照合、sim のシェルで 9 項目
+  (`tls?`・`credentials_for` の nil と例外・`Types.number`・`Pubs.place`・`encoding_id`・`Profile.png_info`・
+  `ROS.resolve`・`ROS.require_type` の例外) が記述どおり。**エディタの Ctrl+E では確かめられなかった**: 型エンジンが
+  入れ子のクラス (`A::B`) を受け手に解けない (doc/reference/TODO.md。sig の誤りではない)。
+  **S5 完了。sig を書く段はここまで**。
 - **定型の作業は Sonnet のサブに任せる** (2026-11-24 ユーザ)。S2a が試しで、質に問題は無かった。指示書に
   「読んだ実装のファイルと行を報告に書く」「確かめていないことを分けて書く」を入れ、親は名前と値を実装と機械的に
   突き合わせる。道具の変更と、型紙で足りない判断が要る所は Opus。

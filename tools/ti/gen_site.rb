@@ -41,7 +41,7 @@ module TiSite
     ["Sound", "音", %w[fmrb_audio fmrb_midi fmrb_fft]],
     ["Files and time", "ファイルと時刻", %w[fmrb_file dir io time]],
     ["Data", "データ", %w[json message_pack digest]],
-    ["Network", "ネットワーク", %w[fmrb_asterism fmrb_net]],
+    ["Network", "ネットワーク", %w[fmrb_asterism fmrb_table_client asterism_ros fmrb_net]],
     ["Machine and devices", "本体と機器", %w[machine gc rng math fmrb_hw i2c gpio]],
     ["Ruby core", "Ruby の基本クラス",
      %w[object kernel class enumerable string symbol integer float array hash range proc
