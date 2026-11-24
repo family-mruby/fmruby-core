@@ -118,6 +118,228 @@
 - name: FmrbApp#main_loop
   reason: Called by start; apps do not call it (doc/sig_coverage S3).
 
+# ---- FmrbUI's widgets, the inside (doc/sig_coverage S4a, decision 11) ------
+
+- name: "FmrbUI::Widget.new"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#activate"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#direction"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#dirty="
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#draw_widget"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#enabled="
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#field_text"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#fires_on_press?"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#fit_widget_text"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#focus"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#follow_theme_ground"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#group"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#on?"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#option_text"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#press"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#relayout"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#release"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#set_field_text"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#set_on"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#set_range"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#set_text"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#set_value"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#shown"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#shown="
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#take_ground"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#text_h"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#type_key"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#value"
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Widget#visible="
+  reason: >-
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+- name: "FmrbUI::Button.new"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Button#activate"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Button#draw_widget"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Button#fit_widget_text"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Button#press"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Button#relayout"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Button#release"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Button#set_text"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Stepper.new"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Stepper#activate"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Stepper#arrow_w"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Stepper#draw_widget"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Stepper#fit_widget_text"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Stepper#press"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Stepper#relayout"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Stepper#release"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Toggle.new"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Toggle#activate"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Toggle#draw_widget"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Toggle#fit_widget_text"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Toggle#press"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Toggle#relayout"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Toggle#release"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Toggle#set_text"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Scrollbar.new"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Scrollbar#activate"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Scrollbar#direction"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Scrollbar#draw_widget"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Scrollbar#fires_on_press?"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Scrollbar#press"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Scrollbar#release"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Label.new"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Label#draw_widget"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Label#fit_widget_text"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Label#relayout"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::Label#set_text"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::TextField.new"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::TextField#activate"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::TextField#draw_widget"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::TextField#focus"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbUI::TextField#type_key"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+- name: "FmrbApp.new"
+  reason: >-
+    Called by the runtime (new) or by FmrbUI.new itself (attach_ui); no app calls it (doc/sig_coverage S4a).
+- name: "FmrbApp#attach_ui"
+  reason: >-
+    Called by the runtime (new) or by FmrbUI.new itself (attach_ui); no app calls it (doc/sig_coverage S4a).
+- name: "FmrbUI::Enum.new"
+  reason: >-
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+
 # ---- names that are errors on purpose -----------------------------------
 
 - name: "#no_such_method"

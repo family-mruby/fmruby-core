@@ -1783,7 +1783,7 @@ def video_open_raw: (String path, Integer x, Integer y, Integer fps, bool loop) 
   #               dest: "/cache/app/x/bird.png")
   # ```
   %a{fmrb.internal}
-  def sync_file: (String path) -> bool
+  def sync_file: (String path, ?dest: String) -> bool
 
 # sync_file の省略なしの形 <<en>> sync_file with nothing left out
 #

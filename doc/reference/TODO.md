@@ -325,3 +325,15 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   - `Dir.chdir` の後の相対パスの意味が、ESP32 (今いる場所を見ない) と sim で食い違うかもしれない (読みだけ)。
   - `IO#puts` が配列を展開しない (**sim で確認**: `$stdout.puts([1,2])` は `[1, 2]` の 1 行。仕様かもしれない)。
   直すかどうかはユーザの判断。直したら sig の該当の長文も直す。
+
+- **`Kernel.send_message`・`receive_message`・`broadcast_message` (C の gem `picoruby-fmrb-kernel`) のメッセージの構造体が、
+  本体のものと形が違う** (2 つの定義を読み比べて確認、2026-11-25、doc/sig_coverage/report/s4a.md)。gem の中の自前の型は
+  `{type, size, data[64]}` (72 バイト)、本体 (`components/fmrb_msg/fmrb_msg.h`) は `{type, src_pid, size, data[176]}`。
+  `receive_message` は queue の 1 件ぶん (本体の大きさ) を 72 バイトの局所変数に受けるので、呼ぶとスタックを壊す見込み。
+  `send_message` は足りない分を読み過ぎ、受け手の `size`・`data` が 4 バイトずれる。sim で `Kernel.respond_to?` は true
+  (呼べる状態)。**同梱のアプリとカーネルは誰も呼んでいない** (アプリは `FmrbApp#send_message` を使う) ので今は潜在。
+  動かして確かめてはいない (壊す操作なので)。直し方: 本体のヘッダを include する (自前の型をやめる) か、この 3 つを
+  公開の API から外す。sig には「アプリ間の伝言は `FmrbApp#send_message` を使う」と書いてある。ユーザの判断待ち。
+- S4a で見つかったほかの疑い (読みだけ。直していない): `FmrbUI#bg=` は既にある部品の色を変えない (部品が作るときに色を
+  写して持つ)、`FmrbI18n.add` の長文「Existing keys are left alone」は実装 (上書きする) と合わない、Spinel の基底に
+  `app_settings` 系 3 つが無い、`Kernel.*` の task_id の検査 (0〜15) と本体の上限 (9) が合わない。
