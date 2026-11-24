@@ -1,0 +1,1039 @@
+# ROS 2 との橋 (Asterism::ROS)。実装は vendor/asterism/mrblib/ros.rb。
+
+module Asterism
+  # ROS 2 のノードのふりをして、トピックとサービスをやり取りする <<en>> Be a ROS 2 node: topics and services
+  #
+  # ROS 2 (Jazzy・rmw_zenoh) のノードのふりをして、トピックを出す・受ける、サービスを
+  # 呼ぶ・答える。Zenoh のルータ (zenohd) を ROS 2 側と共有するのが前提で、
+  # ROS 2 側は rmw_zenoh を使っていること。**Link の conn.session の上に作る**
+  # (`Asterism::ROS::Node.new(conn.session, "名前")`)。Asterism::Connection と同じく
+  # **何も裏で動かない**: Node#poll を毎回の update で呼ぶ。
+  #
+  # メッセージの型は ROS 2 の .msg / .srv から作ったファイル (tools/asterism_msggen.rb の出力)
+  # で、端末の /usr/share/asterism/msgs に std_msgs・geometry_msgs・sensor_msgs・
+  # nav_msgs ほかが入っている。`Asterism::ROS.require_type("std_msgs/msg/String")` か
+  # 型の名前 (String) を各メソッドに渡すと読み込む。メッセージは CDR で送る。
+  # 大きなメッセージ (画像・点群) は端末のメモリを使う。
+  #
+  # ```ruby
+  # node = Asterism::ROS::Node.new(
+  #   @link.conn.session, "fmrb_node")
+  # pub = node.publisher("/chatter",
+  #   "std_msgs/msg/String")
+  # pub << { data: "hi" }
+  # ```
+  # <<en>>
+  # A bridge to ROS 2 (Jazzy, rmw_zenoh): make a node that publishes and
+  # subscribes to topics and calls and serves services. It assumes the ROS 2
+  # side shares the Zenoh router (zenohd) and uses rmw_zenoh.
+  # **Build it on a Link's conn.session** (`Asterism::ROS::Node.new(conn.session, "name")`). Like Asterism::Connection **nothing runs behind your back**:
+  # call Node#poll in every update.
+  #
+  # Message types are files made from ROS 2 .msg / .srv files (the output
+  # of tools/asterism_msggen.rb); /usr/share/asterism/msgs on the machine
+  # holds std_msgs, geometry_msgs, sensor_msgs, nav_msgs and more. Give
+  # `Asterism::ROS.require_type("std_msgs/msg/String")` or the type's name
+  # (a String) to the methods and it is loaded. Messages travel as CDR. A
+  # big message (an image, a point cloud) uses the machine's memory.
+  # ```ruby
+  # node = Asterism::ROS::Node.new(
+  #   @link.conn.session, "fmrb_node")
+  # pub = node.publisher("/chatter",
+  #   "std_msgs/msg/String")
+  # pub << { data: "hi" }
+  # ```
+  module ROS
+    # 何も指定しないときの QoS <<en>> The QoS chunk of the default profile (reliable, volatile, keep last 10)
+    DEFAULT_QOS: String
+    # 型のファイルを探す場所 <<en>> Where require_type looks for generated types
+    TYPE_PATH: Array[String]
+
+    # 型を読み込む <<en>> Load a message or service type by its ROS name
+    #
+    # "geometry_msgs/msg/Twist" や "example_interfaces/srv/AddTwoInts" を
+    # TYPE_PATH から探して読み、型 (クラスか、サービスならモジュール) を返す。
+    # 読み込み済みなら読み直さない。名前は `パッケージ/msg|srv/名前` の形で、
+    # 形が違うと ArgumentError、ファイルが無いと Asterism::ROS::UnknownType。
+    # ```ruby
+    # twist = Asterism::ROS.require_type(
+    #   "geometry_msgs/msg/Twist")
+    # ```
+    # <<en>>
+    # Looks "geometry_msgs/msg/Twist" or "example_interfaces/srv/AddTwoInts"
+    # up in TYPE_PATH, loads it and returns the type (a class, or for a
+    # service a module). A type already loaded is not read again. The name
+    # is `package/msg|srv/Name`: ArgumentError for another shape,
+    # Asterism::ROS::UnknownType when there is no file.
+    # ```ruby
+    # twist = Asterism::ROS.require_type(
+    #   "geometry_msgs/msg/Twist")
+    # ```
+    def self.require_type: (String name) -> untyped
+
+    # 型を探す場所の一覧 <<en>> The directories require_type searches
+    #
+    # 配列そのものを返すので、`<<` で足せる。
+    # ```ruby
+    # Asterism::ROS.type_path << "/home/msgs"
+    # ```
+    # <<en>>
+    # It returns the Array itself, so you can add a directory with `<<`.
+    # ```ruby
+    # Asterism::ROS.type_path << "/home/msgs"
+    # ```
+    def self.type_path: () -> Array[String]
+
+    # 型と、それを作っている型の欄の表 <<en>> The fields of a type and of the types it is made of
+    #
+    # `{ROS の名前 => 欄の表}` を、その型を先頭に 1 回ずつ返す。欄は
+    # `[名前, 基本の型, 種類, 入れ子の型, 長さの上限, 文字列の長さの上限]`。サービスなら
+    # Request と Response。型は型そのものか ROS の名前。欄の表が無い型
+    # (手で書いた・古い生成) は Asterism::ROS::UnknownType。
+    # ```ruby
+    # t = Asterism::ROS.field_types(
+    #   "std_msgs/msg/Header")
+    # ```
+    # <<en>>
+    # Returns `{ROS name => field table}`, the type first, each type once.
+    # A field is `[name, base, kind, nested, capacity, string_capacity]`.
+    # For a service, its Request and Response. The type is the type itself
+    # or its ROS name. Raises Asterism::ROS::UnknownType for a type
+    # without a field table (written by hand, or generated long ago).
+    # ```ruby
+    # t = Asterism::ROS.field_types(
+    #   "std_msgs/msg/Header")
+    # ```
+    def self.field_types: (untyped type) -> Hash
+
+    # トピック名を完全な名前にする <<en>> A full topic name from a name and a namespace
+    #
+    # "/" で始まる名前はそのまま、そうでなければ namespace の下に置く。
+    # 空の名前は ArgumentError。"~" や置き換えは使えない。
+    # ```ruby
+    # Asterism::ROS.resolve("chatter", "/a")
+    # #=> "/a/chatter"
+    # ```
+    # <<en>>
+    # An absolute name stays; a relative one goes under the namespace. An
+    # empty name raises ArgumentError. "~" and substitutions are not
+    # supported.
+    # ```ruby
+    # Asterism::ROS.resolve("chatter", "/a")
+    # #=> "/a/chatter"
+    # ```
+    def self.resolve: (String topic, String namespace) -> String
+
+    # サービスが時間内に答えなかった <<en>> A service call got no answer in time (or nobody serves it)
+    class TimeoutError < Asterism::TimeoutError
+    end
+
+    # 型のファイルが見つからない <<en>> The type has no generated file in TYPE_PATH
+    class UnknownType < Asterism::Error
+    end
+
+    # ROS 2 のノード <<en>> A ROS 2 node over a Zenoh session
+    #
+    # トピック・サービス・タイマーはこのノードにぶら下がる。ノードを閉じると
+    # 全部が終わる。受け取りと答え (subscribe・every・service のブロック) は
+    # **Node#poll の中で**呼ばれる。ブロックの中で待たない (サービスの呼び出しや
+    # 相手のメソッドを待つと、update が止まる): call_async を始めて、後で done? を見る。
+    # ```ruby
+    # node = Asterism::ROS::Node.new(
+    #   @link.conn.session, "fmrb_node")
+    # ```
+    # <<en>>
+    # Topics, services and timers hang off this node; closing it ends all of
+    # them. Receiving and answering (the subscribe, every and service
+    # blocks) run **inside Node#poll**. Do not wait in a block (a service
+    # call or a call to another machine would stall the update): start a
+    # call_async and look at done? later.
+    # ```ruby
+    # node = Asterism::ROS::Node.new(
+    #   @link.conn.session, "fmrb_node")
+    # ```
+    class Node
+      # ノードを作る <<en>> Make a node on a session (it shows in `ros2 node list`)
+      #
+      # session は開いた Zenoh のセッション (`conn.session`)。name は 1 つの
+      # 名前 ("/" を含まない・空でない。違うと ArgumentError)。
+      # `namespace:` (省略すると "/")、`domain:` (省略すると 0。ROS_DOMAIN_ID)、
+      # `enclave:` (省略すると "/")。作った時点でノードの liveliness を出す。
+      # ```ruby
+      # node = Asterism::ROS::Node.new(
+      #   conn.session, "fmrb_node",
+      #   namespace: "/fmrb")
+      # ```
+      # <<en>>
+      # session is an open Zenoh session (`conn.session`). name is one name
+      # (not empty, no "/"; otherwise ArgumentError). `namespace:` ("/"
+      # when left out), `domain:` (0; ROS_DOMAIN_ID), `enclave:` ("/").
+      # Declares the node's liveliness at once.
+      # ```ruby
+      # node = Asterism::ROS::Node.new(
+      #   conn.session, "fmrb_node",
+      #   namespace: "/fmrb")
+      # ```
+      def self.new: (untyped session, (String | Symbol) name, ?namespace: String, ?domain: Integer, ?enclave: String) -> Asterism::ROS::Node
+
+      # 毎回呼ぶ (受け取る・答える・タイマー) <<en>> Poll: receive, answer, fire the timers
+      #
+      # セッションを poll し、届いたサービスの要求に答え、subscribe のブロックに
+      # メッセージを渡し、時間が来たタイマーを動かす。セッションが閉じていれば
+      # false (そうでなければ true)。`steps` (省略すると 8) は 1 回に
+      # セッションの処理を繰り返す回数の上限 (空になれば途中でやめる)。
+      # ```ruby
+      # def on_update
+      #   @node.poll
+      #   100
+      # end
+      # ```
+      # <<en>>
+      # Polls the session, answers the service requests that came in, hands
+      # the messages to the subscribe blocks and fires the timers that are
+      # due. False once the session is closed, true otherwise. `steps` (8
+      # when left out) is the most times it repeats the session's work (it stops
+      # early when nothing is left).
+      # ```ruby
+      # def on_update
+      #   @node.poll
+      #   100
+      # end
+      # ```
+      def poll: (?Integer steps) -> bool
+
+      # トピックを出す口を作る <<en>> Make a publisher for a topic
+      #
+      # topic はトピック名 ("/chatter"。相対ならノードの namespace の下)、
+      # type は型そのものか ROS の名前 ("std_msgs/msg/String")。`qos:`
+      # (省略すると DEFAULT_QOS)。型が読めないと Asterism::ROS::UnknownType か
+      # ArgumentError。
+      # ```ruby
+      # pub = node.publisher("/chatter",
+      #   "std_msgs/msg/String")
+      # ```
+      # <<en>>
+      # topic is the topic name ("/chatter"; a relative one goes under the
+      # node's namespace), type is the type itself or its ROS name
+      # ("std_msgs/msg/String"). `qos:` (DEFAULT_QOS when left out).
+      # Raises Asterism::ROS::UnknownType or ArgumentError for a type that
+      # cannot be loaded.
+      # ```ruby
+      # pub = node.publisher("/chatter",
+      #   "std_msgs/msg/String")
+      # ```
+      def publisher: (String topic, untyped type, ?qos: String) -> Asterism::ROS::Publisher
+
+      # トピックを受ける口を作る (自分で取り出す) <<en>> Make a subscription you take messages from
+      #
+      # 届いたメッセージは溜まり、`each_pending` で取り出す。`depth:` (省略すると
+      # 16) は溜めておける数、`qos:` (省略すると DEFAULT_QOS)。ブロックで
+      # 受けたいときは subscribe。
+      # ```ruby
+      # sub = node.subscription("/cmd",
+      #   "std_msgs/msg/String")
+      # ```
+      # <<en>>
+      # Messages that arrive wait in it and you take them with
+      # `each_pending`. `depth:` (16 when left out) is how many can wait,
+      # `qos:` (DEFAULT_QOS). Use subscribe to get them in a block.
+      # ```ruby
+      # sub = node.subscription("/cmd",
+      #   "std_msgs/msg/String")
+      # ```
+      def subscription: (String topic, untyped type, ?qos: String, ?depth: Integer) -> Asterism::ROS::Subscription
+
+      # トピックを受ける (ブロックで) <<en>> Receive a topic in a block (from Node#poll)
+      #
+      # メッセージが来るたびに、**Node#poll の中で** |msg, info| が呼ばれる
+      # (info は Asterism::ROS::Attachment で、無ければ nil)。ブロックの中では
+      # 待たない。返った Subscription の close で止める。ブロックを渡さないと
+      # subscription と同じ。
+      # ```ruby
+      # node.subscribe("/cmd",
+      #   "std_msgs/msg/String") do |m, i|
+      #   got(m.data)
+      # end
+      # ```
+      # <<en>>
+      # |msg, info| is called **inside Node#poll** for every message (info is
+      # an Asterism::ROS::Attachment, or nil). Do not wait in the block.
+      # close the returned Subscription to stop. Without a block it is the
+      # same as subscription.
+      # ```ruby
+      # node.subscribe("/cmd",
+      #   "std_msgs/msg/String") do |m, i|
+      #   got(m.data)
+      # end
+      # ```
+      def subscribe: (String topic, untyped type, ?qos: String, ?depth: Integer) { (Asterism::ROS::Message msg, Asterism::ROS::Attachment? info) -> untyped } -> Asterism::ROS::Subscription
+                   | (String topic, untyped type, ?qos: String, ?depth: Integer) -> Asterism::ROS::Subscription
+
+      # サービスを提供する <<en>> Serve a service (the block answers requests)
+      #
+      # 要求が来るたびに、**Node#poll の中で**ブロックが要求 (`type::Request`)
+      # を受けて、答え (`type::Response` か欄の Hash) を返す。`depth:` (省略すると 8)、
+      # `qos:` (省略すると DEFAULT_QOS)。ブロックが無いと ArgumentError。
+      # ブロックが例外を出すとその要求には答えず、例外は poll から出る。
+      # ```ruby
+      # add = Asterism::ROS.require_type(
+      #   "example_interfaces/srv/AddTwoInts")
+      # node.service("/add", add) do |r|
+      #   { sum: r.a + r.b }
+      # end
+      # ```
+      # <<en>>
+      # For every request the block gets it (`type::Request`)
+      # **inside Node#poll** and returns the answer (a `type::Response` or a Hash of
+      # its fields). `depth:` (8 when left out), `qos:` (DEFAULT_QOS).
+      # ArgumentError without a block. When the block raises, that request
+      # goes unanswered and the exception comes out of poll.
+      # ```ruby
+      # add = Asterism::ROS.require_type(
+      #   "example_interfaces/srv/AddTwoInts")
+      # node.service("/add", add) do |r|
+      #   { sum: r.a + r.b }
+      # end
+      # ```
+      def service: (String service, untyped type, ?qos: String, ?depth: Integer) { (untyped request) -> untyped } -> Asterism::ROS::Service
+
+      # サービスを呼ぶ口を作る <<en>> Make a client for a service
+      #
+      # 呼ぶのは Client#call (待つ) か call_async (待たない)。`qos:` (省略すると
+      # DEFAULT_QOS)。1 回だけ呼ぶなら Node#call が口を作って覚える。
+      # ```ruby
+      # cli = node.client("/add", add)
+      # ```
+      # <<en>>
+      # Call it with Client#call (waits) or call_async (does not). `qos:`
+      # (DEFAULT_QOS when left out). For occasional calls Node#call makes
+      # and keeps a client.
+      # ```ruby
+      # cli = node.client("/add", add)
+      # ```
+      def client: (String service, untyped type, ?qos: String) -> Asterism::ROS::Client
+
+      # サービスを 1 回呼んで答えを待つ <<en>> Call a service once and wait for the response
+      #
+      # `node.call("/add", add, a: 2, b: 3)`。要求は欄をキーワードで渡すか、
+      # Hash かメッセージを位置引数か `request:` で渡す。待ち時間は `timeout:`
+      # (秒) か `timeout_ms:` (省略すると 2 秒)。口はサービスの名前ごとに
+      # 1 つ作って覚える。**答えが来るまでアプリは止まる**が、その間もこのノードの
+      # サービスには答える (subscribe と every のブロックは動かない)。
+      # 時間内に答えが無ければ Asterism::ROS::TimeoutError、セッションが閉じていれば
+      # Asterism::Zenoh::ClosedError。要求の欄が timeout や timeout_ms という名前なら
+      # `request: { ... }` で渡す。
+      # ```ruby
+      # r = node.call("/add", add,
+      #   a: 2, b: 3)
+      # puts r.sum
+      # ```
+      # <<en>>
+      # `node.call("/add", add, a: 2, b: 3)`. Give the request as field
+      # keywords, or a Hash or message positionally or as `request:`. The
+      # time limit is `timeout:` (seconds) or `timeout_ms:` (2 s when left
+      # out). It makes one client per service name and keeps it.
+      # **The app waits for the answer**, still answering this node's services
+      # meanwhile (the subscribe and every blocks do not run). Raises
+      # Asterism::ROS::TimeoutError when nothing answers in time,
+      # Asterism::Zenoh::ClosedError when the session is closed. If a field of
+      # the request is named timeout or timeout_ms, give the request as
+      # `request: { ... }`.
+      # ```ruby
+      # r = node.call("/add", add,
+      #   a: 2, b: 3)
+      # puts r.sum
+      # ```
+      def call: (String service, untyped type, ?untyped req, ?request: untyped, ?timeout: (Integer | Float)?, ?timeout_ms: Integer?, **untyped fields) -> Asterism::ROS::Message
+
+      # 一定の間隔でブロックを呼ぶ <<en>> Call a block every so often (from Node#poll)
+      #
+      # `every(1.0) { ... }` (秒) か `every(ms: 500) { ... }`。最初は 1 周期後。
+      # **Node#poll の中で**呼ぶ。長く止まっても、取りこぼした分をまとめて
+      # 呼ばない (今から数え直す)。ブロックの中では待たない。Timer を返す
+      # (cancel で止める)。ブロックが無い・周期が無い・両方ある・0 以下は
+      # ArgumentError。
+      # ```ruby
+      # t = node.every(1.0) do
+      #   pub << { data: "tick" }
+      # end
+      # ```
+      # <<en>>
+      # `every(1.0) { ... }` (seconds) or `every(ms: 500) { ... }`. The first
+      # call is one period from now. Runs **inside Node#poll**. After a long
+      # stall it does not fire the missed times at once (it counts from now).
+      # Do not wait in the block. Returns a Timer (cancel stops it).
+      # ArgumentError without a block or a period, with both, or with one
+      # that is not positive.
+      # ```ruby
+      # t = node.every(1.0) do
+      #   pub << { data: "tick" }
+      # end
+      # ```
+      def every: (?(Integer | Float)? seconds, ?ms: (Integer | Float)?) { () -> untyped } -> Asterism::ROS::Timer
+
+      # ノードを閉じる <<en>> Withdraw the node and everything made on it
+      #
+      # 出す口・受ける口・サービス・クライアント・タイマーも終わる。
+      # 何度呼んでもよい。nil を返す。
+      # ```ruby
+      # node.close
+      # ```
+      # <<en>>
+      # Publishers, subscriptions, services, clients and timers end with it.
+      # Safe to call twice. Returns nil.
+      # ```ruby
+      # node.close
+      # ```
+      def close: () -> nil
+
+      # 閉じたか <<en>> Whether the node is closed
+      #
+      # ```ruby
+      # return if node.closed?
+      # ```
+      def closed?: () -> bool
+
+      # ノードの名前 <<en>> The node's name
+      #
+      # ```ruby
+      # n = node.name
+      # ```
+      def name: () -> String
+
+      # ノードの namespace <<en>> The node's namespace ("/" by default)
+      #
+      # ```ruby
+      # ns = node.namespace
+      # ```
+      def namespace: () -> String
+
+      # ROS_DOMAIN_ID <<en>> The ROS domain id
+      #
+      # ```ruby
+      # d = node.domain
+      # ```
+      def domain: () -> Integer
+
+      # このセッションの Zenoh ID <<en>> The Zenoh ID of the session
+      #
+      # ```ruby
+      # id = node.zid
+      # ```
+      def zid: () -> String
+
+      # ノードの liveliness のキー <<en>> The node's liveliness key
+      #
+      # ```ruby
+      # k = node.key
+      # ```
+      def key: () -> String
+
+      # 乗っているセッション <<en>> The Zenoh session the node is on
+      #
+      # ```ruby
+      # s = node.session
+      # ```
+      def session: () -> untyped
+
+      # 一定間隔のブロックを止める <<en>> Stop a timer made by every
+      #
+      # Timer#cancel と同じ。nil を返す。
+      # ```ruby
+      # node.cancel_timer(t)
+      # ```
+      # <<en>>
+      # The same as Timer#cancel. Returns nil.
+      # ```ruby
+      # node.cancel_timer(t)
+      # ```
+      def cancel_timer: (Asterism::ROS::Timer timer) -> nil
+    end
+
+    # トピックに出す口 (node.publisher の答え) <<en>> A topic's publisher (from node.publisher)
+    #
+    # 出すのは `publish` か `<<`。メッセージは型のメッセージか、欄の Hash
+    # (書かなかった欄は既定の値)。
+    class Publisher
+      # メッセージを出す <<en>> Publish a message
+      #
+      # msg は型のメッセージか欄の Hash。送る番号と時刻と GID を付ける。
+      # 閉じていると Asterism::Zenoh::ClosedError。
+      # ```ruby
+      # pub.publish({ data: "hi" })
+      # ```
+      # <<en>>
+      # msg is a message of the type or a Hash of its fields. It adds a
+      # sequence number, the time and the GID. Raises
+      # Asterism::Zenoh::ClosedError when closed.
+      # ```ruby
+      # pub.publish({ data: "hi" })
+      # ```
+      def publish: (untyped msg) -> nil
+
+      # メッセージを出す (つないで書ける) <<en>> Publish a message and return the publisher
+      #
+      # ```ruby
+      # pub << { data: "hi" } << { data: "ho" }
+      # ```
+      def <<: (untyped msg) -> Asterism::ROS::Publisher
+
+      # 閉じる <<en>> Withdraw the publisher
+      #
+      # nil を返す。
+      # ```ruby
+      # pub.close
+      # ```
+      def close: () -> nil
+
+      # この口の GID <<en>> The publisher's GID (16 bytes)
+      #
+      # ```ruby
+      # g = pub.gid
+      # ```
+      def gid: () -> String
+
+      # 出した数 <<en>> The sequence number of the last publish
+      #
+      # ```ruby
+      # n = pub.sequence
+      # ```
+      def sequence: () -> Integer
+
+      # データのキー <<en>> The key the data goes on
+      #
+      # ```ruby
+      # k = pub.topic_key
+      # ```
+      def topic_key: () -> String
+
+      # liveliness のキー <<en>> The liveliness key
+      #
+      # ```ruby
+      # k = pub.token_key
+      # ```
+      def token_key: () -> String
+    end
+
+    # トピックを受ける口 (node.subscription・node.subscribe の答え) <<en>> A topic's subscription
+    #
+    # 届いたメッセージは溜まり、each_pending で取り出す。node.subscribe で作ると、
+    # 取り出しは Node#poll がブロックに渡す。
+    class Subscription
+      # 溜まったメッセージを取り出す <<en>> Take the messages that have arrived
+      #
+      # 復号した `[メッセージ, 添え物]` を 1 つずつブロックに渡し、数を返す。
+      # ブロックが無ければ `[[msg, info], ...]` の Array。添え物は
+      # Asterism::ROS::Attachment (無ければ nil)。復号できないものは数えて
+      # (errors) 捨てる。
+      # ```ruby
+      # sub.each_pending do |m, info|
+      #   got(m)
+      # end
+      # ```
+      # <<en>>
+      # Yields each decoded message and its attachment, and returns how many.
+      # Without a block, returns an Array of `[msg, info]`. The attachment is
+      # an Asterism::ROS::Attachment (nil when none). A sample that does
+      # not decode is counted (errors) and skipped.
+      # ```ruby
+      # sub.each_pending do |m, info|
+      #   got(m)
+      # end
+      # ```
+      def each_pending: () { (Asterism::ROS::Message msg, Asterism::ROS::Attachment? info) -> untyped } -> Integer
+                      | () -> Array[Array[untyped]]
+
+      # 溜まっている数 <<en>> Messages waiting now
+      #
+      # ```ruby
+      # n = sub.pending
+      # ```
+      def pending: () -> Integer
+
+      # 受けた数 <<en>> Messages received so far
+      #
+      # ```ruby
+      # n = sub.received
+      # ```
+      def received: () -> Integer
+
+      # 溢れて捨てた数 <<en>> Messages dropped because the queue was full
+      #
+      # ```ruby
+      # n = sub.dropped
+      # ```
+      def dropped: () -> Integer
+
+      # 復号できなかった数 <<en>> Messages that did not decode
+      #
+      # ```ruby
+      # n = sub.errors
+      # ```
+      def errors: () -> Integer
+
+      # node.subscribe のブロック <<en>> The block of node.subscribe (nil for node.subscription)
+      #
+      # ```ruby
+      # b = sub.handler
+      # ```
+      def handler: () -> Proc?
+
+      # ブロックを付け替える <<en>> Set the block that gets the messages
+      #
+      # Node#poll が渡す先を変える。**node.subscribe で作ったものだけ**
+      # Node#poll が渡す (node.subscription の物は each_pending で取る)。
+      # ```ruby
+      # sub.handler = proc { |m, i| got(m) }
+      # ```
+      # <<en>>
+      # Changes where Node#poll hands the messages.
+      # **Only a subscription made by node.subscribe** is served by Node#poll (take from one made by
+      # node.subscription with each_pending).
+      # ```ruby
+      # sub.handler = proc { |m, i| got(m) }
+      # ```
+      def handler=: (Proc? blk) -> Proc?
+
+      # 受けるのをやめる <<en>> Stop receiving
+      #
+      # nil を返す。
+      # ```ruby
+      # sub.close
+      # ```
+      def close: () -> nil
+
+      # やめたか <<en>> Whether it is closed
+      #
+      # ```ruby
+      # return if sub.closed?
+      # ```
+      def closed?: () -> bool
+
+      # データのキー <<en>> The key the data comes on
+      #
+      # ```ruby
+      # k = sub.topic_key
+      # ```
+      def topic_key: () -> String
+
+      # liveliness のキー <<en>> The liveliness key
+      #
+      # ```ruby
+      # k = sub.token_key
+      # ```
+      def token_key: () -> String
+    end
+
+    # サービスを提供する口 (node.service の答え) <<en>> A served service (from node.service)
+    #
+    # 要求への答えは Node#poll が handle_pending を呼んで行う。node を使わずに
+    # 自分で handle_pending を呼んでもよい。
+    class Service
+      # 届いている要求に答える <<en>> Answer the requests waiting now
+      #
+      # 要求を型の Request に復号して、node.service のブロックを呼び、答えを
+      # 送る。復号できない・添え物の無い要求は数えて (errors) 答えない。
+      # ブロックが例外を出した要求は答えず終わり、例外はここから出る。
+      # 答えた数を返す。
+      # ```ruby
+      # n = srv.handle_pending
+      # ```
+      # <<en>>
+      # Decodes each request to the type's Request, calls the block given to
+      # node.service and sends the answer. A request that does not decode, or
+      # has no attachment, is counted (errors) and not answered. A request
+      # whose block raised ends unanswered and the exception comes out
+      # here. Returns how many were answered.
+      # ```ruby
+      # n = srv.handle_pending
+      # ```
+      def handle_pending: () -> Integer
+
+      # 答えた数 <<en>> Requests answered so far
+      #
+      # ```ruby
+      # n = srv.handled
+      # ```
+      def handled: () -> Integer
+
+      # 受け付けられなかった数 <<en>> Requests that could not be taken
+      #
+      # ```ruby
+      # n = srv.errors
+      # ```
+      def errors: () -> Integer
+
+      # 閉じる <<en>> Withdraw the service
+      #
+      # nil を返す。
+      # ```ruby
+      # srv.close
+      # ```
+      def close: () -> nil
+
+      # 閉じたか <<en>> Whether it is closed
+      #
+      # ```ruby
+      # return if srv.closed?
+      # ```
+      def closed?: () -> bool
+
+      # サービスのキー <<en>> The key the service is served on
+      #
+      # ```ruby
+      # k = srv.service_key
+      # ```
+      def service_key: () -> String
+
+      # liveliness のキー <<en>> The liveliness key
+      #
+      # ```ruby
+      # k = srv.token_key
+      # ```
+      def token_key: () -> String
+    end
+
+    # サービスを呼ぶ口 (node.client の答え) <<en>> A service client (from node.client)
+    #
+    # 呼ぶのは call (答えを待つ) か call_async (すぐ Call が返る)。
+    class Client
+      # 要求を送ってすぐ戻る <<en>> Send a request and get a Call at once
+      #
+      # 要求の渡し方と `timeout:`・`timeout_ms:` は Node#call と同じ
+      # (省略すると 2 秒)。待たないので、Node#poll を回しながら
+      # Call#done? を見て、true になったら value を取る。閉じていると
+      # Asterism::Zenoh::ClosedError。
+      # ```ruby
+      # c = cli.call_async(a: 2, b: 3)
+      # # later: c.value if c.done?
+      # ```
+      # <<en>>
+      # The request and `timeout:` / `timeout_ms:` are as in Node#call (2 s
+      # when left out). It does not wait: keep polling the node, look at
+      # Call#done? and take value once it is true. Raises
+      # Asterism::Zenoh::ClosedError when closed.
+      # ```ruby
+      # c = cli.call_async(a: 2, b: 3)
+      # # later: c.value if c.done?
+      # ```
+      def call_async: (?untyped req, ?request: untyped, ?timeout: (Integer | Float)?, ?timeout_ms: Integer?, **untyped fields) -> Asterism::ROS::Call
+
+      # 要求を送って答えを待つ <<en>> Send a request and wait for the response
+      #
+      # 渡し方は call_async と同じ。答え (`type::Response`) を返す。
+      # **待つ間アプリは止まる**が、このノードのサービスには答える。時間内に
+      # 答えが無い (または誰も提供していない) と Asterism::ROS::TimeoutError。
+      # ```ruby
+      # r = cli.call(a: 2, b: 3)
+      # puts r.sum
+      # ```
+      # <<en>>
+      # Arguments as in call_async. Returns the response (`type::Response`).
+      # **The app waits**, still answering this node's services meanwhile.
+      # Raises Asterism::ROS::TimeoutError when nothing answers in time (or
+      # nobody serves it).
+      # ```ruby
+      # r = cli.call(a: 2, b: 3)
+      # puts r.sum
+      # ```
+      def call: (?untyped req, ?request: untyped, ?timeout: (Integer | Float)?, ?timeout_ms: Integer?, **untyped fields) -> Asterism::ROS::Message
+
+      # 閉じる <<en>> Withdraw the client
+      #
+      # nil を返す。
+      # ```ruby
+      # cli.close
+      # ```
+      def close: () -> nil
+
+      # 閉じたか <<en>> Whether it is closed
+      #
+      # ```ruby
+      # return if cli.closed?
+      # ```
+      def closed?: () -> bool
+
+      # セッションが閉じたか <<en>> Whether the session underneath is closed
+      #
+      # ```ruby
+      # return if cli.session_closed?
+      # ```
+      def session_closed?: () -> bool
+
+      # 出した要求の数 <<en>> The sequence number of the last request
+      #
+      # ```ruby
+      # n = cli.sequence
+      # ```
+      def sequence: () -> Integer
+
+      # このクライアントの GID <<en>> The client's GID (16 bytes)
+      #
+      # ```ruby
+      # g = cli.gid
+      # ```
+      def gid: () -> String
+
+      # サービスの完全な名前 <<en>> The service's full name
+      #
+      # ```ruby
+      # n = cli.service_name
+      # ```
+      def service_name: () -> String
+
+      # サービスのキー <<en>> The key the requests go on
+      #
+      # ```ruby
+      # k = cli.service_key
+      # ```
+      def service_key: () -> String
+
+      # liveliness のキー <<en>> The liveliness key
+      #
+      # ```ruby
+      # k = cli.token_key
+      # ```
+      def token_key: () -> String
+    end
+
+    # 出したサービスの呼び出し (client.call_async の答え) <<en>> A service call on its way
+    #
+    # done? は待たない (Node#poll が進める)。value は答えが来るまで待つ。
+    class Call
+      # 答えが来たか (待たない) <<en>> Whether the response came, the time ran out or nobody serves it
+      #
+      # ```ruby
+      # take(c.value) if c.done?
+      # ```
+      def done?: () -> bool
+
+      # 答え <<en>> The response (waits until done)
+      #
+      # `type::Response` を返す。待つ間はこのノードのサービスには答える。
+      # 答えが無ければ Asterism::ROS::TimeoutError、セッションが閉じていれば
+      # Asterism::Zenoh::ClosedError。
+      # ```ruby
+      # r = c.value
+      # ```
+      # <<en>>
+      # Returns the `type::Response`. It answers this node's services while it
+      # waits. Raises Asterism::ROS::TimeoutError without an answer,
+      # Asterism::Zenoh::ClosedError when the session is closed.
+      # ```ruby
+      # r = c.value
+      # ```
+      def value: () -> Asterism::ROS::Message
+
+      # 答え (待たずに見る) <<en>> The response so far (nil until it came)
+      #
+      # ```ruby
+      # r = c.response
+      # ```
+      def response: () -> Asterism::ROS::Message?
+
+      # 要求の番号 <<en>> The request's sequence number
+      #
+      # ```ruby
+      # n = c.sequence
+      # ```
+      def sequence: () -> Integer
+
+      # 答えまでの時間 (ms) <<en>> Milliseconds from the request to the end (nil until done)
+      #
+      # ```ruby
+      # ms = c.took_ms
+      # ```
+      def took_ms: () -> Integer?
+
+      # 答えまでの時間 (秒) <<en>> Seconds from the request to the end (nil until done)
+      #
+      # ```ruby
+      # s = c.took
+      # ```
+      def took: () -> Float?
+    end
+
+    # 一定間隔のブロック (node.every の答え) <<en>> A repeating timer (from node.every)
+    #
+    # ブロックは Node#poll の中で呼ばれる。cancel で止める。
+    class Timer
+      # 止める <<en>> Stop the timer
+      #
+      # nil を返す。
+      # ```ruby
+      # t.cancel
+      # ```
+      def cancel: () -> nil
+
+      # 周期 (秒) <<en>> The period in seconds
+      #
+      # ```ruby
+      # s = t.period
+      # ```
+      def period: () -> (Integer | Float)
+
+      # 周期 (ms) <<en>> The period in milliseconds
+      #
+      # ```ruby
+      # ms = t.period_ms
+      # ```
+      def period_ms: () -> Integer
+
+      # 動いた回数 <<en>> How many times the block ran
+      #
+      # ```ruby
+      # n = t.fired
+      # ```
+      def fired: () -> Integer
+    end
+
+    # 送り手が付ける添え物 <<en>> The attachment of a sample: sequence, time, publisher GID
+    #
+    # rmw_zenoh の受け手はこれが無い値を捨てる。受け取ったメッセージの
+    # info として subscribe のブロックに渡る。
+    class Attachment
+      # 作る <<en>> Make an attachment
+      #
+      # sequence (番号)、stamp_ns (時刻。1970 年からのナノ秒)、gid (GID の
+      # バイト列)。
+      # ```ruby
+      # a = Asterism::ROS::Attachment.new(
+      #   1, 0, "x" * 16)
+      # ```
+      # <<en>>
+      # sequence (the number), stamp_ns (nanoseconds since 1970), gid (the
+      # GID bytes).
+      # ```ruby
+      # a = Asterism::ROS::Attachment.new(
+      #   1, 0, "x" * 16)
+      # ```
+      def self.new: (Integer sequence, Integer stamp_ns, String gid) -> Asterism::ROS::Attachment
+
+      # バイト列から読む <<en>> Read an attachment from its bytes (nil when it is not one)
+      #
+      # 17 バイトに満たない・GID が足りないと nil。
+      # ```ruby
+      # a = Asterism::ROS::Attachment.decode(b)
+      # ```
+      # <<en>>
+      # nil when fewer than 17 bytes or the GID is cut short.
+      # ```ruby
+      # a = Asterism::ROS::Attachment.decode(b)
+      # ```
+      def self.decode: (String? bytes) -> Asterism::ROS::Attachment?
+
+      # バイト列にする <<en>> The bytes that go on the wire
+      #
+      # ```ruby
+      # b = a.encode
+      # ```
+      def encode: () -> String
+
+      # 番号 <<en>> The sequence number
+      #
+      # ```ruby
+      # n = a.sequence
+      # ```
+      def sequence: () -> Integer
+
+      # 送り手の時刻 (ns) <<en>> The source time in nanoseconds since 1970
+      #
+      # ```ruby
+      # t = a.stamp_ns
+      # ```
+      def stamp_ns: () -> Integer
+
+      # 送り手の GID <<en>> The publisher's GID
+      #
+      # ```ruby
+      # g = a.gid
+      # ```
+      def gid: () -> String
+
+      # パターンマッチ用 <<en>> For pattern matching: {sequence:, stamp_ns:, gid:}
+      #
+      # ```ruby
+      # case a in { sequence: n } then n end
+      # ```
+      def deconstruct_keys: (untyped keys) -> Hash
+    end
+
+    # メッセージの土台 (生成した型の親) <<en>> The base of the generated message types
+    #
+    # 型ごとに ROS_NAME・欄ごとの読み書きができる。欄は Hash か型の `new(欄: 値)` で
+    # 渡せる (書かない欄は既定の値、知らない欄は ArgumentError)。パターンマッチでも
+    # 読める (`case m in { x: }`)。
+    class Message
+      # メッセージにする <<en>> A message from nil, a Hash of fields or a message
+      #
+      # nil は全部既定、Hash は欄 (キーは Symbol か String。書かない欄は既定、
+      # 知らない欄は ArgumentError)、同じ型のメッセージならそのまま返す。
+      # Hash でもメッセージでもなければ TypeError。生成した型 (`require_type` が返す)
+      # のクラスメソッド。
+      # ```ruby
+      # t = Asterism::ROS.require_type(
+      #   "std_msgs/msg/String")
+      # m = t.from({ data: "hi" })
+      # ```
+      # <<en>>
+      # nil gives all defaults, a Hash gives the fields (Symbol or String
+      # keys; missing fields take defaults, unknown ones raise
+      # ArgumentError), a message of this type is returned as it is. TypeError
+      # for anything else. A class method of a generated type (what
+      # `require_type` returns).
+      # ```ruby
+      # t = Asterism::ROS.require_type(
+      #   "std_msgs/msg/String")
+      # m = t.from({ data: "hi" })
+      # ```
+      def self.from: (untyped v) -> Asterism::ROS::Message
+
+      # CDR のバイト列にする <<en>> The CDR bytes (with its 4-byte header) of a message or Hash
+      #
+      # ```ruby
+      # b = t.encode({ data: "hi" })
+      # ```
+      def self.encode: (untyped msg) -> String
+
+      # CDR のバイト列から読む <<en>> Decode a message from CDR bytes
+      #
+      # 形が合わないと Asterism::CDR::DecodeError。
+      # ```ruby
+      # m = t.decode(b)
+      # ```
+      # <<en>>
+      # Raises Asterism::CDR::DecodeError when the bytes do not fit.
+      # ```ruby
+      # m = t.decode(b)
+      # ```
+      def self.decode: (String bytes) -> Asterism::ROS::Message
+
+      # 欄の Hash にする <<en>> The fields as a Hash (nested messages as Hashes)
+      #
+      # ```ruby
+      # h = m.to_h
+      # ```
+      def to_h: () -> Hash
+
+      # パターンマッチ用 <<en>> For pattern matching (`case m in { linear: { x: } }`)
+      #
+      # 入れ子のメッセージはメッセージのまま。
+      # ```ruby
+      # case m in { data: d } then show(d) end
+      # ```
+      # <<en>>
+      # Nested messages stay messages.
+      # ```ruby
+      # case m in { data: d } then show(d) end
+      # ```
+      def deconstruct_keys: (untyped keys) -> Hash
+
+      # 同じ型で欄が同じか <<en>> Same type and equal fields
+      #
+      # ```ruby
+      # same = m1 == m2
+      # ```
+      def ==: (untyped other) -> bool
+    end
+  end
+end
