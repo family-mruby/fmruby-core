@@ -136,6 +136,10 @@ module FmrbAsterism
     # **キーワードは省ける**: tag: (ログの頭)、retry_ms: (つなぎ直す
     # 間隔、既定 3000。nil なら 1 回だけ)。作っただけではつながない。
     # 同じ端末で同じ app 名は 1 つだけ (2 つ目は :still_there)。
+    # ほかのキーワード: `wifi_wait_ms:` (省略すると 20000。WiFi に
+    # アドレスが付くのを待つ上限)、`screen_wait_ms:` (省略すると待たない。
+    # 値を渡すと screen_ready まで待つ)、`settings:` (省略すると
+    # FmrbAsterism.settings)。
     # ```ruby
     # @link = FmrbAsterism::Link.new(
     #   self, "talk", retry_ms: 5000)
@@ -145,12 +149,15 @@ module FmrbAsterism
     # others see "<node>/<app>/<object>". No /, *, #, ?, $ and no leading
     # @. **Keywords are optional**: tag: (log prefix), retry_ms: (default
     # 3000; nil tries once). Making it does not connect yet. One app of a
-    # name per machine (a second one gets :still_there).
+    # name per machine (a second one gets :still_there). Also
+    # `wifi_wait_ms:` (20000 when left out; the most it waits for WiFi to
+    # get an address), `screen_wait_ms:` (not waiting when left out; a value
+    # waits for screen_ready), `settings:` (FmrbAsterism.settings when left out).
     # ```ruby
     # @link = FmrbAsterism::Link.new(
     #   self, "talk", retry_ms: 5000)
     # ```
-    def self.new: (FmrbApp owner, String app) -> FmrbAsterism::Link
+    def self.new: (FmrbApp owner, String app, ?tag: String?, ?retry_ms: Integer?, ?wifi_wait_ms: Integer, ?screen_wait_ms: Integer?, ?settings: FmrbAsterism::Settings?) -> FmrbAsterism::Link
 
     # 毎回呼ぶ (答える・受ける・つなぐ) <<en>> Call every on_update (answer, receive, connect)
     #
@@ -346,6 +353,9 @@ module Asterism
     # 名前の Array。並べたメソッドだけが呼べる。obj にそのメソッドが
     # 無いと ArgumentError。公開したメソッドは update の中で呼ばれる。
     # メソッドが例外を出すと、呼んだ側に RemoteError で届く。
+    # `caller:` (省略すると渡さない) に :from のようなキーワード名を渡すと、
+    # 呼ぶたびに呼んだ端末の名前がそのキーワードで公開メソッドに渡る。
+    # `doc:` (省略すると無し) はオブジェクトの説明 (2048 バイトまで)。
     # 戻り値は公開した道 ("node/app/name")。link_up の中で呼ぶ。
     # ```ruby
     # def link_up(link)
@@ -364,21 +374,24 @@ module Asterism
     # ({ post: 1 }, checked before the call; -1 for any) or an Array of
     # names. Only those can be called; a missing one raises
     # ArgumentError. Exposed methods run inside update; what they raise
-    # reaches the caller as a RemoteError. Returns the path. Call it in
-    # link_up.
+    # reaches the caller as a RemoteError. `caller:` (not given when left
+    # out), a keyword name such as :from: every call passes the calling
+    # node's ID to the method under that keyword. `doc:` (none when left
+    # out) describes the object (2048 bytes at most). Returns the path.
+    # Call it in link_up.
     # ```ruby
     # def link_up(link)
     #   link.conn.expose("board", self,
     #     methods: { post: 1 })
     # end
     # ```
-    def expose: (String name, untyped obj, untyped methods) -> String
+    def expose: (String name, untyped obj, methods: (Array[untyped] | Hash[untyped, untyped]), ?caller: (Symbol | String)?, ?doc: String?) -> String
 
     # ほかの端末のオブジェクトを受け取る <<en>> A proxy for another machine's object
     #
     # path は "<端末>/<アプリ>/<オブジェクト>"。受け取っただけでは何も
     # 送らない。そのメソッドを呼ぶと相手で動き、答えを待つ (既定 2 秒。
-    # **timeout: で秒を変えられる**)。待つ間も、こちらに来た呼び出しには
+    # **timeout: で秒を変えられる**。ミリ秒なら `timeout_ms:`)。待つ間も、こちらに来た呼び出しには
     # 答える。待たずに呼ぶなら async。
     # 失敗: 相手が例外を出した・公開していない・引数の数が違うと
     # Asterism::RemoteError、時間切れは Asterism::TimeoutError、
@@ -395,7 +408,7 @@ module Asterism
     # <<en>>
     # path is "<node>/<app>/<object>". Nothing is sent until a method is
     # called on it; the call runs there and waits for the answer (2 s;
-    # **timeout: sets seconds**), answering calls to this app meanwhile.
+    # **timeout: sets seconds**; `timeout_ms:` for milliseconds), answering calls to this app meanwhile.
     # Use async not to wait. Fails with Asterism::RemoteError (it raised,
     # is not exposed, wrong arguments), Asterism::TimeoutError, or
     # Asterism::Disconnected -- all Asterism::Error.
@@ -404,12 +417,13 @@ module Asterism
     #   "fmruby-1/talk_board/board"]
     # n = b.post("hello")
     # ```
-    def []: (String path) -> Asterism::Proxy
+    def []: (String path, ?timeout: (Integer | Float)?, ?timeout_ms: Integer?) -> Asterism::Proxy
 
     # 公開されているオブジェクトを探す <<en>> The exposed objects alive now matching a pattern
     #
-    # pattern の * は 1 区切り、`**` は何区切りでも。この端末の物も入る。
+    # pattern の * は 1 区切り、`**` は何区切りでも (省略すると全部)。この端末の物も入る。
     # 答えはオブジェクトの Array (受け取り方は conn[path] と同じ)。
+    # ブロックを渡すと 1 つずつ渡し、数を返す。
     # ネットワークに問い合わせないので、毎回呼んでよい。
     # ```ruby
     # list = @link.conn.each(
@@ -417,15 +431,17 @@ module Asterism
     # @board = list[0]
     # ```
     # <<en>>
-    # * is one chunk, `**` any number; this machine's own are included.
-    # Returns an Array of proxies (like conn[path]). It does not ask the
+    # * is one chunk, `**` any number (everything when left out); this
+    # machine's own are included. With a block it yields each and returns
+    # the count. Returns an Array of proxies (like conn[path]). It does not ask the
     # network, so it is cheap to call every time.
     # ```ruby
     # list = @link.conn.each(
     #   "*/talk_board/board")
     # @board = list[0]
     # ```
-    def each: (String pattern) -> Array[Asterism::Proxy]
+    def each: (?String pattern) -> Array[Asterism::Proxy]
+            | (?String pattern) { (Asterism::Proxy proxy) -> untyped } -> Integer
 
     # 今いる端末の名前 <<en>> The node IDs alive now (this one first)
     #
@@ -439,7 +455,7 @@ module Asterism
     # ```ruby
     # list = @link.conn.apps("*/talk")
     # ```
-    def apps: (String pattern) -> Array[String]
+    def apps: (?String pattern) -> Array[String]
 
     # この端末/アプリの道 <<en>> This app's path, "node/app"
     #
@@ -472,7 +488,7 @@ module Asterism
     # @said = link.conn.publish("said")
     # @said.put({ "text" => "hi" })
     # ```
-    def publish: (String name) -> Asterism::Topic
+    def publish: ((String | Symbol) name, ?type: (Symbol | Integer | String)?, ?unit: String?, ?desc: String?, ?ts: bool, ?encoding: String?, ?shared: (Symbol | String)?) -> Asterism::Topic
 
     # トピックを受ける (ブロックで) <<en>> Receive the values of topics (in a block)
     #
@@ -501,13 +517,14 @@ module Asterism
     #   got(v, info.from)
     # end
     # ```
-    def subscribe: (String path) -> Asterism::Subscription
+    def subscribe: (String path, ?depth: Integer?) { (untyped value, Asterism::SampleInfo info) -> untyped } -> Asterism::Subscription
 
     # このアプリの状態を出す <<en>> Set this app's status (a small Hash others can read)
     #
     # Hash を渡すと全部を入れ替え、キーワードで渡すとその項目だけ
     # 変わる (nil で消える)。変わったときだけ流れる。1 KB まで。
-    # 引数なしなら今の状態を返す (無ければ nil)。
+    # 引数なしなら今の状態を返す (無ければ nil)。`status(lines: 3)` の
+    # ようにキーワードで渡すと、その項目だけが変わる。
     # ```ruby
     # @link.conn.status(
     #   { "lines" => @lines.size })
@@ -515,28 +532,30 @@ module Asterism
     # <<en>>
     # A Hash replaces it, keywords change those fields (nil removes one).
     # It goes out only when it changes; 1 KB at most. Without arguments,
-    # returns it (nil when none).
+    # returns it (nil when none). `status(lines: 3)` changes only that field.
     # ```ruby
     # @link.conn.status(
     #   { "lines" => @lines.size })
     # ```
-    def status: (Hash status) -> Hash
+    def status: (?Hash status, **untyped fields) -> Hash?
 
     # ほかのアプリの状態を読む <<en>> Another app's status (nil when it does not answer)
     #
-    # 答えを待つ (既定 2 秒)。つながっていないと Asterism::Disconnected。
+    # 答えを待つ (既定 2 秒。`timeout:` は秒、`timeout_ms:` はミリ秒)。
+    # つながっていないと Asterism::Disconnected。
     # ```ruby
     # st = @link.conn.status_of(
     #   "fmruby-1", "talk_board")
     # ```
     # <<en>>
-    # Waits for the answer (2 s). Raises Asterism::Disconnected when not
+    # Waits for the answer (2 s; `timeout:` in seconds, `timeout_ms:` in
+    # milliseconds). Raises Asterism::Disconnected when not
     # connected.
     # ```ruby
     # st = @link.conn.status_of(
     #   "fmruby-1", "talk_board")
     # ```
-    def status_of: (String node, String app) -> Hash?
+    def status_of: (String node, String app, ?timeout: (Integer | Float)?, ?timeout_ms: Integer?) -> Hash?
 
     # 端末が来たときに呼ぶブロック <<en>> Run a block when another machine joins
     #
@@ -551,7 +570,7 @@ module Asterism
     # ```ruby
     # link.conn.on_join { |n| joined(n) }
     # ```
-    def on_join: () -> Asterism::Connection
+    def on_join: () { (String node) -> untyped } -> Asterism::Connection
 
     # 端末が去ったときに呼ぶブロック <<en>> Run a block when another machine leaves
     #
@@ -564,7 +583,7 @@ module Asterism
     # ```ruby
     # link.conn.on_leave { |n| left(n) }
     # ```
-    def on_leave: () -> Asterism::Connection
+    def on_leave: () { (String node) -> untyped } -> Asterism::Connection
 
     # 今答えている呼び出し (だれから) <<en>> The call being answered now: who called (nil outside)
     #
@@ -629,7 +648,7 @@ module Asterism
     # ```ruby
     # v = board.asterism_call("post", "hi")
     # ```
-    def asterism_call: (String name) -> untyped
+    def asterism_call: ((String | Symbol) name, *untyped args, **untyped kw) -> untyped
 
     # 相手の道 <<en>> The path, "node/app/object"
     #
@@ -660,7 +679,7 @@ module Asterism
     # f = board.async.asterism_call(
     #   "post", "hi")
     # ```
-    def asterism_call: (String name) -> Asterism::Future
+    def asterism_call: ((String | Symbol) name, *untyped args, **untyped kw) -> Asterism::Future
   end
 
   # 待たずに呼んだ呼び出しの答え (これから届く)
