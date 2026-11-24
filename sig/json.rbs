@@ -146,7 +146,8 @@ module JSON
     #
     # キーが無いと `JSON::DiggerError` ("Key not found: name")。Hash に位置、Array にキーを
     # 使うなど形が合わないと `JSON::JSONError`。String と Integer 以外は ArgumentError。
-    # **範囲を超えた Array の位置は例外にならず**、後の `parse` が nil などを返す。
+    # **範囲を超えた Array の位置は例外にならない**。後の `parse` は nil か、別の
+    # 要素を返す (`[1]` の 5 番目で 1 が返る)。位置は自分で確かめてから渡す。
     # ```ruby
     # d = JSON::Digger.new('{"a": [10, 20]}')
     # d.dig("a", 1).parse   #=> 20
@@ -158,7 +159,9 @@ module JSON
     #
     # A missing key raises `JSON::DiggerError` ("Key not found: name"). A shape that does not
     # fit (a position on a Hash, a key on an Array) raises `JSON::JSONError`. Anything but a
-    # String or an Integer is an ArgumentError. **A position past the end does not raise**: the later `parse` returns nil or the like.
+    # String or an Integer is an ArgumentError.
+    # **A position past the end does not raise**: the later `parse` returns nil
+    # or some other element (index 5 of `[1]` gives 1). Check the index yourself.
     # ```ruby
     # d = JSON::Digger.new('{"a": [10, 20]}')
     # d.dig("a", 1).parse   #=> 20
