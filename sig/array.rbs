@@ -124,7 +124,7 @@ class Array
   # ```
   def clear: () -> Array
 
-  # 要素ごとの結果で自分を置き換える <<en>> Execute block for each element and destructively replace
+  # 要素ごとの結果で自分を置き換える <<en>> Replace each element with the block's result, in place
   #
   # **自分を書き換える**。新しい配列は作らない。
   # ```ruby

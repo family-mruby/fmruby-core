@@ -583,7 +583,7 @@ int32_t fmrb_app_wasm_app_stats(int32_t pid, fmrb_app_wasm_app_stats_t *out);
 
 /**
  * 文字カーソルの位置を知らせる (PC の IME 用)
- * Tell where the text cursor is (for a PC's IME)
+ * Tell where the text cursor is (for a PC IME)
  *
  * Ruby: FmrbApp.set_text_cursor(x, y, h)
  */
