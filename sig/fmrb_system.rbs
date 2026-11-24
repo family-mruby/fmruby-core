@@ -39,8 +39,14 @@ module FmrbSystem
   # 機械を再起動する <<en>> Restart the machine
   #
   # 機械ごと再起動する。**戻ってこない**。端末専用。
+  # ```ruby
+  # FmrbSystem.reboot
+  # ```
   # <<en>>
   # Restarts the machine. **Does not return.** Devices only.
+  # ```ruby
+  # FmrbSystem.reboot
+  # ```
   def self.reboot: () -> void
 
   # 本体の音を消す・戻す <<en>> Mute or unmute the whole machine
@@ -77,54 +83,96 @@ module FmrbSystem
   # 音量を保存せずに試す <<en>> Try a volume without saving it
   #
   # 設定画面の試聴用。保存は audio_conf_saved か set_audio_volume で。
+  # ```ruby
+  # FmrbSystem.preview_audio_volume(v)
+  # ```
   # <<en>>
   # For a settings screen's live preview. Saving is audio_conf_saved or
   # set_audio_volume.
+  # ```ruby
+  # FmrbSystem.preview_audio_volume(v)
+  # ```
   def self.preview_audio_volume: (Integer step) -> void
 
   # 設定ファイルに音の設定を書いたと知らせる <<en>> Say the sound settings were written
   #
   # system_conf に今の消音と音量を自分で書いた後に呼ぶ。待っている保存を取り消す。
+  # ```ruby
+  # FmrbSystem.audio_conf_saved
+  # ```
   # <<en>>
   # Call after writing the current mute and volume into system_conf yourself.
   # Drops the save that was waiting.
+  # ```ruby
+  # FmrbSystem.audio_conf_saved
+  # ```
   def self.audio_conf_saved: () -> void
 
   # 遠隔操作の許可の状態 <<en>> Whether the remote control is allowed
   #
   # リリースのビルドの WiFi の遠隔操作。-1 はここに無い (開発のビルドは
   # 許可なしで使える)、0 は閉じている、1 は開いている (閉じるまで、再起動しても残る)。
+  # ```ruby
+  # FmrbSystem.remote_access
+  # # -1、0 か 1
+  # ```
   # <<en>>
   # The release build's WiFi remote control. -1: not here (a development
   # build needs no allowing), 0: closed, 1: open (kept across restarts until
   # it is closed).
+  # ```ruby
+  # FmrbSystem.remote_access
+  # # -1, 0 or 1
+  # ```
   def self.remote_access: () -> Integer
 
   # PC に入れてもらう番号 <<en>> The number a PC pairs with
   #
   # 「PC を登録」を開いている間に画面に出す 6 桁の番号。無いときは -1、
   # 番号違いが続いて止まっているときは -2。
+  # ```ruby
+  # code = FmrbSystem.remote_access_code
+  # sprintf('%06d', code) if code >= 0
+  # ```
   # <<en>>
   # The six-digit number shown while "Pair a PC" is open; -1 when there is
   # none, -2 when wrong numbers stopped pairing.
+  # ```ruby
+  # code = FmrbSystem.remote_access_code
+  # sprintf('%06d', code) if code >= 0
+  # ```
   def self.remote_access_code: () -> Integer
 
   # 遠隔操作を開く・閉じる <<en>> Open or close the remote control
   #
   # 閉じるまで残る (再起動しても)。閉じると開いている接続も切る。
+  # ```ruby
+  # FmrbSystem.set_remote_access(true)
+  # ```
   # <<en>>
   # Kept until it is closed, across restarts. Closing it also cuts what is
   # connected.
+  # ```ruby
+  # FmrbSystem.set_remote_access(true)
+  # ```
   def self.set_remote_access: (bool on) -> void
 
   # PC の登録を受け付ける・やめる <<en>> Start or stop taking new PCs
   #
   # 受け付けている間だけ番号が出て、新しい PC が登録できる。開くたびに新しい番号に
   # なり、番号違いの停止も解ける。登録済みの PC はこれに関係なく使える。
+  # ```ruby
+  # FmrbSystem.set_remote_pairing(true)
+  # FmrbSystem.set_remote_pairing(false)
+  # ```
   # <<en>>
   # New PCs pair only while it is on, with the number it shows. Each start
   # shows a new number and lifts the stop after wrong numbers. PCs already
   # paired work either way.
+  # ```ruby
+  # FmrbSystem.set_remote_pairing(true)
+  # FmrbSystem.set_remote_pairing(false)
+  # ```
   def self.set_remote_pairing: (bool on) -> void
 
   # 登録した PC の数 <<en>> How many PCs are paired
@@ -149,15 +197,27 @@ module FmrbSystem
   # 登録した PC を全部取り消す <<en>> Forget every paired PC
   #
   # 保存できたら true。
+  # ```ruby
+  # FmrbSystem.revoke_remote_access
+  # ```
   # <<en>>
   # true when the change was saved.
+  # ```ruby
+  # FmrbSystem.revoke_remote_access
+  # ```
   def self.revoke_remote_access: () -> bool
 
   # Bluetooth をはじめる <<en>> Start Bluetooth
   #
   # BLE を手で起動する。Retro 用。
+  # ```ruby
+  # ok = FmrbSystem.ble_start
+  # ```
   # <<en>>
   # Starts BLE by hand. For Retro.
+  # ```ruby
+  # ok = FmrbSystem.ble_start
+  # ```
   def self.ble_start: () -> bool
 
   # Bluetooth の様子 <<en>> How Bluetooth is doing
@@ -184,15 +244,31 @@ module FmrbSystem
   # 設定を受け付ける時間の残り秒数 <<en>> Seconds left in the settings window
   #
   # 閉じていれば 0。
+  # ```ruby
+  # left = FmrbSystem.ble_settings_left
+  # # 秒。閉じていれば 0
+  # ```
   # <<en>>
   # 0 when it is closed.
+  # ```ruby
+  # left = FmrbSystem.ble_settings_left
+  # # seconds; 0 when closed
+  # ```
   def self.ble_settings_left: () -> Integer
 
   # 画面を配信中かどうかの様子 <<en>> Whether the screen is being streamed
   #
   # 遠隔デスクトップに誰か繋がっているか。
+  # ```ruby
+  # FmrbSystem.rd_stream_state > 0
+  # # 誰かが見ている
+  # ```
   # <<en>>
   # Whether anyone is watching over the remote desktop.
+  # ```ruby
+  # FmrbSystem.rd_stream_state > 0
+  # # someone is watching
+  # ```
   def self.rd_stream_state: () -> Integer
 
   # 電源のメニューにある操作 <<en>> The power actions this machine offers
@@ -322,8 +398,16 @@ module FmrbSystem
   # Bluetooth の機器の一覧 <<en>> The Bluetooth devices
   #
   # PC だけ。ほかは "" 。
+  # ```ruby
+  # FmrbSystem.bt_devices != ""
+  # # PC なら true
+  # ```
   # <<en>>
   # The PC only; "" elsewhere.
+  # ```ruby
+  # FmrbSystem.bt_devices != ""
+  # # true on the PC
+  # ```
   def self.bt_devices: () -> String
 
   # Bluetooth を入れる・切る <<en>> Turn Bluetooth on or off
@@ -343,15 +427,31 @@ module FmrbSystem
   # PC の知らせが変わった回数 <<en>> How many times the PC's notices changed
   #
   # 知らせの無い端末では -1。
+  # ```ruby
+  # g = FmrbSystem.notices_gen
+  # # 知らせの無い端末では -1
+  # ```
   # <<en>>
   # -1 where there are no notices.
+  # ```ruby
+  # g = FmrbSystem.notices_gen
+  # # -1: no notices here
+  # ```
   def self.notices_gen: () -> Integer
 
   # PC の知らせの一覧 <<en>> The PC's notices
   #
   # 1 行に 1 つ "id\t種類\tアプリ\t文\t本文"。無い端末では "" 。
+  # ```ruby
+  # text = FmrbSystem.notices
+  # lines = text.split("\n")
+  # ```
   # <<en>>
   # One "id\tkind\tapp\tsummary\tbody" line each; "" where there are none.
+  # ```ruby
+  # text = FmrbSystem.notices
+  # lines = text.split("\n")
+  # ```
   def self.notices: () -> String
 
   # PC の知らせを消す <<en>> Dismiss one of the PC's notices
@@ -365,31 +465,65 @@ module FmrbSystem
   #
   # Linux の Window があれば題、閉じたら false、代役でなければ nil。
   # ネイティブ版にだけある。
+  # ```ruby
+  # st = FmrbSystem.wl_window
+  # # 題。閉じたら false、
+  # # 代役でなければ nil
+  # ```
   # <<en>>
   # The title while the Linux window is there, false once it has gone, nil
   # when the caller is no stand-in. The native program only.
+  # ```ruby
+  # st = FmrbSystem.wl_window
+  # # title; false once gone; nil if no
+  # # stand-in
+  # ```
   def self.wl_window: () -> (String | bool | nil)
 
   # Linux の Window を閉じるよう頼む <<en>> Ask the Linux window to close
   #
   # 保存の確認をしたり断ったりするのはその Window のプログラム。ネイティブ版だけ。
+  # ```ruby
+  # if FmrbSystem.wl_close
+  #   redraw_close_button
+  # end
+  # ```
   # <<en>>
   # Its program may ask about unsaved work first, or refuse. The native
   # program only.
+  # ```ruby
+  # if FmrbSystem.wl_close
+  #   redraw_close_button
+  # end
+  # ```
   def self.wl_close: () -> bool
 
   # 自分のキャンバスの透ける色 (ネイティブ版だけ) <<en>> The canvas's colour key (native only)
   #
   # 代役が角の外を塗る色 (RGB332)。
+  # ```ruby
+  # key = FmrbSystem.wl_key
+  # ```
   # <<en>>
   # The colour (RGB332) the stand-in paints outside its rounded corners.
+  # ```ruby
+  # key = FmrbSystem.wl_key
+  # ```
   def self.wl_key: () -> Integer
 
   # Linux のキーボードの配列 (ネイティブ版だけ) <<en>> Linux's keyboard layout (native only)
   #
   # "jp" か "us"。keyboard_layout = "auto" がこれに従う。
+  # ```ruby
+  # FmrbSystem.linux_keyboard
+  # # ネイティブ版だけ
+  # ```
   # <<en>>
   # "jp" or "us"; keyboard_layout = "auto" follows it.
+  # ```ruby
+  # FmrbSystem.linux_keyboard
+  # # "jp" or "us" (native only)
+  # ```
   def self.linux_keyboard: () -> String
 
   # PC の設定の Window を開く (ネイティブ版だけ) <<en>> Open the PC's settings window (native only)
@@ -408,10 +542,20 @@ module FmrbSystem
   # PC の設定で頼まれたページ <<en>> The settings page asked for
   #
   # ネイティブ版だけ。下の 2 ビットがページ (0 Wi-Fi、1 Bluetooth、2 Display)、その上が頼まれた回数。
+  # ```ruby
+  # n = FmrbSystem.settings_page
+  # page = n & 3
+  # # 0 Wi-Fi, 1 Bluetooth, 2 Display
+  # ```
   # <<en>>
   # The native program only. The page in the low two bits (0 Wi-Fi, 1
   # Bluetooth, 2 Display), the
   # count of the asks above them.
+  # ```ruby
+  # n = FmrbSystem.settings_page
+  # page = n & 3
+  # # 0 Wi-Fi, 1 Bluetooth, 2 Display
+  # ```
   def self.settings_page: () -> Integer
 
   # ブラウン管の見た目を変える (ネイティブ版だけ) <<en>> Set the CRT look (native only)

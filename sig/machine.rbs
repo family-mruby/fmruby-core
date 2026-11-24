@@ -164,9 +164,21 @@ module Machine
   # ディープスリープ (未実装) <<en>> Deep sleep (not implemented)
   #
   # **このビルドでは呼ぶと必ず NotImplementedError** (引数は見ない)。
+  # ```ruby
+  # begin
+  #   Machine.deep_sleep(5, true, false)
+  # rescue NotImplementedError
+  # end
+  # ```
   # <<en>>
   # **Always raises NotImplementedError in this build** (it does not look at the
   # arguments).
+  # ```ruby
+  # begin
+  #   Machine.deep_sleep(5, true, false)
+  # rescue NotImplementedError
+  # end
+  # ```
   def self.deep_sleep: (Integer gpio_pin, bool edge, bool high) -> bot
 
   # 端末の固有 ID を返す <<en>> Return the machine's unique ID
@@ -205,9 +217,15 @@ module Machine
   # スタックの使用量 (未対応) <<en>> Stack usage (not supported)
   #
   # **今のビルドでは常に nil** (ESP32・Linux とも実装が 0 を返し、0 のときは nil にする)。
+  # ```ruby
+  # Machine.stack_usage  #=> nil
+  # ```
   # <<en>>
   # **Always nil in this build** (both the ESP32 and the Linux code return 0, and 0
   # becomes nil).
+  # ```ruby
+  # Machine.stack_usage  #=> nil
+  # ```
   def self.stack_usage: () -> (Integer | nil)
 
   # システム時計を合わせる <<en>> Set the system clock
@@ -249,11 +267,19 @@ module Machine
   #
   # **ESP32 では何もしない** (nil を返すだけ)。
   # **Linux・ネイティブ版では本体のプロセスごと終わる** ので、アプリから呼ばない。アプリを閉じるのは `FmrbApp#stop`。
+  # ```ruby
+  # Machine.exit(0)
+  # # Linux では本体ごと終わる
+  # ```
   # <<en>>
   # **Does nothing on an ESP32** (returns nil).
   # **On Linux and the native build the whole firmware process exits**,
   # so do not call it from an app. Close an app with
   # `FmrbApp#stop`.
+  # ```ruby
+  # Machine.exit(0)
+  # # on Linux the firmware ends
+  # ```
   def self.exit: (?Integer status) -> nil
 
   # 再起動する (このビルドでは使えない) <<en>> Reboot (not usable in this build)
@@ -261,12 +287,20 @@ module Machine
   # wait_ms (省略すると 0) だけ待ってから再起動しようとする。
   # **ESP32 では NotImplementedError** (ウォッチドッグの gem が入っていない)。Linux・ネイティブ版は
   # 終了コード 120 でプロセスを終える。端末を再起動するのは `FmrbSystem.reboot`。
+  # ```ruby
+  # Machine.reboot(1000)
+  # # Linux では終了コード 120
+  # ```
   # <<en>>
   # Tries to reboot after wait_ms (0 when left out).
   # **It raises NotImplementedError on an ESP32**
   # (the watchdog gem is not in the build). Linux and the native build
   # end the process with exit code 120. To restart the machine use
   # `FmrbSystem.reboot`.
+  # ```ruby
+  # Machine.reboot(1000)
+  # # on Linux: exit code 120
+  # ```
   def self.reboot: (?Integer wait_ms) -> nil
 
   # Linux 系 (POSIX) の版か <<en>> Whether this is a POSIX build
@@ -294,66 +328,134 @@ module Machine
   #
   # `Network::WiFi` が定義されていれば true。
   # **Family mruby にはこの定義が見つからず、今は常に false** (Wi-Fi の状態は `FmrbApp` と `FmrbNet` で調べる)。
+  # ```ruby
+  # Machine.wifi_available?  #=> false
+  # ```
   # <<en>>
   # True when `Network::WiFi` is defined.
   # **Family mruby has no such definition, so it is always false**
   # (ask `FmrbApp` and `FmrbNet` about Wi-Fi instead).
+  # ```ruby
+  # Machine.wifi_available?  #=> false
+  # ```
   def self.wifi_available?: () -> bool
 
   # USB デバイスの処理を 1 回回す <<en>> Run one USB device task step
   #
   # **この版では中身が空** (ESP32・Linux とも何もせず nil)。
+  # ```ruby
+  # Machine.tud_task  #=> nil
+  # ```
   # <<en>>
   # **Empty in this build** (an ESP32 and Linux both do nothing and return nil).
+  # ```ruby
+  # Machine.tud_task  #=> nil
+  # ```
   def self.tud_task: () -> nil
 
   # USB がつながっているか <<en>> Whether USB is mounted
   #
   # **ESP32 は常に false、Linux・ネイティブ版は常に true** (実際の接続は見ない)。
+  # ```ruby
+  # Machine.tud_mounted?
+  # # ESP32 は false、Linux は true
+  # ```
   # <<en>>
   # **Always false on an ESP32, always true on Linux and the native build** (it does
   # not look at a real connection).
+  # ```ruby
+  # Machine.tud_mounted?
+  # # false on ESP32, true on Linux
+  # ```
   def self.tud_mounted?: () -> bool
 
   # BOOTSEL ボタンを押しているか (使えない) <<en>> Whether BOOTSEL is pressed (unavailable)
   #
   # RP2 系の機種の機能。**このビルドでは呼ぶと必ず NotImplementedError**。
+  # ```ruby
+  # begin
+  #   Machine.bootsel_pressed?
+  # rescue NotImplementedError
+  # end
+  # ```
   # <<en>>
   # A feature of RP2 boards. **Always raises NotImplementedError in this build.**
+  # ```ruby
+  # begin
+  #   Machine.bootsel_pressed?
+  # rescue NotImplementedError
+  # end
+  # ```
   def self.bootsel_pressed?: () -> bool
 
   # 受け取った Ctrl-C を例外にする <<en>> Raise a pending Ctrl-C as an exception
   #
   # 受けていれば Interrupt ("SIGINT")、Ctrl-Z なら SignalException ("SIGTSTP") を出す。何も無ければ nil。
   # 受け取るのは **Linux・ネイティブ版の標準入力だけ** (ESP32 には受け取る所が無く、いつも nil)。
+  # ```ruby
+  # begin
+  #   Machine.check_signal
+  # rescue Interrupt
+  # end
+  # ```
   # <<en>>
   # Raises Interrupt ("SIGINT") when Ctrl-C was received, SignalException ("SIGTSTP")
   # for Ctrl-Z, and returns nil when nothing is pending. Only
   # **the standard input of Linux and the native build**
   # receives them (nothing sets it on an ESP32, so
   # it is always nil there).
+  # ```ruby
+  # begin
+  #   Machine.check_signal
+  # rescue Interrupt
+  # end
+  # ```
   def self.check_signal: () -> nil
 
   # 受け取った Ctrl-C を Symbol で返す <<en>> Return a pending Ctrl-C as a Symbol
   #
   # `check_signal` の例外を出さない版。Ctrl-C なら `:INT`、Ctrl-Z なら `:TSTP`、何も無ければ nil。
+  # ```ruby
+  # case Machine.poll_signal
+  # when :INT then stop
+  # end
+  # ```
   # <<en>>
   # `check_signal` without the exception: `:INT` for Ctrl-C, `:TSTP` for Ctrl-Z, nil
   # when nothing is pending.
+  # ```ruby
+  # case Machine.poll_signal
+  # when :INT then stop
+  # end
+  # ```
   def self.poll_signal: () -> (Symbol | nil)
 
   # シグナルを自分で扱うと印を付ける <<en>> Mark that this program handles signals
   #
   # 印を立てるだけ (`pop_signal_self_manage` で読み出して下ろす)。
+  # ```ruby
+  # Machine.signal_self_manage  #=> true
+  # ```
   # <<en>>
   # Only raises a flag, which `pop_signal_self_manage` reads and clears.
+  # ```ruby
+  # Machine.signal_self_manage  #=> true
+  # ```
   def self.signal_self_manage: () -> true
 
   # シグナルの印を読んで下ろす <<en>> Read and clear the signal flag
   #
   # `signal_self_manage` の印が立っていれば true を返し、印を下ろす。
+  # ```ruby
+  # Machine.signal_self_manage
+  # Machine.pop_signal_self_manage #=> true
+  # ```
   # <<en>>
   # Returns true when `signal_self_manage` raised the flag, and clears it.
+  # ```ruby
+  # Machine.signal_self_manage
+  # Machine.pop_signal_self_manage #=> true
+  # ```
   def self.pop_signal_self_manage: () -> bool
 
   # 診断のメッセージを標準エラーへ出す <<en>> Write a diagnostic line to stderr

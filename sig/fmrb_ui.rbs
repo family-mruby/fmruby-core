@@ -93,9 +93,17 @@ class FmrbUI
   #
   # align: で寄せ方を選べます (:left / :center / :right、既定は :left)。
   # text_size: でこの部品だけ文字を大きくできます (1-4)。見出しに使います。
+  # ```ruby
+  # @ui.label(:l_size, 4, 148, 60, 10,
+  #           "大きさ")
+  # ```
   # <<en>>
   # align: chooses the alignment (:left / :center / :right, default :left).
   # text_size: enlarges this one widget's text (1-4); useful for a heading.
+  # ```ruby
+  # @ui.label(:l_size, 4, 148, 60, 10,
+  #           "Size")
+  # ```
   def label: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text) -> FmrbUI::Label
 
   # 押しボタンを置く <<en>> Place a push button
@@ -106,6 +114,10 @@ class FmrbUI
   # `accent:` に色 (RGB332) を渡すと、テーマのボタン色の代わりにその色で
   # 塗ります。**色そのものが意味を持つ数少ない場合だけ**に使います
   # (確認ダイアログの Yes、再生/停止など)。Toggle では入のときの色です。
+  # ```ruby
+  # @ui.button(:start, 4, 20, 60, 16,
+  #            "Start")
+  # ```
   # <<en>>
   # Inverted while held; handle returns the id when the button is released
   # on top of it. Releasing outside does nothing. text_size: enlarges the
@@ -114,6 +126,10 @@ class FmrbUI
   # accent: paints the button in that RGB332 colour instead of the theme's.
   # Reserve it for the few controls whose colour carries meaning - a confirm
   # dialog's Yes, a transport's Stop. On a Toggle it is the on colour.
+  # ```ruby
+  # @ui.button(:start, 4, 20, 60, 16,
+  #            "Start")
+  # ```
   def button: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text) -> FmrbUI::Button
 
   # 入切の切替を置く <<en>> Place an on/off toggle
@@ -169,8 +185,14 @@ class FmrbUI
   # 選ばれている文字 <<en>> The chosen string
   #
   # Enum が今見せている文字列です。添字は value で読みます。
+  # ```ruby
+  # name = @ui.option_text(:mode)
+  # ```
   # <<en>>
   # What the Enum is showing. Its index is read with value.
+  # ```ruby
+  # name = @ui.option_text(:mode)
+  # ```
   def option_text: (Symbol id) -> String?
 
   # 1 行の文字入力欄を置く <<en>> Place a one-line text field
@@ -209,8 +231,16 @@ class FmrbUI
   # 焦点を当てる <<en>> Give a widget the focus
   #
   # nil を渡すと焦点を外します。文字入力欄以外を渡した場合も外れます。
+  # ```ruby
+  # @ui.focus(:name)
+  # @ui.focus(nil)
+  # ```
   # <<en>>
   # nil takes the focus away, and so does anything that is not a text field.
+  # ```ruby
+  # @ui.focus(:name)
+  # @ui.focus(nil)
+  # ```
   def focus: (Symbol id) -> void
 
   # 焦点のある部品の名前 <<en>> Which widget has the focus
@@ -225,10 +255,20 @@ class FmrbUI
   # 操作が決まった部品の id を返します。決まっていなければ nil です。
   # 押し下げでは押した見た目にするだけで nil を返し、同じ部品の上で
   # 離したときに id を返します。mouse_move は何もせず nil です。
+  # ```ruby
+  # case @ui.handle(ev)
+  # when :start then start_game
+  # end
+  # ```
   # <<en>>
   # Returns the id of the widget whose operation completed, or nil. A press
   # only updates the pressed look and returns nil; the id comes when the
   # button is released over the same widget. mouse_move does nothing.
+  # ```ruby
+  # case @ui.handle(ev)
+  # when :start then start_game
+  # end
+  # ```
   def handle: (Hash[Symbol, untyped] ev) -> Symbol?
 
   # 変わった部品だけ描く <<en>> Draw the changed widgets
@@ -236,17 +276,35 @@ class FmrbUI
   # 描くものがあれば最後に present を 1 回呼んで true、何も変わって
   # いなければ何もせず false を返します。自分の絵を描いたあとに呼べば
   # present は 1 回で済みます。
+  # ```ruby
+  # draw_picture
+  # @gfx.present unless @ui.flush
+  # ```
   # <<en>>
   # Calls present once when anything was drawn and returns true; returns
   # false without drawing when nothing changed. Call it after drawing your
   # own picture so present happens only once.
+  # ```ruby
+  # draw_picture
+  # @gfx.present unless @ui.flush
+  # ```
   def flush: () -> bool
 
   # 全部を描き直しの印にする <<en>> Mark every widget for redraw
   #
   # clear_user_area や大きさ変更のあとに呼びます。
+  # ```ruby
+  # clear_user_area
+  # @ui.invalidate_all
+  # @ui.flush
+  # ```
   # <<en>>
   # Call it after clear_user_area or a resize.
+  # ```ruby
+  # clear_user_area
+  # @ui.invalidate_all
+  # @ui.flush
+  # ```
   def invalidate_all: () -> void
 
   # id から部品を探す <<en>> Find a widget by id
@@ -267,8 +325,14 @@ class FmrbUI
   # 部品を置き直す <<en>> Move and resize a widget
   #
   # 座標は作ったときと同じく user area の左上が原点です。
+  # ```ruby
+  # @ui.move(:ok, 4, 60, 50, 16)
+  # ```
   # <<en>>
   # Coordinates are user-area relative, as at creation time.
+  # ```ruby
+  # @ui.move(:ok, 4, 60, 50, 16)
+  # ```
   def move: (Symbol id, Integer x, Integer y, Integer w, Integer h) -> void
 
   # 切替が入かどうか <<en>> Whether the toggle is on
@@ -281,23 +345,41 @@ class FmrbUI
   # 切替を外から入切する <<en>> Set a toggle from the app
   #
   # group を付けた切替なら、入にしたときに同じ group の他は切になります。
+  # ```ruby
+  # @ui.set_on(:on, true)
+  # ```
   # <<en>>
   # For a grouped toggle, switching it on switches the rest of the group off.
+  # ```ruby
+  # @ui.set_on(:on, true)
+  # ```
   def set_on: (Symbol id, bool on) -> void
 
   # 部品の文字を変える <<en>> Change a widget's text
   #
   # 同じ文字なら何もしません。変わったときだけ幅を測り直して描き直します。
+  # ```ruby
+  # @ui.set_text(:near, "Back")
+  # ```
   # <<en>>
   # Does nothing when the text is unchanged; it re-measures and redraws only
   # when it actually changed.
+  # ```ruby
+  # @ui.set_text(:near, "Back")
+  # ```
   def set_text: (Symbol id, String text) -> void
 
   # 数を外から入れる <<en>> Set a stepper value from the app
   #
   # min / max で止まります。値が変わったときだけ true を返します。
+  # ```ruby
+  # @ui.set_value(:sb, 3)
+  # ```
   # <<en>>
   # Clamped to min / max. Returns true only when the value actually changed.
+  # ```ruby
+  # @ui.set_value(:sb, 3)
+  # ```
   def set_value: (Symbol id, Integer value) -> bool
 
   # 今の数を読む <<en>> Read the current stepper value
@@ -310,15 +392,27 @@ class FmrbUI
   # 部品を使える/使えないにする <<en>> Enable or disable a widget
   #
   # 使えない部品は押しても反応せず、文字が薄く出ます。
+  # ```ruby
+  # @ui.set_enabled(:export, false)
+  # ```
   # <<en>>
   # A disabled widget ignores clicks and draws its text dimmed.
+  # ```ruby
+  # @ui.set_enabled(:export, false)
+  # ```
   def set_enabled: (Symbol id, bool flag) -> void
 
   # 部品を出す/隠す <<en>> Show or hide a widget
   #
   # 隠した部品のあった場所は背景色で塗り直されます。
+  # ```ruby
+  # @ui.set_visible(:inst, false)
+  # ```
   # <<en>>
   # The area of a hidden widget is repainted with the background color.
+  # ```ruby
+  # @ui.set_visible(:inst, false)
+  # ```
   def set_visible: (Symbol id, bool flag) -> void
 
 
@@ -567,15 +661,31 @@ class FmrbUI::Stepper < FmrbUI::Widget
   # 数を入れる <<en>> Set the value
   #
   # min / max で止まります。値が変わったときだけ true を返します。
+  # ```ruby
+  # st = @ui.stepper(:size, 4, 26, 108,
+  #                  14, 5, 1, 9)
+  # st.set_value(7)   #=> true
+  # ```
   # <<en>>
   # Clamped to min / max. Returns true only when the value actually changed.
+  # ```ruby
+  # st = @ui.stepper(:size, 4, 26, 108,
+  #                  14, 5, 1, 9)
+  # st.set_value(7)   #=> true
+  # ```
   def set_value: (Integer v) -> bool
 
   # 数のうしろに付ける単位 <<en>> Unit appended after the number
   #
   # 作ったあとに 1 回だけ渡します ("%" など)。
+  # ```ruby
+  # st.suffix = "%"
+  # ```
   # <<en>>
   # Set it once, right after creating the stepper (e.g. "%").
+  # ```ruby
+  # st.suffix = "%"
+  # ```
   def suffix=: (String s) -> void
 end
 
