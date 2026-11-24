@@ -337,3 +337,9 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
 - S4a で見つかったほかの疑い (読みだけ。直していない): `FmrbUI#bg=` は既にある部品の色を変えない (部品が作るときに色を
   写して持つ)、`FmrbI18n.add` の長文「Existing keys are left alone」は実装 (上書きする) と合わない、Spinel の基底に
   `app_settings` 系 3 つが無い、`Kernel.*` の task_id の検査 (0〜15) と本体の上限 (9) が合わない。
+
+- 音のまわりで見つかった実装の不具合の疑い (2026-11-25、doc/sig_coverage/report/s4b.md。読みだけ、直していない):
+  `SmfPlayer#transpose` を鳴らしている間に変えると、前に始めた音の note off が別の高さに行って音が止まらなくなる疑い。
+  `MIDI::Device#pitch_bend` が `Integer#clamp` を使う (この mruby に無いというコメントが別の所にある。アプリは呼んでいない)。
+  `MmlPlayer#load_text` で空のパートの後に鳴るパートが来ると `error` が残る。`SmfPlayer#drop_queued` は共有の待ち行列を
+  空にするので、プレーヤーを 2 つ同時に鳴らすと互いの予約が消える。

@@ -66,21 +66,165 @@ module FmrbMidi
 
   # 楽器の番号から名前を引く <<en>> The instrument's name from its number
   #
-  # 0 から 127 まで。範囲の外は nil。
+  # 0 から 127 まで。範囲の外は nil。名前は 16 字までに縮めてある
+  # (0 番は "Ac Grand Piano")。
   # ```ruby
   # FmrbMidi.gm_name(0)
-  # #=> "Acoustic Grand Piano"
+  # #=> "Ac Grand Piano"
   # ```
   # <<en>>
-  # 0 to 127; anything else is nil.
+  # 0 to 127; anything else is nil. The names are shortened to 16
+  # characters (program 0 is "Ac Grand Piano").
   # ```ruby
   # FmrbMidi.gm_name(0)
-  # #=> "Acoustic Grand Piano"
+  # #=> "Ac Grand Piano"
   # ```
-  def self.gm_name: (Integer program) -> String
+  def self.gm_name: (Integer program) -> String?
+
+  # ドラムの channel の番号 <<en>> The channel General MIDI keeps for drums
+  #
+  # 9 (一般に言う 10 チャンネル)。楽器の番号 (`program_change`) は
+  # この channel ではドラムの種類になるので、楽器を選ぶときは除く。
+  # ```ruby
+  # next if ch == FmrbMidi::GM_DRUM_CHANNEL
+  # ```
+  # <<en>>
+  # 9 (channel 10 as musicians count). On it a program number picks a drum
+  # kit, so leave it out when choosing instruments.
+  # ```ruby
+  # next if ch == FmrbMidi::GM_DRUM_CHANNEL
+  # ```
+  GM_DRUM_CHANNEL: Integer
+
+  # 外の音源 (SAM2695) の口を作る <<en>> Make a device for an outside SAM2695 unit
+  #
+  # M5Stack Unit MIDI など。シリアルで MIDI を送る (31250 baud)。
+  # **つながらなければ nil** (sim では受け皿の FIFO が無いとき、実機では
+  # 端末に MIDI の出口が無いときやピンが使われているとき)。
+  # nil のまま使うと NoMethodError なので、必ず確かめる。
+  # つなぐたびに音源へ GM System On を送り全 channel を止めるので、
+  # **一度だけ作って持っておく**。内蔵音源の口 (`FmrbMidi.device`) とは
+  # 別物で、`SmfPlayer#device=` で切り替える。
+  # `path:` (sim だけ)・`uart:`・`tx:` (実機だけ)・`rx:` (省略すると -1 =
+  # 送るだけ)・`baud:` (省略すると 31250)。省略した分は端末の既定。
+  # ```ruby
+  # @serial = FmrbMidi.sam2695_device
+  # @serial.program_change(0) if @serial
+  # ```
+  # <<en>>
+  # M5Stack Unit MIDI and the like; MIDI goes out over a serial port (31250
+  # baud). **nil when it will not connect** (in the sim when the FIFO that
+  # receives it is missing; on a device when the board has no MIDI output or
+  # the pins are taken). Using the nil raises NoMethodError, so always check.
+  # Each call sends GM System On and silences every channel, so make it
+  # once and keep it. It is not the built-in sound (`FmrbMidi.device`);
+  # switch with `SmfPlayer#device=`.
+  # `path:` (sim only), `uart:` and `tx:` (device only), `rx:` (-1 when left
+  # out: send only), `baud:` (31250 when left out). What is left out is the
+  # board's default.
+  # ```ruby
+  # @serial = FmrbMidi.sam2695_device
+  # @serial.program_change(0) if @serial
+  # ```
+  def self.sam2695_device: (?path: String, ?uart: Integer, ?tx: Integer, ?rx: Integer, ?baud: Integer) -> MIDI::Device?
+
+  # シリアルの MIDI の口を作る <<en>> Make a device on a plain serial MIDI port
+  #
+  # `sam2695_device` と同じで、音源のリセットを送らない版。**つながらなければ nil**。
+  # 引数も同じ (`path:` `uart:` `tx:` `rx:` `baud:`、省略すると端末の既定)。
+  # ```ruby
+  # @out = FmrbMidi.serial_device
+  # @out.note_on(60) if @out
+  # ```
+  # <<en>>
+  # The same as `sam2695_device` without the reset sent to the unit.
+  # **nil when it will not connect.** The same keywords (`path:` `uart:`
+  # `tx:` `rx:` `baud:`; the board's default when left out).
+  # ```ruby
+  # @out = FmrbMidi.serial_device
+  # @out.note_on(60) if @out
+  # ```
+  def self.serial_device: (?path: String, ?uart: Integer, ?tx: Integer, ?rx: Integer, ?baud: Integer) -> MIDI::Device?
+
+  # 音の時間割を預かる係を返す <<en>> The scheduler that sends timed notes, or nil
+  #
+  # 曲の音は、時刻をつけて C の待ち行列へ渡され、タイマーがその時刻に
+  # 送る。この係が**その行列**。アプリが見るのは有無だけで、
+  # 中の `_` で始まるメソッドは使わない。**無ければ nil** (ホストの試験)。
+  # ```ruby
+  # puts FmrbMidi.scheduler ? "yes" : "no"
+  # ```
+  # <<en>>
+  # A song's notes are stamped with a time and handed to a C queue, and a
+  # timer sends them at that time. This is that queue. An app only asks
+  # whether it exists; the methods starting with `_` are not for apps.
+  # **nil when there is none** (the host tests).
+  # ```ruby
+  # puts FmrbMidi.scheduler ? "yes" : "no"
+  # ```
+  def self.scheduler: () -> untyped
+
+  # 予定した音の止め時を見る <<en>> Send the note-offs that have come due
+  #
+  # `MIDI::Device#trigger` の音を止めるのはこれ。毎回の `on_update` で 1 回
+  # 呼ぶ。呼ばないと、trigger の音は次の MIDI メッセージまで鳴りっぱなし。
+  # 内蔵音源 (`FmrbMidi.device`) もシリアルも、作った口は全部ここで見る。
+  # ```ruby
+  # def on_update
+  #   FmrbMidi.tick
+  #   FmrbMidi.tick_delay(100)
+  # end
+  # ```
+  # <<en>>
+  # This is what ends the notes of `MIDI::Device#trigger`. Call it once in
+  # every `on_update`. Without it a triggered note stays on until the next
+  # MIDI message. Every device made, built-in or serial, is looked at here.
+  # ```ruby
+  # def on_update
+  #   FmrbMidi.tick
+  #   FmrbMidi.tick_delay(100)
+  # end
+  # ```
+  def self.tick: () -> void
+
+  # 寝てよい時間 (千分の一秒) <<en>> How long the app may sleep, in ms
+  #
+  # 渡した待ち時間と、予定した音の止め時までの短いほうを返す。
+  # `on_update` の戻り値にすると、短い音が長く鳴らない。返るのは ms。
+  # 0 より小さくはならない。
+  # ```ruby
+  # def on_update
+  #   FmrbMidi.tick
+  #   FmrbMidi.tick_delay(200)
+  # end
+  # ```
+  # <<en>>
+  # Returns the shorter of the wait you pass and the time to the next
+  # scheduled note-off, in ms and never below 0. Return it from `on_update`
+  # so a short note does not ring on until the next update.
+  # ```ruby
+  # def on_update
+  #   FmrbMidi.tick
+  #   FmrbMidi.tick_delay(200)
+  # end
+  # ```
+  def self.tick_delay: (Integer default_ms) -> Integer
 
   # 曲のファイル (SMF) を鳴らす係。tick を毎回呼んで進める。
   class SmfPlayer
+    # 待ち行列に先に入れておく長さ (µs) <<en>> How far ahead the queue is filled (µs)
+    #
+    # 300000 (0.3 秒)。`lookahead_us` の既定値。
+    # ```ruby
+    # @smf.lookahead_us = FmrbMidi::SmfPlayer::LOOKAHEAD_US
+    # ```
+    # <<en>>
+    # 300000 (0.3 s), the default of `lookahead_us`.
+    # ```ruby
+    # @smf.lookahead_us = FmrbMidi::SmfPlayer::LOOKAHEAD_US
+    # ```
+    LOOKAHEAD_US: Integer
+
     # 曲を鳴らす係を作る <<en>> Make the song player
     #
     # ```ruby
@@ -91,6 +235,9 @@ module FmrbMidi
     # 曲のファイルを読み込む <<en>> Read a song file
     #
     # **読めなければ false**。理由は `error` に入る。
+    # 読む前に鳴っていた曲は止まる。形式 2 の SMF は読めない。
+    # 読み込むと `tempo_scale`・`transpose`・`channel_mask`・
+    # `ignore_program_change` は初期値に戻るので、読んだあとで設定する。
     # ```ruby
     # unless @smf.load("/home/a.mid")
     #   puts @smf.error
@@ -98,12 +245,33 @@ module FmrbMidi
     # ```
     # <<en>>
     # **false when it cannot be read**, with the reason in `error`.
+    # Whatever was playing stops. SMF format 2 cannot be read.
+    # Loading puts `tempo_scale`, `transpose`, `channel_mask` and
+    # `ignore_program_change` back to their defaults, so set them after.
     # ```ruby
     # unless @smf.load("/home/a.mid")
     #   puts @smf.error
     # end
     # ```
     def load: (String path) -> bool
+
+    # 曲のバイト列を読み込む <<en>> Read a song from bytes
+    #
+    # `load` の、メモリにあるバイト列を渡す版。**読めなければ false**、
+    # 理由は `error`。`path` (省略すると nil) は `path` メソッドが返す名前に
+    # なるだけで、ファイルは読まない。`load` と同じく設定は初期値に戻る。
+    # ```ruby
+    # @smf.load_string(data, "from net")
+    # ```
+    # <<en>>
+    # `load` for bytes already in memory. **false when it cannot be read**,
+    # with the reason in `error`. `path` (nil when left out) is only the name
+    # the `path` method returns; no file is read. Settings go back to their
+    # defaults, as with `load`.
+    # ```ruby
+    # @smf.load_string(data, "from net")
+    # ```
+    def load_string: (String data, ?String path) -> bool
 
     # 読み込んだかどうか <<en>> Whether a song was read
     #
@@ -115,19 +283,29 @@ module FmrbMidi
     # 曲を鳴らし始める <<en>> Start the song
     #
     # **頭から**鳴らし直す。途中から続けるなら `resume`。
+    # **すぐ戻る** (鳴り終わるのは待たない)。読んでいなければ false。
+    # 音が出るのは `tick` を回してからなので、`on_update` で呼び続ける。
     # ```ruby
     # @smf.start
     # ```
     # <<en>>
     # Plays **from the beginning**. To carry on from where you stopped, use
-    # `resume`.
+    # `resume`. **It returns at once**; it does not wait for the end. false
+    # when nothing was loaded. Sound starts once `tick` runs, so keep calling
+    # it from `on_update`.
     # ```ruby
     # @smf.start
     # ```
-    def start: () -> void
+    def start: () -> bool
 
     # 曲を止める <<en>> Stop the song
     #
+    # 待ち行列に入れた分を捨て、鳴っている音を止める。
+    # ```ruby
+    # @smf.stop
+    # ```
+    # <<en>>
+    # Drops what was queued and stops the notes that are sounding.
     # ```ruby
     # @smf.stop
     # ```
@@ -135,17 +313,31 @@ module FmrbMidi
 
     # 曲をいったん止める <<en>> Pause the song
     #
+    # 鳴っていなければ (止まっている・もう止めた) false。
     # ```ruby
     # @smf.pause
     # ```
-    def pause: () -> void
+    # <<en>>
+    # false when it is not playing (stopped or already paused).
+    # ```ruby
+    # @smf.pause
+    # ```
+    def pause: () -> bool
 
     # 止めた曲の続きを鳴らす <<en>> Carry on from the pause
     #
+    # **止める前に待ち行列へ入れてあった分 (最大 0.3 秒) は捨てられる**ので、
+    # その分だけ先から続く。止めていなければ false。
     # ```ruby
     # @smf.resume
     # ```
-    def resume: () -> void
+    # <<en>>
+    # **What was already queued when you paused (up to 0.3 s) is dropped**,
+    # so it carries on that much further on. false when not paused.
+    # ```ruby
+    # @smf.resume
+    # ```
+    def resume: () -> bool
 
     # 鳴っている最中かどうか <<en>> Whether it is playing
     #
@@ -156,6 +348,15 @@ module FmrbMidi
 
     # 最後まで鳴り終わったか <<en>> Whether it reached the end
     #
+    # **読み込んだだけで鳴らしていない曲や、`stop` した曲でも true**。
+    # 「鳴っていない」の意味なので、終わりを見るなら `playing?` が false に
+    # 変わるのを見る。
+    # ```ruby
+    # @smf.start if @smf.finished?
+    # ```
+    # <<en>>
+    # **true as well for a song only loaded, or stopped with `stop`**: it
+    # means "not playing". To catch the end, watch `playing?` turn false.
     # ```ruby
     # @smf.start if @smf.finished?
     # ```
@@ -164,6 +365,9 @@ module FmrbMidi
     # 曲を進める。毎回呼ぶ <<en>> Move the song on -- call it every time
     #
     # **呼ばないと音が進まない**。毎フレームの決まった場所で 1 回呼ぶ。
+    # 戻りは、次に呼ぶまでの待ち時間 (ms)。何かが今すぐ要るなら 0、
+    # 鳴っていない・終わったなら nil。曲の最後まで読み終えたあとも、
+    # 待ち行列の音が鳴り切るまでは 20 が返り、そのあと nil になる。
     # ```ruby
     # def on_update
     #   @smf.tick
@@ -171,13 +375,34 @@ module FmrbMidi
     # ```
     # <<en>>
     # **Nothing plays unless you call it.** Call it once at a fixed point in
-    # every frame.
+    # every frame. It returns the wait until the next call, in ms: 0 when
+    # something is due now, nil when not playing or over. After the last
+    # event is read it returns 20 until the queue has played out, then nil.
     # ```ruby
     # def on_update
     #   @smf.tick
     # end
     # ```
-    def tick: () -> void
+    def tick: () -> Integer?
+
+    # 曲を進めて待ち時間を返す <<en>> Move the song on and return how long to wait
+    #
+    # `tick` を呼び、その戻りと渡した `default_ms` の短いほうを返す。
+    # `on_update` の戻り値にする。鳴っていなければ `default_ms`。
+    # ```ruby
+    # def on_update
+    #   @smf.next_delay(300)
+    # end
+    # ```
+    # <<en>>
+    # Calls `tick` and returns the shorter of its answer and `default_ms`.
+    # Return it from `on_update`. `default_ms` when nothing is playing.
+    # ```ruby
+    # def on_update
+    #   @smf.next_delay(300)
+    # end
+    # ```
+    def next_delay: (Integer default_ms) -> Integer
 
     # 今どこまで鳴ったか (千分の一秒) <<en>> How far it has played, in milliseconds
     #
@@ -189,6 +414,7 @@ module FmrbMidi
     # 使っているチャンネルの様子 <<en>> Which channels the song uses
     #
     # 使われている channel だけが入る。中身は `[音符の数, 高さの合計]`。
+    # 読み込んでいなければ空。
     # ```ruby
     # @smf.channel_usage.each do |ch, a|
     #   puts ch.to_s + ": " + a[0].to_s
@@ -196,6 +422,7 @@ module FmrbMidi
     # ```
     # <<en>>
     # Only the channels the song uses, each as `[note count, pitch total]`.
+    # Empty when nothing is loaded.
     # ```ruby
     # @smf.channel_usage.each do |ch, a|
     #   puts ch.to_s + ": " + a[0].to_s
@@ -242,6 +469,272 @@ module FmrbMidi
     # name = @smf.path
     # ```
     def path: () -> String?
+
+    # 鳴らす先の口 <<en>> The device the song goes to
+    #
+    # ```ruby
+    # dev = @smf.device
+    # ```
+    def device: () -> MIDI::Device
+
+    # 鳴らす先の口を切り替える <<en>> Switch the device the song goes to
+    #
+    # **鳴らしている最中でも変えられる**。古い口で鳴っていた音は止まり、
+    # 待ち行列に入れてあった分 (最大 0.3 秒) は捨てられる。内蔵音源と外の
+    # 音源 (`FmrbMidi.sam2695_device`) の切り替えに使う。
+    # ```ruby
+    # @smf.device = @serial
+    # ```
+    # <<en>>
+    # **Works while the song plays.** What sounded on the old device is
+    # stopped and what was queued (up to 0.3 s) is dropped. Use it to move
+    # between the built-in sound and an outside one
+    # (`FmrbMidi.sam2695_device`).
+    # ```ruby
+    # @smf.device = @serial
+    # ```
+    def device=: (MIDI::Device value) -> void
+
+    # 先に待ち行列へ入れる長さ (µs) <<en>> How far ahead the queue is filled, in µs
+    #
+    # 内蔵音源やシリアルの口では既定で 300000 (`LOOKAHEAD_US`)。
+    # 時間つきで受けられない口では 0。
+    # ```ruby
+    # n = @smf.lookahead_us
+    # ```
+    # <<en>>
+    # 300000 (`LOOKAHEAD_US`) by default on the built-in sound and serial
+    # devices; 0 on a device that cannot take a time.
+    # ```ruby
+    # n = @smf.lookahead_us
+    # ```
+    def lookahead_us: () -> Integer
+
+    # 先に待ち行列へ入れる長さを変える <<en>> Change how far ahead the queue is filled
+    #
+    # 単位は µs。**0 にすると送るのをアプリのタスクに戻す** (描画などで遅れた
+    # ぶんだけ音がずれる。比べるときに使う)。0 より大きくしても、口が
+    # 時間つきで受けられない (スケジューラが無い) ときは 0 のまま。
+    # **変えると待ち行列を捨てる**ので、鳴らす前に変える。
+    # ```ruby
+    # @smf.lookahead_us = 0
+    # ```
+    # <<en>>
+    # In µs. **0 sends from the app's own task again**, so a late frame
+    # shifts the music (for comparing). Above 0 it stays 0 when the device
+    # cannot take a time (no scheduler). **Changing it drops the queue**, so
+    # do it before playing.
+    # ```ruby
+    # @smf.lookahead_us = 0
+    # ```
+    def lookahead_us=: (Integer us) -> void
+
+    # 全部の音に足す半音の数 <<en>> Semitones added to every melodic note
+    #
+    # 0 が元のまま。**channel 9 (ドラム) は動かさない**。0〜127 を出る音も
+    # 元の高さのまま。音を止めずに変えると、鳴っている音の止め方がずれる
+    # ことがある (止めるときも今の値で計算する)。`load` で 0 に戻る。
+    # ```ruby
+    # @smf.transpose = 2
+    # ```
+    # <<en>>
+    # 0 leaves the notes as written. **Channel 9 (drums) is not moved**, and
+    # a note that would leave 0-127 keeps its pitch. Changing it without
+    # stopping can mis-stop sounding notes (the note-off uses the current
+    # value too). `load` puts it back to 0.
+    # ```ruby
+    # @smf.transpose = 2
+    # ```
+    def transpose: () -> Integer
+
+    # 半音の数を変える <<en>> Change the transposition
+    #
+    # `transpose` を見る。
+    # ```ruby
+    # @smf.transpose = -12
+    # ```
+    # <<en>>
+    # See `transpose`.
+    # ```ruby
+    # @smf.transpose = -12
+    # ```
+    def transpose=: (Integer semitones) -> void
+
+    # 鳴らす channel の指定 <<en>> Which channels are played
+    #
+    # nil なら全部。数なら、**ビット n が channel n** (0〜15) で、0 の
+    # channel の音・つまみ・楽器の指定はすべて飛ばす。`load` で nil に戻る。
+    # ```ruby
+    # m = @smf.channel_mask
+    # ```
+    # <<en>>
+    # nil plays everything. A number is a bit mask with bit n for channel
+    # n (0-15); everything on a channel whose bit is 0 (notes, controllers,
+    # program changes) is skipped. `load` puts it back to nil.
+    # ```ruby
+    # m = @smf.channel_mask
+    # ```
+    def channel_mask: () -> Integer?
+
+    # 鳴らす channel を指定する <<en>> Choose the channels to play
+    #
+    # `channel_mask` を見る。nil で全部。
+    # ```ruby
+    # @smf.channel_mask = 0b101
+    # ```
+    # <<en>>
+    # See `channel_mask`; nil for all.
+    # ```ruby
+    # @smf.channel_mask = 0b101
+    # ```
+    def channel_mask=: (Integer? mask) -> void
+
+    # 曲の楽器の指定を使わないか <<en>> Whether the song's own instrument choices are dropped
+    #
+    # true なら、曲の中の楽器の指定 (Program Change) を送らない。アプリで
+    # 選んだ楽器を、曲が途中で上書きしないようにする。楽器を持つ外の音源
+    # にだけ効く (内蔵音源はどちらでも落とす)。`load` で false に戻る。
+    # ```ruby
+    # @smf.ignore_program_change = true
+    # ```
+    # <<en>>
+    # When true, the Program Change events in the song are not sent, so the
+    # instrument the app chose is not overwritten partway. Matters only for
+    # an outside sound source (the built-in one drops them either way).
+    # `load` puts it back to false.
+    # ```ruby
+    # @smf.ignore_program_change = true
+    # ```
+    def ignore_program_change: () -> bool
+
+    # 曲の楽器の指定を使わないようにする <<en>> Drop or keep the song's instrument choices
+    #
+    # `ignore_program_change` を見る。
+    # ```ruby
+    # @smf.ignore_program_change = false
+    # ```
+    # <<en>>
+    # See `ignore_program_change`.
+    # ```ruby
+    # @smf.ignore_program_change = false
+    # ```
+    def ignore_program_change=: (bool value) -> void
+
+    # 曲の中の track の数 <<en>> How many tracks the file has
+    #
+    # 読み込む前は 0。
+    # ```ruby
+    # n = @smf.track_count
+    # ```
+    # <<en>>
+    # 0 before a song is loaded.
+    # ```ruby
+    # n = @smf.track_count
+    # ```
+    def track_count: () -> Integer
+
+    # 四分音符あたりの tick の数 <<en>> Ticks per quarter note
+    #
+    # 見出しの値。読み込む前は 0。
+    # ```ruby
+    # d = @smf.division
+    # ```
+    # <<en>>
+    # The value in the header. 0 before a song is loaded.
+    # ```ruby
+    # d = @smf.division
+    # ```
+    def division: () -> Integer
+
+    # SMF の形式 (0 か 1) <<en>> The SMF format (0 or 1)
+    #
+    # 読み込む前は 0。形式 2 は読めない。
+    # ```ruby
+    # f = @smf.format
+    # ```
+    # <<en>>
+    # 0 before a song is loaded. Format 2 cannot be read.
+    # ```ruby
+    # f = @smf.format
+    # ```
+    def format: () -> Integer
+
+    # 送った出来事の数 <<en>> How many events were sent
+    #
+    # `timing_stats` の events。
+    # ```ruby
+    # n = @smf.late_count
+    # ```
+    # <<en>>
+    # The events figure of `timing_stats`.
+    # ```ruby
+    # n = @smf.late_count
+    # ```
+    def late_count: () -> Integer
+
+    # 遅れの合計 (ms) <<en>> Total lateness, in ms
+    #
+    # 早く送った分は 0 と数える。
+    # ```ruby
+    # t = @smf.late_sum_ms
+    # ```
+    # <<en>>
+    # Events sent early count as 0.
+    # ```ruby
+    # t = @smf.late_sum_ms
+    # ```
+    def late_sum_ms: () -> Integer
+
+    # 遅れの最大 (ms) <<en>> Worst lateness, in ms
+    #
+    # ```ruby
+    # t = @smf.late_max_ms
+    # ```
+    def late_max_ms: () -> Integer
+
+    # 予定をずらした回数 <<en>> How many times the schedule was shifted
+    #
+    # アプリが 200 ms 以上遅れたとき、遅れを一度に取り戻さず予定をずらす。
+    # ```ruby
+    # n = @smf.stall_count
+    # ```
+    # <<en>>
+    # When the app is 200 ms or more late the schedule is shifted rather than
+    # firing the backlog at once.
+    # ```ruby
+    # n = @smf.stall_count
+    # ```
+    def stall_count: () -> Integer
+
+    # 音が途切れた回数 <<en>> How many times the music gapped
+    #
+    # 待ち行列が空なのに 5 ms 以上遅れた回数。
+    # ```ruby
+    # n = @smf.underrun_count
+    # ```
+    # <<en>>
+    # Counts events more than 5 ms late with nothing left in the queue.
+    # ```ruby
+    # n = @smf.underrun_count
+    # ```
+    def underrun_count: () -> Integer
+
+    # 送り具合の一行の報告 <<en>> A one-line report on the timing
+    #
+    # ログに出す文字列。何も送っていないうちは "no events yet"。
+    # スケジューラがあれば events・fired・avg_late・max_late・stalls・under・
+    # q (待ち行列の深さ) などが並ぶ。
+    # ```ruby
+    # Log.info(@smf.timing_stats)
+    # ```
+    # <<en>>
+    # A string for the log: "no events yet" before anything is sent, then
+    # events, fired, avg_late, max_late, stalls, under, q (queue depth) and
+    # so on when there is a scheduler.
+    # ```ruby
+    # Log.info(@smf.timing_stats)
+    # ```
+    def timing_stats: () -> String
   end
 
   # MML で書いた曲を鳴らす係。tick を毎回呼んで進める。
@@ -255,33 +748,80 @@ module FmrbMidi
 
     # MML の文を読み込む <<en>> Read MML text
     #
-    # **channel と velocity はキーワードで渡す**。前に入れた曲は消える。
+    # **channel と velocity はキーワードで渡す** (省略すると 0 と 100)。
+    # 前に入れた曲は消える。鳴らせる音符が無ければ false で、理由は
+    # `error`。MML の `t120` のような速さの指定は読まれない (`bpm=` を使う)。
     # ```ruby
     # @mml.load_string("cdefg",
     #   channel: 0, velocity: 100)
     # ```
     # <<en>>
-    # **Channel and velocity are keyword arguments.** Anything loaded before is
-    # dropped.
+    # **Channel and velocity are keyword arguments** (0 and 100 when left
+    # out). Anything loaded before is dropped. false when there is nothing to
+    # play, with the reason in `error`. A tempo such as `t120` in the text is
+    # ignored; use `bpm=`.
     # ```ruby
     # @mml.load_string("cdefg",
     #   channel: 0, velocity: 100)
     # ```
-    def load_string: (String mml) -> bool
+    def load_string: (String mml, ?channel: Integer, ?velocity: Integer) -> bool
 
     # 別のパートを足す <<en>> Add another part
     #
     # **伴奏を重ねる**ときに使う。`load_string` と違って前のパートを消さない。
+    # `channel:` と `velocity:` は省略すると 0 と 100。
     # ```ruby
     # @mml.add_string("egb", channel: 1)
     # ```
     # <<en>>
     # Layers another part on top; unlike `load_string` it keeps what is already
-    # there.
+    # there. `channel:` and `velocity:` are 0 and 100 when left out.
     # ```ruby
     # @mml.add_string("egb", channel: 1)
     # ```
-    def add_string: (String mml) -> bool
+    def add_string: (String mml, ?channel: Integer, ?velocity: Integer) -> bool
+
+    # 曲のファイル (.mml) を読み込む <<en>> Read a tune file
+    #
+    # **読めなければ false**、理由は `error`。行ごとの書式で、`#` で始まる行は
+    # 注釈。`bpm 120`・`loop on`・`velocity 80`・`voice triangle`・`duty 1`・
+    # `volume 100`・`program 24` は設定で、それ以降のパートに効く。それ以外
+    # の行は MML のパートで、順に channel 0, 1, ... に載る。
+    # `voice` `duty` `volume` `program` は**読み込むときに口へ送られる**ので、
+    # `device=` で先に口を決めておく。
+    # ```ruby
+    # @mml.device = @midi
+    # @mml.load_file("/home/a.mml")
+    # ```
+    # <<en>>
+    # **false when it cannot be read**, with the reason in `error`. One line
+    # per item; a line starting with `#` is a comment. `bpm 120`, `loop on`,
+    # `velocity 80`, `voice triangle`, `duty 1`, `volume 100` and `program 24`
+    # are settings that apply to the parts below; every other line is an MML
+    # part, on channels 0, 1, ... in order. `voice`, `duty`, `volume` and
+    # `program` are **sent to the device as it loads**, so choose the device
+    # with `device=` first.
+    # ```ruby
+    # @mml.device = @midi
+    # @mml.load_file("/home/a.mml")
+    # ```
+    def load_file: (String path) -> bool
+
+    # 曲の文字列 (ファイルの書式) を読み込む <<en>> Read tune text in the file format
+    #
+    # `load_file` の、メモリにある文字列版。書式と失敗のしかた (false と
+    # `error`) は同じ。パートが 1 つも無いと "no parts in the file"。
+    # ```ruby
+    # @mml.load_text("bpm 90\no4 l4 cdef")
+    # ```
+    # <<en>>
+    # `load_file` for text already in memory. The format and the failure
+    # (false, with `error`) are the same; no part at all gives "no parts in
+    # the file".
+    # ```ruby
+    # @mml.load_text("bpm 90\no4 l4 cdef")
+    # ```
+    def load_text: (String text) -> bool
 
     # 読み込んだかどうか <<en>> Whether anything was read
     #
@@ -297,12 +837,34 @@ module FmrbMidi
     # ```
     def event_count: () -> Integer
 
+    # 曲の長さ (clock) <<en>> The tune's length in clocks
+    #
+    # 四分音符が 24、全音符が 96。ms にするなら clock * 2500 / bpm。
+    # ```ruby
+    # ms = @mml.total_clocks * 2500 / @mml.bpm
+    # ```
+    # <<en>>
+    # A quarter note is 24 and a whole note 96. In ms it is
+    # clocks * 2500 / bpm.
+    # ```ruby
+    # ms = @mml.total_clocks * 2500 / @mml.bpm
+    # ```
+    def total_clocks: () -> Integer
+
     # 鳴らし始める <<en>> Start playing
     #
+    # **頭から**鳴らす。**すぐ戻る**。読んでいなければ false。音が出るのは
+    # `tick` を回してから。
     # ```ruby
     # @mml.start
     # ```
-    def start: () -> void
+    # <<en>>
+    # Plays **from the beginning** and **returns at once**. false when nothing
+    # was loaded. Sound starts once `tick` runs.
+    # ```ruby
+    # @mml.start
+    # ```
+    def start: () -> bool
 
     # 止める <<en>> Stop
     #
@@ -313,17 +875,30 @@ module FmrbMidi
 
     # いったん止める <<en>> Pause
     #
+    # 鳴っていなければ false。
     # ```ruby
     # @mml.pause
     # ```
-    def pause: () -> void
+    # <<en>>
+    # false when it is not playing.
+    # ```ruby
+    # @mml.pause
+    # ```
+    def pause: () -> bool
 
     # 続きを鳴らす <<en>> Carry on
     #
+    # 止める前に待ち行列へ入れてあった分 (最大 0.3 秒) は捨てられる。
+    # 止めていなければ false。
     # ```ruby
     # @mml.resume
     # ```
-    def resume: () -> void
+    # <<en>>
+    # What was already queued when you paused (up to 0.3 s) is dropped. false when not paused.
+    # ```ruby
+    # @mml.resume
+    # ```
+    def resume: () -> bool
 
     # 鳴っている最中かどうか <<en>> Whether it is playing
     #
@@ -334,6 +909,14 @@ module FmrbMidi
 
     # 最後まで鳴り終わったか <<en>> Whether it reached the end
     #
+    # **読み込んだだけで鳴らしていない曲や、`stop` した曲でも true**。
+    # 終わりを見るなら `playing?` が false に変わるのを見る。
+    # ```ruby
+    # @mml.stop if @mml.finished?
+    # ```
+    # <<en>>
+    # **true as well for a tune only loaded, or stopped with `stop`**: it
+    # means "not playing". To catch the end, watch `playing?` turn false.
     # ```ruby
     # @mml.stop if @mml.finished?
     # ```
@@ -341,20 +924,41 @@ module FmrbMidi
 
     # 曲を進める。毎回呼ぶ <<en>> Move the song on -- call it every time
     #
-    # **呼ばないと音が進まない**。
+    # **呼ばないと音が進まない**。戻りは次に呼ぶまでの待ち時間 (ms)。
+    # 鳴っていない・終わったなら nil。
     # ```ruby
     # def on_update
     #   @mml.tick
     # end
     # ```
     # <<en>>
-    # **Nothing plays unless you call it.**
+    # **Nothing plays unless you call it.** It returns the wait until the
+    # next call, in ms; nil when not playing or over.
     # ```ruby
     # def on_update
     #   @mml.tick
     # end
     # ```
-    def tick: () -> void
+    def tick: () -> Integer?
+
+    # 曲を進めて待ち時間を返す <<en>> Move the song on and return how long to wait
+    #
+    # `tick` を呼び、その戻りと渡した `default_ms` の短いほうを返す。
+    # `on_update` の戻り値にする。
+    # ```ruby
+    # def on_update
+    #   @mml.next_delay(200)
+    # end
+    # ```
+    # <<en>>
+    # Calls `tick` and returns the shorter of its answer and `default_ms`.
+    # Return it from `on_update`.
+    # ```ruby
+    # def on_update
+    #   @mml.next_delay(200)
+    # end
+    # ```
+    def next_delay: (Integer default_ms) -> Integer
 
     # 曲の速さ (一分間の拍数) <<en>> The tempo in beats per minute
     #
@@ -376,6 +980,128 @@ module FmrbMidi
     # ```
     def bpm=: (Integer value) -> void
 
+    # 曲の速さの倍率 <<en>> How fast to play, against the tempo
+    #
+    # 1.0 が `bpm` のとおり。`bpm` とは別に持つ。
+    # ```ruby
+    # s = @mml.tempo_scale
+    # ```
+    # <<en>>
+    # 1.0 plays at `bpm`. Kept apart from `bpm`.
+    # ```ruby
+    # s = @mml.tempo_scale
+    # ```
+    def tempo_scale: () -> Float
+
+    # 曲の速さの倍率を変える <<en>> Change the playback speed
+    #
+    # 0.001 から 100.0 まで。鳴っている途中でも変えられる。
+    # ```ruby
+    # @mml.tempo_scale = 1.5
+    # ```
+    # <<en>>
+    # From 0.001 to 100.0, and it can be changed while the tune plays.
+    # ```ruby
+    # @mml.tempo_scale = 1.5
+    # ```
+    def tempo_scale=: (Float value) -> void
+
+    # 繰り返すか <<en>> Whether it repeats at the end
+    #
+    # 初めは false。`load_file` の `loop on` で true になる。
+    # **新しく読み込んでも戻らない**。
+    # ```ruby
+    # again = @mml.loop
+    # ```
+    # <<en>>
+    # false to begin with; `loop on` in a file made by `load_file` sets it.
+    # **Loading again does not put it back.**
+    # ```ruby
+    # again = @mml.loop
+    # ```
+    def loop: () -> bool
+
+    # 繰り返すかを決める <<en>> Set whether it repeats at the end
+    #
+    # true なら終わりまで来たら頭から続ける。
+    # ```ruby
+    # @mml.loop = true
+    # ```
+    # <<en>>
+    # When true it carries on from the top at the end.
+    # ```ruby
+    # @mml.loop = true
+    # ```
+    def loop=: (bool value) -> void
+
+    # 鳴らす先の口 <<en>> The device the tune goes to
+    #
+    # ```ruby
+    # dev = @mml.device
+    # ```
+    def device: () -> MIDI::Device
+
+    # 鳴らす先の口を切り替える <<en>> Switch the device the tune goes to
+    #
+    # 鳴らしている最中でも変えられる。古い口の音は止まり、待ち行列に
+    # あった分は捨てられる。
+    # ```ruby
+    # @mml.device = @serial
+    # ```
+    # <<en>>
+    # Works while it plays. The old device's notes are stopped and what was
+    # queued is dropped.
+    # ```ruby
+    # @mml.device = @serial
+    # ```
+    def device=: (MIDI::Device value) -> void
+
+    # 送った出来事の数 <<en>> How many events were sent
+    #
+    # ```ruby
+    # n = @mml.sent_count
+    # ```
+    def sent_count: () -> Integer
+
+    # 予定をずらした回数 <<en>> How many times the schedule was shifted
+    #
+    # アプリが 200 ms 以上遅れたとき、予定をずらす。
+    # ```ruby
+    # n = @mml.stall_count
+    # ```
+    # <<en>>
+    # When the app is 200 ms or more late the schedule is shifted.
+    # ```ruby
+    # n = @mml.stall_count
+    # ```
+    def stall_count: () -> Integer
+
+    # 音が途切れた回数 <<en>> How many times the music gapped
+    #
+    # 待ち行列が空なのに 5 ms 以上遅れた回数。
+    # ```ruby
+    # n = @mml.underrun_count
+    # ```
+    # <<en>>
+    # Counts events more than 5 ms late with nothing left in the queue.
+    # ```ruby
+    # n = @mml.underrun_count
+    # ```
+    def underrun_count: () -> Integer
+
+    # 送り具合の一行の報告 <<en>> A one-line report on the timing
+    #
+    # ログに出す文字列。何も送っていないうちは "no events yet"。
+    # ```ruby
+    # Log.info(@mml.timing_stats)
+    # ```
+    # <<en>>
+    # A string for the log; "no events yet" before anything is sent.
+    # ```ruby
+    # Log.info(@mml.timing_stats)
+    # ```
+    def timing_stats: () -> String
+
     # 読み込みに失敗した理由 <<en>> Why the read failed
     #
     # ```ruby
@@ -383,11 +1109,201 @@ module FmrbMidi
     # ```
     def error: () -> String?
   end
+
+  # 内蔵音源 (APU) へ MIDI を送る口。`FmrbMidi.device(self)` が作る。
+  #
+  # APU の声は 4 つ (矩形波 2・三角波・ノイズ) で、1 つの声は 1 度に
+  # 1 つの音しか出せない。channel 0・1・2・9 が順に矩形波 1・2・三角波・
+  # ノイズに当たり、**ほかの channel は鳴らない** (`map_channel`・`auto_map`
+  # で変える)。楽器の指定・ピッチベンド・SysEx は受けて捨てる。
+  # 声は SUB 側の APU を使うので、`play_slot` の SUB の効果音とぶつかる。
+  class ApuTransport
+    # 内蔵音源の口を作る <<en>> Make a sender to the built-in sound
+    #
+    # owner はアプリ (`self`) か `FmrbAudio`。作ると自分を `FmrbMidi.register`
+    # する。ふつうは `FmrbMidi.device(self)` が作るので、直接は作らない。
+    # ```ruby
+    # audio = FmrbAudio.new(self)
+    # apu = FmrbMidi::ApuTransport.new(audio)
+    # ```
+    # <<en>>
+    # owner is the app (`self`) or an `FmrbAudio`. It registers itself with
+    # `FmrbMidi.register`. `FmrbMidi.device(self)` normally makes it.
+    # ```ruby
+    # audio = FmrbAudio.new(self)
+    # apu = FmrbMidi::ApuTransport.new(audio)
+    # ```
+    def self.new: (untyped owner) -> ApuTransport
+
+    # 音を鳴らす <<en>> Sound a note on a channel
+    #
+    # `MIDI::Device#note_on` を通さない直接の形。channel に声が割り当てて
+    # なければ何もせず nil。同じ声に重ねると新しい音が鳴り、離すと
+    # 押さえたままの前の音へ戻る。
+    # ```ruby
+    # apu.note_on(0, 60, 100)
+    # ```
+    # <<en>>
+    # The direct form that skips `MIDI::Device#note_on`. nil and nothing
+    # happens when the channel has no voice. A second note on the same voice
+    # takes it over, and releasing it falls back to the one still held.
+    # ```ruby
+    # apu.note_on(0, 60, 100)
+    # ```
+    def note_on: (Integer channel, Integer note, Integer velocity) -> Integer?
+
+    # 音を止める <<en>> Release a note on a channel
+    #
+    # 声が割り当ててない channel や、今鳴っていない音なら nil。
+    # ```ruby
+    # apu.note_off(0, 60)
+    # ```
+    # <<en>>
+    # nil when the channel has no voice or the note is not the one sounding.
+    # ```ruby
+    # apu.note_off(0, 60)
+    # ```
+    def note_off: (Integer channel, Integer note) -> Integer?
+
+    # 同じ瞬間の音をひとまとめにし始める <<en>> Begin a group of notes of one instant
+    #
+    # 和音のように**同じ瞬間の複数のメッセージ**を送る前に呼び、送り終えたら
+    # `flush_voices`。間は声の状態だけが変わり、`flush_voices` が各声の最後の
+    # 状態を 1 度だけ送る (和音の内側の音が順に鳴るのを防ぐ)。
+    # `due_us` (省略すると今) は `FmrbMidi.now_us` の時計の時刻で、その
+    # 時刻に送る。**閉じ忘れると以後の音が鳴らない**ので、`FmrbMidi.tick` が
+    # 毎回閉じる。すでに開いていれば何もしない。
+    # ```ruby
+    # apu.defer_voices
+    # apu.note_on(0, 60, 100)
+    # apu.flush_voices
+    # ```
+    # <<en>>
+    # Call it before sending several messages of **one instant**, such as a
+    # chord, and `flush_voices` after. Meanwhile only the voices' state
+    # changes, and `flush_voices` sends each voice's final state once (so the
+    # inner notes of a chord are not played in turn). `due_us` (now when left
+    # out) is a time on the `FmrbMidi.now_us` clock to send at. A group left
+    # open swallows every later note; `FmrbMidi.tick` closes it each time.
+    # Nothing happens when one is already open.
+    # ```ruby
+    # apu.defer_voices
+    # apu.note_on(0, 60, 100)
+    # apu.flush_voices
+    # ```
+    def defer_voices: (?Integer due_us) -> void
+
+    # ひとまとめを閉じて送る <<en>> Close the group and send it
+    #
+    # `defer_voices` で開けたものを閉じる。開けていなければ何もしない。
+    # ```ruby
+    # apu.flush_voices
+    # ```
+    # <<en>>
+    # Closes what `defer_voices` opened. Nothing happens if none is open.
+    # ```ruby
+    # apu.flush_voices
+    # ```
+    def flush_voices: () -> void
+
+    # 全部の音を止める <<en>> Stop everything it is sounding
+    #
+    # 全 channel を止め、予約した note off も捨てる。
+    # ```ruby
+    # @device.transport.all_off
+    # ```
+    # <<en>>
+    # Silences every channel and drops the scheduled note-offs.
+    # ```ruby
+    # @device.transport.all_off
+    # ```
+    def all_off: () -> void
+
+    # 曲の使い方から声を割り当てる <<en>> Assign voices from what a song uses
+    #
+    # `SmfPlayer#channel_usage` の結果を渡す。channel 9 はノイズ、音符が
+    # 多い上位 3 つが平均の高さの高い順に矩形波 1・2・三角波になる。
+    # **それまでの割り当ては全部消える**。usage が空だと全 channel が
+    # 鳴らなくなる。戻りは新しい割り当て。
+    # ```ruby
+    # usage = @smf.channel_usage
+    # @device.transport.auto_map(usage)
+    # ```
+    # <<en>>
+    # Pass `SmfPlayer#channel_usage`. Channel 9 becomes noise; the three
+    # busiest channels become pulse 1, pulse 2 and triangle, highest average
+    # pitch first. **Every earlier assignment is cleared**; an empty usage
+    # leaves every channel silent. Returns the new assignment.
+    # ```ruby
+    # usage = @smf.channel_usage
+    # @device.transport.auto_map(usage)
+    # ```
+    def auto_map: (Hash usage) -> Array
+
+    # channel を声に結びつける <<en>> Route a channel to a voice
+    #
+    # voice は `:pulse1` `:pulse2` `:triangle` `:noise` か 0〜3、nil なら
+    # その channel は鳴らさない。channel は 0〜15 の整数で、そうでなければ
+    # 何もせず nil。その channel で鳴っていた音は止まる。
+    # ```ruby
+    # @device.transport.map_channel(1, :pulse2)
+    # ```
+    # <<en>>
+    # voice is `:pulse1`, `:pulse2`, `:triangle`, `:noise` or 0-3; nil
+    # silences the channel. channel must be an Integer 0-15, else nothing
+    # happens and nil comes back. What was sounding on the channel stops.
+    # ```ruby
+    # @device.transport.map_channel(1, :pulse2)
+    # ```
+    def map_channel: (Integer channel, untyped voice) -> Integer?
+  end
 end
 
 module MIDI
   # 音を出す口。音符や音色をここへ送る。
   class Device
+    # 音を出す口を作る <<en>> Make a device on a transport
+    #
+    # transport は MIDI を送る相手で、`send_packet(cable, cin, b1, b2, b3)`・
+    # `read_available`・`bytes_available`・`connected?` を持つ (`info` には
+    # `device_info`、`trigger` には `transport_id` も使う)。内蔵音源と外の
+    # 音源の口は `FmrbMidi.device` と `FmrbMidi.sam2695_device` が作る。
+    # 自分の送り先で `trigger` を使うなら、`FmrbMidi.register` で登録し、
+    # `@pending = []` と `note_on(channel, note, velocity)`・
+    # `note_off(channel, note)` を用意して `FmrbMidi::NoteScheduler` を
+    # include する。
+    # ```ruby
+    # dev = MIDI::Device.new(MyTransport.new)
+    # ```
+    # <<en>>
+    # transport is whatever receives the MIDI. It needs `send_packet(cable,
+    # cin, b1, b2, b3)`, `read_available`, `bytes_available` and `connected?`
+    # (`device_info` for `info`, `transport_id` for `trigger`). The built-in
+    # and outside devices are made by `FmrbMidi.device` and
+    # `FmrbMidi.sam2695_device`. To use `trigger` on a transport of your own,
+    # `FmrbMidi.register` it, give it `@pending = []`, `note_on(channel, note,
+    # velocity)` and `note_off(channel, note)`, and include
+    # `FmrbMidi::NoteScheduler`.
+    # ```ruby
+    # dev = MIDI::Device.new(MyTransport.new)
+    # ```
+    def self.new: (untyped transport) -> MIDI::Device
+
+    # 送り先 (transport) <<en>> The transport behind the device
+    #
+    # 内蔵音源の口なら `FmrbMidi::ApuTransport`。`all_off`・`auto_map`・
+    # `map_channel` はここから呼ぶ。
+    # ```ruby
+    # @device.transport.all_off
+    # ```
+    # <<en>>
+    # For the built-in sound it is a `FmrbMidi::ApuTransport`; call
+    # `all_off`, `auto_map` and `map_channel` on it.
+    # ```ruby
+    # @device.transport.all_off
+    # ```
+    def transport: () -> untyped
+
     # 音を鳴らす <<en>> Sound a note
     #
     # **強さと channel は省ける** (127、0)。60 が真ん中のド。
@@ -403,7 +1319,7 @@ module MIDI
     # dev.note_on(60)
     # dev.note_on(64, 100, channel: 1)
     # ```
-    def note_on: (Integer note) -> void
+    def note_on: (Integer note, ?Integer velocity, ?channel: Integer) -> void
 
     # 音を止める <<en>> Stop a note
     #
@@ -418,7 +1334,7 @@ module MIDI
     # dev.note_off(60)
     # dev.note_off(64, 0, channel: 1)
     # ```
-    def note_off: (Integer note) -> void
+    def note_off: (Integer note, ?Integer velocity, ?channel: Integer) -> void
 
     # 音の高さをずらす <<en>> Bend the pitch
     #
@@ -433,7 +1349,7 @@ module MIDI
     # dev.pitch_bend(2048)
     # dev.pitch_bend(0)
     # ```
-    def pitch_bend: (Integer value) -> void
+    def pitch_bend: (Integer value, ?channel: Integer) -> void
 
     # 楽器をえらぶ <<en>> Choose an instrument
     #
@@ -446,7 +1362,7 @@ module MIDI
     # ```ruby
     # dev.program_change(48, channel: 1)
     # ```
-    def program_change: (Integer program) -> void
+    def program_change: (Integer program, ?channel: Integer) -> void
 
     # つまみの値を送る <<en>> Send a controller value
     #
@@ -459,7 +1375,7 @@ module MIDI
     # ```ruby
     # dev.control_change(74, 64, channel: 0)
     # ```
-    def control_change: (Integer cc, Integer value) -> void
+    def control_change: (Integer cc, Integer value, ?channel: Integer) -> void
 
     # 音の大きさを決める <<en>> Set the loudness
     #
@@ -472,7 +1388,7 @@ module MIDI
     # ```ruby
     # dev.volume(90, channel: 0)
     # ```
-    def volume: (Integer value) -> void
+    def volume: (Integer value, ?channel: Integer) -> void
 
     # 左右のどちらから出すか <<en>> Set the left-right position
     #
@@ -485,7 +1401,7 @@ module MIDI
     # ```ruby
     # dev.pan(0)
     # ```
-    def pan: (Integer value) -> void
+    def pan: (Integer value, ?channel: Integer) -> void
 
     # ゆれ (ビブラート) の深さ <<en>> Set the depth of the vibrato
     #
@@ -498,7 +1414,7 @@ module MIDI
     # ```ruby
     # dev.modulation(40)
     # ```
-    def modulation: (Integer value) -> void
+    def modulation: (Integer value, ?channel: Integer) -> void
 
     # 音の強さの変化 <<en>> Shape the loudness within a piece
     #
@@ -511,7 +1427,7 @@ module MIDI
     # ```ruby
     # dev.expression(100)
     # ```
-    def expression: (Integer value) -> void
+    def expression: (Integer value, ?channel: Integer) -> void
 
     # ペダルを踏むか離すか <<en>> Press or release the pedal
     #
@@ -526,22 +1442,27 @@ module MIDI
     # dev.sustain(true)
     # dev.sustain(false)
     # ```
-    def sustain: (Integer on_off) -> void
+    def sustain: (bool on_off, ?channel: Integer) -> void
 
     # 決まった長さだけ音を鳴らす <<en>> Sound a note for a set length
     #
-    # **長さを渡すと自分で止まる**。すぐ戻るので、複数の音を同時に
-    # 始められる (`note_on` と待ちの組ではずれる)。
+    # **長さを渡すと止める予約が入る**。すぐ戻るので、複数の音を同時に
+    # 始められる (`note_on` と待ちの組ではずれる)。`duration:` は ms で、
+    # 省略すると 100。**実際に止めるのは `FmrbMidi.tick`** なので、
+    # `on_update` で呼び続ける (呼ばないと次の MIDI メッセージまで鳴る)。
     # ```ruby
     # dev.trigger(60, 100, duration: 200)
     # ```
     # <<en>>
-    # **Give it a length and it stops itself.** It returns at once, so several
-    # notes can start together -- `note_on` plus a wait cannot.
+    # **Give it a length and a note-off is booked.** It returns at once, so
+    # several notes can start together -- `note_on` plus a wait cannot.
+    # `duration:` is in ms (100 when left out). `FmrbMidi.tick` is what
+    # sends the stop, so keep calling it from `on_update` (without it the
+    # note rings until the next MIDI message).
     # ```ruby
     # dev.trigger(60, 100, duration: 200)
     # ```
-    def trigger: (Integer note) -> void
+    def trigger: (Integer note, ?Integer velocity, ?duration: Integer, ?channel: Integer) -> void
 
     # まとめて音を鳴らす <<en>> Sound several notes at once
     #
@@ -562,7 +1483,7 @@ module MIDI
     #    note: 60, velocity: 100,
     #    duration_ms: 200}])
     # ```
-    def trigger_batch: (Array events) -> void
+    def trigger_batch: (Array events) -> Integer
 
     # 鳴っている音をぜんぶ止める <<en>> Stop every note that is sounding
     #
@@ -575,7 +1496,7 @@ module MIDI
     # ```ruby
     # dev.all_notes_off(channel: 0)
     # ```
-    def all_notes_off: () -> void
+    def all_notes_off: (?channel: Integer) -> void
 
     # 音をすぐにぜんぶ止める <<en>> Stop every sound at once
     #
@@ -588,14 +1509,14 @@ module MIDI
     # ```ruby
     # dev.all_sound_off(channel: 0)
     # ```
-    def all_sound_off: () -> void
+    def all_sound_off: (?channel: Integer) -> void
 
     # つまみをぜんぶ元に戻す <<en>> Put every controller back
     #
     # ```ruby
     # dev.reset_all_controllers(channel: 0)
     # ```
-    def reset_all_controllers: () -> void
+    def reset_all_controllers: (?channel: Integer) -> void
 
     # 拍を知らせる合図を送る <<en>> Send a beat marker
     #
@@ -633,16 +1554,21 @@ module MIDI
 
     # 機器ごとの特別なデータを送る <<en>> Send a device's own data
     #
-    # **F0 で始めて F7 で終える**バイト列を渡す。
+    # **整数の配列**を渡す (文字列ではない)。**F0 で始めて F7 で終える**か、
+    # `wrap: true` (省略すると false) で F0・F7 を足させる。
     # ```ruby
-    # dev.send_sysex("\xF0\x7E\x7F\x09\x01\xF7")
+    # dev.send_sysex([0x7E, 0x7F, 0x09, 0x01],
+    #                wrap: true)
     # ```
     # <<en>>
-    # Pass the bytes **starting with F0 and ending with F7**.
+    # Pass an Array of Integers (not a String), starting with F0 and
+    # ending with F7, or give `wrap: true` (false when left out) to have
+    # them added.
     # ```ruby
-    # dev.send_sysex("\xF0\x7E\x7F\x09\x01\xF7")
+    # dev.send_sysex([0x7E, 0x7F, 0x09, 0x01],
+    #                wrap: true)
     # ```
-    def send_sysex: (String data) -> void
+    def send_sysex: (Array[Integer] data, ?wrap: bool) -> void
 
     # つながっているかどうか <<en>> Whether it is connected
     #

@@ -8,7 +8,7 @@ class TileSheet
   # タイルの絵を読み込む <<en>> Load a sheet of tiles
   #
   # 並んだ絵を 1 枚の PNG (か BMP) から読む。**キーワード引数で呼ぶ**
-  # (cols: は必須。上の形は型推論の都合)。path は描画側のパスで、先に
+  # (cols: は必須、`tile_size:` は省略すると 16)。path は描画側のパスで、先に
   # sync_file で送る。rows: を省くなら source: に core の側の元の絵を渡す
   # (頭から高さを読む)。
   # ```ruby
@@ -18,8 +18,8 @@ class TileSheet
   # ```
   # <<en>>
   # Reads a grid of pictures from one PNG (or BMP).
-  # **Takes keyword arguments** (cols: is required; the signature is positional because the
-  # type engine has none). path is on the graphics side: send it with
+  # **Takes keyword arguments** (cols: is required; `tile_size:` is 16 when left
+  # out). path is on the graphics side: send it with
   # sync_file first. Without rows:, give source: the picture on this side,
   # whose header has the height.
   # ```ruby
@@ -27,7 +27,7 @@ class TileSheet
   # sheet = TileSheet.new(gfx, dst,
   #   cols: 8, source: src)
   # ```
-  def self.new: (FmrbGfx gfx, String path) -> TileSheet
+  def self.new: (FmrbGfx gfx, String path, cols: Integer, ?rows: Integer, ?tile_size: Integer, ?source: String) -> TileSheet
 
   # 中で使っているうごく絵 <<en>> The sprite image behind it
   #
@@ -71,7 +71,26 @@ class TileSheet
   # ```ruby
   # sheet.stamp(3, dst_x: x, dst_y: y)
   # ```
-  def stamp: (Integer index) -> void
+  def stamp: (Integer? index, dst_x: Integer, dst_y: Integer, ?clip_x: Integer, ?clip_y: Integer, ?clip_w: Integer, ?clip_h: Integer) -> void
+
+  # 絵の高さを頭から読む <<en>> Read a picture's height from its header
+  #
+  # PNG か BMP のファイルの高さ (ドット) を返す。どちらでもないか読めない
+  # ときは 0 (例外は出ない)。`TileSheet.new` が `source:` からタイルの
+  # 段数を出すときに使う。
+  # ```ruby
+  # h = TileSheet.picture_height(src)
+  # rows = h / 16
+  # ```
+  # <<en>>
+  # The height in pixels of a PNG or BMP file. 0 when it is neither or
+  # cannot be read (no exception). `TileSheet.new` uses it to get the rows
+  # from `source:`.
+  # ```ruby
+  # h = TileSheet.picture_height(src)
+  # rows = h / 16
+  # ```
+  def self.picture_height: (String path) -> Integer
 
   # このタイルの絵を片づける <<en>> Let go of the sheet
   #
@@ -135,10 +154,32 @@ class TileMap
 
   # 重ねた地図のデータ <<en>> The layers of the map
   #
+  # `.map.bin` から読んだときは nil (JSON から読んだときだけ配列)。
+  # 段の数は `layer_count`、マスは `tile_at` で読む。
   # ```ruby
   # map.layers.length
   # ```
-  def layers: () -> Array
+  # <<en>>
+  # nil when read from a `.map.bin` (an Array only from JSON). Read the number of layers with `layer_count` and squares with `tile_at`.
+  # ```ruby
+  # map.layers.length
+  # ```
+  def layers: () -> Array?
+
+  # 重ねた段の数 <<en>> How many layers the map has
+  #
+  # `.map.bin` でも JSON でも使える。`tile_at` の `layer:` は 0 から
+  # この数より 1 小さい数まで。
+  # ```ruby
+  # n = map.layer_count
+  # ```
+  # <<en>>
+  # Works for a `.map.bin` and for JSON. The `layer:` of `tile_at` runs from
+  # 0 to one less than this.
+  # ```ruby
+  # n = map.layer_count
+  # ```
+  def layer_count: () -> Integer
 
   # 地図に置いた仕掛けの一覧 <<en>> The events placed on the map
   #
@@ -170,16 +211,19 @@ class TileMap
 
   # そのマスのタイル番号を調べる <<en>> The tile number at that square
   #
-  # 地図の外なら nil。**升目の座標**で、ドットではない。
+  # 地図の外・空のマス・段が無いときは nil。**升目の座標**で、ドットではない。
+  # `layer:` (省略すると 0) は何段目か。
   # ```ruby
   # t = map.tile_at(3, 5)
   # ```
   # <<en>>
-  # nil outside the map. The coordinates are **tiles**, not pixels.
+  # nil outside the map, on an empty square, or when the layer is missing.
+  # The coordinates are **tiles**, not pixels. `layer:` (0 when left out)
+  # picks the layer.
   # ```ruby
   # t = map.tile_at(3, 5)
   # ```
-  def tile_at: (Integer x, Integer y) -> Integer?
+  def tile_at: (Integer x, Integer y, ?layer: Integer) -> Integer?
 
   # そのマスを歩けるかどうか <<en>> Whether that square can be walked on
   #
@@ -199,7 +243,7 @@ class TileMap
   # 地図ぜんぶを画面に描く <<en>> Draw the whole map
   #
   # 地図を丸ごと描く。大きい地図では**画面ぶんだけの `render_view`** を使う。
-  # **`origin_x:` と `origin_y:` は必須** (最初のタイルを canvas のどこに置くか。シグネチャは型推論の都合で sheet だけ)。`max_cols:`・`max_rows:` (省略すると地図の全部) で描く範囲を切れる。
+  # **`origin_x:` と `origin_y:` は必須** (最初のタイルを canvas のどこに置くか)。`max_cols:`・`max_rows:` (省略すると地図の全部) で描く範囲を切れる。
   # ```ruby
   # @map.render(@sheet,
   #             origin_x: 0, origin_y: 0)
@@ -207,7 +251,7 @@ class TileMap
   # <<en>>
   # Draws the whole map. For a large one use `render_view`, which draws only
   # what is on screen.
-  # **`origin_x:` and `origin_y:` are required** (where the first tile lands on the canvas; the signature shows only sheet because of the type engine). `max_cols:` and `max_rows:` (the whole map when left out) clip the region.
+  # **`origin_x:` and `origin_y:` are required** (where the first tile lands on the canvas). `max_cols:` and `max_rows:` (the whole map when left out) clip the region.
   # ```ruby
   # @map.render(@sheet,
   #             origin_x: 0, origin_y: 0)
@@ -216,20 +260,26 @@ class TileMap
 
   # 見えている場所だけを描く <<en>> Draw only what is in sight
   #
-  # **キーワード引数で呼ぶ**。
+  # **キーワード引数で呼ぶ。全部必須**。`origin_x:` `origin_y:` は
+  # 見える範囲の左上を canvas のどこに置くか、`view_x:` `view_y:` は
+  # その左上が地図のどこか (ドット)。
   # ```ruby
   # map.render_view(sheet,
+  #   origin_x: 0, origin_y: 0,
   #   view_x: @cam_x, view_y: @cam_y,
   #   view_w: 320, view_h: 240)
   # ```
   # <<en>>
-  # **Takes keyword arguments.**
+  # **Takes keyword arguments, all required.** `origin_x:` and `origin_y:`
+  # are where the view's top-left lands on the canvas; `view_x:` and
+  # `view_y:` are where that corner is on the map, in pixels.
   # ```ruby
   # map.render_view(sheet,
+  #   origin_x: 0, origin_y: 0,
   #   view_x: @cam_x, view_y: @cam_y,
   #   view_w: 320, view_h: 240)
   # ```
-  def render_view: (TileSheet sheet) -> void
+  def render_view: (TileSheet sheet, origin_x: Integer, origin_y: Integer, view_x: Integer, view_y: Integer, view_w: Integer, view_h: Integer) -> void
 end
 
 # 見えている周りだけを描き直して、広い地図を軽く動かす仕組み。
@@ -238,7 +288,7 @@ class TileRing
   #
   # 画面より少し大きい canvas を輪のように使い、**新しく見えた列だけ**を
   # 描き足して広い世界をずらす。**Modern 専用**。
-  # **`tiles_w:` と `tiles_h:` は必須** (輪にする canvas の大きさ。タイルの数で、見える数 + 1 以上にする)。シグネチャは型推論の都合で map と sheet だけ。
+  # **`tiles_w:` と `tiles_h:` は必須** (輪にする canvas の大きさ。タイルの数で、見える数 + 1 以上にする)。
   # ```ruby
   # ring = TileRing.new(map, sheet,
   #   tiles_w: 12, tiles_h: 12)
@@ -246,7 +296,7 @@ class TileRing
   # <<en>>
   # Uses a canvas a little larger than the view as a ring, stamping only the
   # columns that have just come into sight. **Modern only.**
-  # **`tiles_w:` and `tiles_h:` are required** (the size of the ring canvas in tiles, at least the visible tiles + 1). The signature shows only map and sheet because of the type engine.
+  # **`tiles_w:` and `tiles_h:` are required** (the size of the ring canvas in tiles, at least the visible tiles + 1).
   # ```ruby
   # ring = TileRing.new(map, sheet,
   #   tiles_w: 12, tiles_h: 12)
@@ -270,17 +320,20 @@ class TileRing
   # 見えてきたところを描き足す <<en>> Stamp the columns that came into sight
   #
   # **毎フレーム、動かしたあとに呼ぶ**。新しく見えた列だけを押すので、
-  # 少し動いたときは何もしない。
+  # 少し動いたときは何もしない。何か描いたら true で、そのとき
+  # 輪の canvas を present しないと画面に出ない。
   # ```ruby
   # ring.ensure_view(@cam_x, @cam_y,
   #                  320, 240)
   # ```
   # <<en>>
   # **Call it every frame after moving.** It stamps only the columns that
-  # have just come into sight, so a small step costs nothing.
+  # have just come into sight, so a small step costs nothing. true when it
+  # drew something, and then the ring's canvas must be presented or nothing
+  # reaches the screen.
   # ```ruby
   # ring.ensure_view(@cam_x, @cam_y,
   #                  320, 240)
   # ```
-  def ensure_view: (Integer view_x, Integer view_y, Integer view_w, Integer view_h) -> void
+  def ensure_view: (Integer view_x, Integer view_y, Integer view_w, Integer view_h) -> bool
 end

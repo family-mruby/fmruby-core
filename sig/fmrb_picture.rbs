@@ -68,6 +68,21 @@ module BMP332
   # ```
   def self.save: (String path, Integer width, Integer height, String pixels) -> void
 
+  # パスが PNG か <<en>> Whether a path names a PNG
+  #
+  # 名前の終わりが `.png` (大文字小文字は問わない) なら true。中身は見ない。
+  # `save` が PNG と BMP を分けるのと同じ決め方。
+  # ```ruby
+  # fmt = BMP332.png_path?(path) ? "png" : "bmp"
+  # ```
+  # <<en>>
+  # true when the name ends in `.png` (any case); the contents are not
+  # looked at. It is how `save` tells PNG from BMP.
+  # ```ruby
+  # fmt = BMP332.png_path?(path) ? "png" : "bmp"
+  # ```
+  def self.png_path?: (String path) -> bool
+
   # 画素をパレットの PNG のバイト列に <<en>> Encode RGB332 pixels as palette PNG bytes
   #
   # ```ruby
@@ -104,7 +119,7 @@ module BMP332
   # end
   # BMP332.info(data: bytes)
   # ```
-  def self.info: (String path) -> Hash?
+  def self.info: (?String path, ?data: String) -> Hash?
 
   # 絵を小さいパレットの PNG に書き直す <<en>> Rewrite a picture as a small palette PNG
   #
@@ -123,7 +138,8 @@ module BMP332
   # - :unreadable: 無い・絵でない・壊れている
   # - :no_memory: VM プールが足りない
   #
-  # パスの代わりに data: でバイト列を渡せる。
+  # パスの代わりに data: でバイト列を渡せる。`max_width:` `max_height:` は省略すると
+  # 2048、`max_bytes:` は省略すると上限なし。
   # ```ruby
   # r = BMP332.to_png("/home/a.png",
   #   max_width: 48, max_height: 48,
@@ -151,7 +167,8 @@ module BMP332
   # - :unreadable: not there, not a picture, or broken
   # - :no_memory: the VM pool ran short
   #
-  # data: takes the bytes instead of a path.
+  # data: takes the bytes instead of a path. `max_width:` and `max_height:`
+  # are 2048 when left out; `max_bytes:` has no limit when left out.
   # ```ruby
   # r = BMP332.to_png("/home/a.png",
   #   max_width: 48, max_height: 48,
@@ -162,5 +179,5 @@ module BMP332
   #   FmrbFile.write(out, r[:png])
   # end
   # ```
-  def self.to_png: (String path) -> Hash
+  def self.to_png: (?String path, ?data: String, ?max_width: Integer, ?max_height: Integer, ?max_bytes: Integer, ?max_file_bytes: Integer) -> Hash
 end

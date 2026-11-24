@@ -340,6 +340,156 @@
   reason: >-
     Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
 
+# ---- sound and picture internals (doc/sig_coverage S4b) ---------------------
+
+- name: "FmrbMidi::SerialTransport.new"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#all_off"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#baud"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#bytes_available"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#close"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#connected?"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#defer_voices"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#device_info"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#flush_voices"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#note_off"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#note_on"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#path"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#read_available"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#rx_pin"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#send_packet"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#send_raw"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#transport_id"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#tx_pin"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::SerialTransport#uart_num"
+  reason: >-
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+- name: "FmrbMidi::ApuTransport#audio"
+  reason: >-
+    The packet side of the built-in sound's sender; the methods apps call are in sig (decision 12).
+- name: "FmrbMidi::ApuTransport#bytes_available"
+  reason: >-
+    The packet side of the built-in sound's sender; the methods apps call are in sig (decision 12).
+- name: "FmrbMidi::ApuTransport#connected?"
+  reason: >-
+    The packet side of the built-in sound's sender; the methods apps call are in sig (decision 12).
+- name: "FmrbMidi::ApuTransport#control_change"
+  reason: >-
+    The packet side of the built-in sound's sender; the methods apps call are in sig (decision 12).
+- name: "FmrbMidi::ApuTransport#device_info"
+  reason: >-
+    The packet side of the built-in sound's sender; the methods apps call are in sig (decision 12).
+- name: "FmrbMidi::ApuTransport#read_available"
+  reason: >-
+    The packet side of the built-in sound's sender; the methods apps call are in sig (decision 12).
+- name: "FmrbMidi::ApuTransport#send_packet"
+  reason: >-
+    The packet side of the built-in sound's sender; the methods apps call are in sig (decision 12).
+- name: "FmrbMidi::ApuTransport#transport_id"
+  reason: >-
+    The packet side of the built-in sound's sender; the methods apps call are in sig (decision 12).
+- name: "FmrbMidi::ApuTransport#voice_for"
+  reason: >-
+    The packet side of the built-in sound's sender; the methods apps call are in sig (decision 12).
+- name: "FmrbMidi::SmfPlayer#close_instant"
+  reason: >-
+    Steps of the player's own tick (doc/sig_coverage S4b).
+- name: "FmrbMidi::SmfPlayer#drain_or_finish"
+  reason: >-
+    Steps of the player's own tick (doc/sig_coverage S4b).
+- name: "FmrbMidi::SmfPlayer#drop_queued"
+  reason: >-
+    Steps of the player's own tick (doc/sig_coverage S4b).
+- name: "FmrbMidi::SmfPlayer#ms_until"
+  reason: >-
+    Steps of the player's own tick (doc/sig_coverage S4b).
+- name: "FmrbMidi::SmfPlayer#open_instant"
+  reason: >-
+    Steps of the player's own tick (doc/sig_coverage S4b).
+- name: "FmrbMidi::SmfPlayer#run_due"
+  reason: >-
+    Steps of the player's own tick (doc/sig_coverage S4b).
+- name: "FmrbMidi::SmfPlayer#voice_group_of"
+  reason: >-
+    Steps of the player's own tick (doc/sig_coverage S4b).
+- name: "MIDI::Device#send_control_change"
+  reason: >-
+    The raw senders the players call; apps use note_on, note_off, control_change and program_change (decision 12).
+- name: "MIDI::Device#send_note_off"
+  reason: >-
+    The raw senders the players call; apps use note_on, note_off, control_change and program_change (decision 12).
+- name: "MIDI::Device#send_note_on"
+  reason: >-
+    The raw senders the players call; apps use note_on, note_off, control_change and program_change (decision 12).
+- name: "MIDI::Device#send_program_change"
+  reason: >-
+    The raw senders the players call; apps use note_on, note_off, control_change and program_change (decision 12).
+- name: "FmrbMidi::NoteScheduler#next_due_in"
+  reason: >-
+    Called by MIDI::Device#trigger and FmrbMidi.tick; apps only include the module's name (decision 12).
+- name: "FmrbMidi::NoteScheduler#tick"
+  reason: >-
+    Called by MIDI::Device#trigger and FmrbMidi.tick; apps only include the module's name (decision 12).
+- name: "FmrbMidi::NoteScheduler#trigger"
+  reason: >-
+    Called by MIDI::Device#trigger and FmrbMidi.tick; apps only include the module's name (decision 12).
+- name: "FmrbMidi::Sam2695.new"
+  reason: >-
+    The SAM2695 module's own setup, reached through FmrbMidi.sam2695_device (decision 12).
+- name: "FmrbMidi::Sam2695#device_info"
+  reason: >-
+    The SAM2695 module's own setup, reached through FmrbMidi.sam2695_device (decision 12).
+- name: "FmrbMidi::Sam2695#reset"
+  reason: >-
+    The SAM2695 module's own setup, reached through FmrbMidi.sam2695_device (decision 12).
+- name: "NsfHeader.extract_string"
+  reason: >-
+    The parser's constructor and helper; apps use the class's reading methods that are in sig (doc/sig_coverage S4b).
+- name: "NsfHeader.new"
+  reason: >-
+    The parser's constructor and helper; apps use the class's reading methods that are in sig (doc/sig_coverage S4b).
+- name: "BMP332.save_bmp"
+  reason: >-
+    Used by the sprite editor's own save path (doc/sig_coverage S4b).
+- name: "FmrbMidi::MmlPlayer#voice_group_of"
+  reason: >-
+    A step of the player's own tick (doc/sig_coverage S4b).
+
 # ---- names that are errors on purpose -----------------------------------
 
 - name: "#no_such_method"
