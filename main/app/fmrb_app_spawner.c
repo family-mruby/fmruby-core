@@ -241,7 +241,7 @@ static const builtin_app_entry_t builtin_app_table[] = {
     // area (recompute_layout), so the whole screen needs no editor-side change.
     // Fullscreen also suspends the other apps, which is part of the point.
     // Window size is filled in from the display config by spawn_builtin_app.
-    // No large_memory: the large pools are few (one, two on the S3) and the
+    // No large_memory: the large pools are few (two) and the
     // editor fits the ordinary one.
     { "default/editor_fs", {
         .app_id = -1,

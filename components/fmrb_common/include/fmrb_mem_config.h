@@ -36,10 +36,13 @@ enum FMRB_MEM_POOL_ID{
     // only the end of the run has a name. fmrb_mempool.c asserts that the five
     // named ones still fit inside it.
     POOL_ID_USER_APP_LARGE = POOL_ID_USER_APP0 + FMRB_USER_APP_COUNT,
-    // The large pools (large_memory = 1), FMRB_USER_APP_LARGE_POOL_COUNT of
-    // them: one, or two on the S3. Matched as the range [POOL_ID_USER_APP_LARGE,
-    // POOL_ID_USER_APP_LARGE_END).
-    POOL_ID_USER_APP_LARGE1,
+    // The large pools (large_memory = 1): a run of ids as long as the ordinary
+    // one, of which a build uses the first FMRB_USER_APP_LARGE_POOL_COUNT (two
+    // on the boards and the simulation, one per app slot on the hosted
+    // builds). Matched as the range [POOL_ID_USER_APP_LARGE,
+    // POOL_ID_USER_APP_LARGE_END); like the ordinary run, its length does not
+    // depend on the machine defines.
+    POOL_ID_USER_APP_LARGE_LAST = POOL_ID_USER_APP_LARGE + FMRB_USER_APP_COUNT - 1,
     // Editor document arena (picoruby-fmrb-editor-core). Deliberately its own
     // pool: the document must not sit in the app's 500KB mruby pool (it would
     // cap the file size and feed the GC's malloc accounting) nor in the shared
@@ -57,7 +60,7 @@ enum FMRB_MEM_POOL_ID{
 
 // One past the last large pool id. The ids exist on every build; a build
 // with fewer large pools leaves the rest without memory (fmrb_mempool.c).
-#define POOL_ID_USER_APP_LARGE_END (POOL_ID_USER_APP_LARGE1 + 1)
+#define POOL_ID_USER_APP_LARGE_END (POOL_ID_USER_APP_LARGE_LAST + 1)
 
 typedef int8_t fmrb_mem_handle_t;
 
@@ -163,13 +166,30 @@ typedef int8_t fmrb_mem_handle_t;
 // ordinary pool per user app slot -- the first three static, the rest
 // allocated on first use and then kept (see fmrb_mempool_reserve): allocating
 // and freeing 500 KB blocks over a long session is how a PSRAM heap gets
-// fragmented -- and one large pool.
+// fragmented -- and large pools that are taken the same way: the first is
+// static, the others come from PSRAM (the host's heap) the first time an app
+// needs one, and are kept.
+//
+// One large pool was not enough there either: a machine that takes files in
+// (or has Send to on) keeps the transfer app up from boot, and with a single
+// large pool every other large_memory app (the mahjong table, the shooter)
+// was then refused with FMRB_ERR_FAILED. So Modern and the simulation have
+// two; the second costs its 2 MB (3 MB on the 64-bit simulation) only once
+// two large apps have run side by side. The hosted builds (the native program
+// and the browser one) run on a machine whose memory is not the limit, so
+// there every app slot may have a large pool.
 #if !defined(CONFIG_IDF_TARGET_LINUX) && !defined(FMRB_HW_FAMILY_MODERN)
 #define FMRB_USER_APP_POOL_COUNT 1
 #define FMRB_USER_APP_STATIC_POOL_COUNT 1
 #define FMRB_USER_APP_LARGE_POOL_COUNT 2
+#define FMRB_USER_APP_LARGE_STATIC_POOL_COUNT 2
 #else
 #define FMRB_USER_APP_POOL_COUNT FMRB_USER_APP_COUNT
 #define FMRB_USER_APP_STATIC_POOL_COUNT 3
-#define FMRB_USER_APP_LARGE_POOL_COUNT 1
+#ifdef FMRB_PLATFORM_HOSTED
+#define FMRB_USER_APP_LARGE_POOL_COUNT FMRB_USER_APP_COUNT
+#else
+#define FMRB_USER_APP_LARGE_POOL_COUNT 2
+#endif
+#define FMRB_USER_APP_LARGE_STATIC_POOL_COUNT 1
 #endif
