@@ -108,4 +108,18 @@ namespace :ti do
     rm_f File.expand_path("vendor/ti_probe", ROOT_DIR)
     rm_f Dir["#{PICORUBY_TI_WASM_DIR}/{ti.js,ti.wasm,help.json}"]
   end
+
+  # The class reference of the documentation site (doc/sig_coverage S7): one
+  # page per class and language from sig/, the index, and the nav entries in
+  # the site's mkdocs.yml. The pages are committed in the site's repository,
+  # like the browser build (rake wasm:site).
+  desc "Write the class reference into the docs site from sig/ (FMRB_SITE_DIR=path to family-mruby.github.io; ONLY=A,B for a trial)"
+  task :site do
+    site = ENV["FMRB_SITE_DIR"] or abort "set FMRB_SITE_DIR to a checkout of family-mruby.github.io"
+    rev = `git rev-parse --short HEAD`.strip
+    branch = `git rev-parse --abbrev-ref HEAD`.strip
+    only = ENV["ONLY"] && !ENV["ONLY"].empty? ? " --only #{ENV['ONLY']}" : ""
+    sh "#{RbConfig.ruby} tools/ti/gen_site.rb --sig-dir #{PICORUBY_TI_SIG_DIR} --site #{File.expand_path(site)}" \
+       " --version 'fmruby-core #{branch} #{rev}'#{only}"
+  end
 end
