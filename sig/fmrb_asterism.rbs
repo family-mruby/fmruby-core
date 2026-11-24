@@ -56,6 +56,171 @@ module FmrbAsterism
   # ```
   def self.settings: () -> FmrbAsterism::Settings
 
+  # 設定ファイル <<en>> The settings file ("/home/asterism/config.toml")
+  CONFIG_FILE: String
+  # 設定と証明書を置くディレクトリ <<en>> The directory of the settings and credentials
+  DIR: String
+  # 何も指定が無いときのルータ <<en>> The router used when none is set ("tcp/zenohd:7447", the sim's)
+  DEFAULT_ROUTER: String
+  # 端末の設定ファイル <<en>> The machine's settings file ("/etc/system_conf.toml")
+  SYSTEM_CONF: String
+
+  # config.toml の中身 <<en>> What config.toml says (router, node, name)
+  #
+  # `{"router" => ..., "node" => ..., "name" => ...}` のうち、ファイルに書いてある
+  # 文字列の項目だけ。ファイルが無ければ {}。
+  # **ファイルが無いときは、昔のファイル (zenoh_echo.txt など) があれば config.toml に写してから読む**
+  # (昔のファイルは残る)。TOML でないファイルは {} でログに 1 行出る。
+  # ```ruby
+  # c = FmrbAsterism.config
+  # router = c["router"]
+  # ```
+  # <<en>>
+  # Only the String entries of `{"router" => ..., "node" => ..., "name" => ...}`
+  # that the file has; {} without it.
+  # **Without the file, the files from before config.toml (zenoh_echo.txt and others) are copied into it first**
+  # (the old files stay). A file that is not TOML gives {} and a log line.
+  # ```ruby
+  # c = FmrbAsterism.config
+  # router = c["router"]
+  # ```
+  def self.config: () -> Hash
+
+  # config.toml だけを読む <<en>> Read config.toml (without the old-file copy of config)
+  #
+  # config と同じ形の Hash。ファイルが無い・TOML でないと {}。昔のファイルの
+  # 引っ越しはしない。
+  # ```ruby
+  # c = FmrbAsterism.read_config
+  # ```
+  # <<en>>
+  # The same Hash as config; {} when the file is missing or is not TOML.
+  # It does not copy the old files.
+  # ```ruby
+  # c = FmrbAsterism.read_config
+  # ```
+  def self.read_config: () -> Hash
+
+  # config.toml を書く <<en>> Write config.toml from a Hash
+  #
+  # c の "router"・"node"・"name" のうち持っているものだけを書く。
+  # **ファイル全体を置き換える**ので、残したい項目も c に入れる (config で読んで
+  # 直して渡す)。ディレクトリが無ければ作る。nil を返す。
+  # ```ruby
+  # c = FmrbAsterism.config
+  # c["router"] = "tcp/192.0.2.2:7447"
+  # FmrbAsterism.write_config(c)
+  # ```
+  # <<en>>
+  # Writes only the "router", "node" and "name" that c has.
+  # **It replaces the whole file**, so keep the entries you want in c (read with config,
+  # change, pass back). Makes the directory when it is missing. Returns nil.
+  # ```ruby
+  # c = FmrbAsterism.config
+  # c["router"] = "tcp/192.0.2.2:7447"
+  # FmrbAsterism.write_config(c)
+  # ```
+  def self.write_config: (Hash c) -> nil
+
+  # 保存してある名前 <<en>> The saved display name ("" when none)
+  #
+  # config.toml の name。無いか読めなければ ""。
+  # ```ruby
+  # n = FmrbAsterism.saved_name
+  # ```
+  def self.saved_name: () -> String
+
+  # 表示の名前を保存する <<en>> Save the display name and use it now
+  #
+  # 前後の空白を除いて config.toml の name に書き、このプログラムの名乗りの既定
+  # (Asterism.profile_defaults) にも入れる。nil か "" で消す。接続中なら変更が
+  # ネットワークに流れる。名乗りの Hash を返す。名乗りが受け付けない名前
+  # (64 バイトを超える) は ArgumentError で、ファイルは変わらない。
+  # ```ruby
+  # FmrbAsterism.save_name("Rover")
+  # ```
+  # <<en>>
+  # Trims it, writes it as name in config.toml and sets it in this
+  # program's profile defaults (Asterism.profile_defaults); nil or ""
+  # removes it. A connected app puts the change on the network. Returns the
+  # profile Hash. A name the profile does not take (over 64 bytes) raises
+  # ArgumentError and the file is left as it was.
+  # ```ruby
+  # FmrbAsterism.save_name("Rover")
+  # ```
+  def self.save_name: (String? name) -> Hash
+
+  # この端末の mDNS の名前 <<en>> The machine's mDNS host name ("" without WiFi)
+  #
+  # WiFi の情報から読む。WiFi の無い端末・読めないときは ""。
+  # ```ruby
+  # h = FmrbAsterism.hostname
+  # ```
+  # <<en>>
+  # Read from the WiFi info; "" on a machine without WiFi or when it
+  # cannot be read.
+  # ```ruby
+  # h = FmrbAsterism.hostname
+  # ```
+  def self.hostname: () -> String
+
+  # 端末の設定 (system_conf.toml) の文字列 <<en>> A top-level String of /etc/system_conf.toml ("" if none)
+  #
+  # key の値の前後の空白を除いて返す。ファイルが無い・キーが無い・文字列
+  # でないと ""。
+  # ```ruby
+  # r = FmrbAsterism.system_conf("zenoh_router")
+  # ```
+  # <<en>>
+  # The value of key, trimmed. "" when the file or the key is missing or
+  # the value is not a String.
+  # ```ruby
+  # r = FmrbAsterism.system_conf("zenoh_router")
+  # ```
+  def self.system_conf: (String key) -> String
+
+  # ルータが TLS を求めているか <<en>> Whether a locator asks for TLS (starts with "tls/")
+  #
+  # ```ruby
+  # FmrbAsterism.tls?("tls/router.example.org:7447")
+  # #=> true
+  # ```
+  def self.tls?: (String? locator) -> bool
+
+  # 証明書の .tar の場所 <<en>> The path of the credentials .tar in /home/asterism (nil if none)
+  #
+  # 名前順で最初の .tar。2 つ以上あるとログに 1 行出す。ディレクトリが
+  # 読めなくても nil。
+  # ```ruby
+  # path = FmrbAsterism.credentials_path
+  # ```
+  # <<en>>
+  # The first .tar by name; it logs a line when there is more than one.
+  # nil also when the directory cannot be read.
+  # ```ruby
+  # path = FmrbAsterism.credentials_path
+  # ```
+  def self.credentials_path: () -> String?
+
+  # TLS のルータ用の証明書を読む <<en>> Load the credentials for a tls/ router
+  #
+  # locator が "tls/" で始まらなければ nil。始まるのに .tar が無い・読めないと
+  # Asterism::Error。この証明書の名前が、ルータのアクセス制御が知っている
+  # 端末の名前になる。
+  # ```ruby
+  # c = FmrbAsterism.credentials_for(
+  #   "tls/router.example.org:7447")
+  # ```
+  # <<en>>
+  # nil unless the locator starts with "tls/". Raises Asterism::Error when
+  # it does and there is no .tar or it cannot be read. The certificate's
+  # name is the node ID the router's access control knows.
+  # ```ruby
+  # c = FmrbAsterism.credentials_for(
+  #   "tls/router.example.org:7447")
+  # ```
+  def self.credentials_for: (String locator) -> Asterism::Credentials?
+
   # つなぎ方の設定 (FmrbAsterism.settings の答え)
   class Settings
     # ルータの場所 <<en>> The router's locator ("tcp/host:7447")
@@ -91,6 +256,26 @@ module FmrbAsterism
     # err = FmrbAsterism.settings.error
     # ```
     def error: () -> String?
+
+    # 証明書 <<en>> The credentials for a TLS router (nil when none)
+    #
+    # ルータが tls/ のときだけ読んだ Asterism::Credentials。そうでなければ nil。
+    # ```ruby
+    # c = FmrbAsterism.settings.credentials
+    # ```
+    # <<en>>
+    # The Asterism::Credentials, only for a tls/ router; nil otherwise.
+    # ```ruby
+    # c = FmrbAsterism.settings.credentials
+    # ```
+    def credentials: () -> Asterism::Credentials?
+
+    # Zenoh に渡す設定 <<en>> The Zenoh config for Session.open (TLS keys; nil without credentials)
+    #
+    # ```ruby
+    # cfg = FmrbAsterism.settings.zenoh_config
+    # ```
+    def zenoh_config: () -> Hash?
   end
 
   # つなぐ・つなぎ直す・閉じる <<en>> Keeps the app connected (connect, retry, close)
@@ -128,6 +313,11 @@ module FmrbAsterism
   # calls **link_down(link)** when the app has one (optional). It
   # connects again by itself every retry_ms.
   class Link
+    # つなぎ直す間隔の既定 (ms) <<en>> Default retry_ms (3000)
+    DEFAULT_RETRY_MS: Integer
+    # WiFi を待つ上限の既定 (ms) <<en>> Default wifi_wait_ms (20000)
+    DEFAULT_WIFI_WAIT_MS: Integer
+
     # 作る (つなぐのは後の update) <<en>> Make a link (update connects later)
     #
     # owner はアプリ (self)。app はネットワークでのアプリの名前で、
