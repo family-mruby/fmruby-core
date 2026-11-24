@@ -53,8 +53,8 @@ check "dynamic calls", analysis.apps.dynamic.keys, %w[send]
 
 puts "2. implemented"
 check "Ruby: public, not _, not after private, initialize as new, attr_reader",
-      items["impl_ruby"], %w[Foo#count Foo#wired Foo.built? Foo.new Foo.still_public Tool.go Tool.stop]
-check "Ruby: @api private is noted", r[:impl_ruby].select(&:api_private).map(&:key), %w[Foo#wired]
+      items["impl_ruby"], %w[Foo#count Foo.built? Foo.new Foo.still_public Tool.go Tool.stop]
+check "Ruby: @api private is left out and told apart", r[:impl_api_private].map(&:key), %w[Foo#wired]
 check "Ruby: an ignored method is not counted", items["impl_ruby"].include?("Foo#qux"), false
 check "C: _id forms, nested class, kernel_module, upstream filter, comments skipped",
       items["impl_c"], %w[Foo#ready? Foo.new Foo::Widget#spin Kernel#beep Machine.board_millis Tool.c_go]

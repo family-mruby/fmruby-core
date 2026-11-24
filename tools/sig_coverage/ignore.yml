@@ -80,6 +80,37 @@
 - file: flash/app/debug/compile_err.app.rb
   reason: Broken on purpose, to show a compile error.
 
+# ---- decided with the user (doc/sig_coverage/plan.md, decisions 8 to 16) ---
+
+- name: PicoRabbit::Theme
+  reason: Inside the slide app (PicoRabbit); not a part for other apps (decision 10).
+- name: PicoRabbit::FmrbRenderer
+  reason: Inside the slide app (decision 10).
+- name: PicoRabbit::Element
+  reason: Inside the slide app (decision 10).
+- name: PicoRabbit::Slide
+  reason: Inside the slide app (decision 10).
+- name: PicoRabbit::Parser
+  reason: Inside the slide app (decision 10).
+- name: PicoRabbit::ParseResult
+  reason: Inside the slide app (decision 10).
+- name: Fmrb::SpinelHello
+  reason: The sample gem that shows how a Spinel part is made; not called from apps (decision 16).
+- name: JSON.number_pattern
+  reason: JSON's own switch between its regexp and plain scanners (decision 15).
+- name: JSON.string_content_pattern
+  reason: JSON's own (decision 15).
+- name: JSON.ws_pattern
+  reason: JSON's own (decision 15).
+- name: JSON.regexp_available?
+  reason: JSON's own (decision 15).
+- name: JSON.use_regexp=
+  reason: JSON's own (decision 15).
+- name: JSON.use_regexp?
+  reason: JSON's own (decision 15).
+- name: JSON.wasm_build?
+  reason: JSON's own (decision 15).
+
 # ---- names that are errors on purpose -----------------------------------
 
 - name: "#no_such_method"

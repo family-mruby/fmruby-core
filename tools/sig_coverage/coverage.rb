@@ -12,7 +12,7 @@
 #      classes an app sees: Machine, Math, GC, Dir, File, IO, Time, JSON,
 #      MessagePack, I2C, GPIO; impl_scan.rb)
 #   3. doc gaps in Family mruby's own signatures (fmrb_*.rbs, enumerable.rbs,
-#      gpio.rbs): no summary, a summary over 112 bytes, no <<en>>, no long
+#      gpio.rbs): no summary, a summary over 111 bytes, no <<en>>, no long
 #      form, no ```ruby example
 #
 # ignore.yml lists what is left out on purpose (internal, with a reason);
@@ -35,7 +35,9 @@ require_relative "app_scan"
 require_relative "impl_scan"
 
 module SigCoverage
-  SUMMARY_MAX = 112
+  # The editor copies a summary into a 112-byte box (ET_DOC_MAX) with its
+  # terminating NUL, so 111 bytes of text are what it shows.
+  SUMMARY_MAX = 111
 
   # Where things are, relative to the root. The tool's tests build a small
   # tree with the same shape.
@@ -380,8 +382,10 @@ module SigCoverage
       @result[:impl_unresolved] = c.unresolved + upstream_c.unresolved
       @result[:impl_errors] = ruby.errors + upstream_ruby.errors
       @result[:impl_toplevel] = ruby.toplevel
+      @api_private_out = []
       @result[:impl_ruby], @result[:impl_ruby_kind] = missing_impl(@result[:impl_ruby_all])
       @result[:impl_c], @result[:impl_c_kind] = missing_impl(@result[:impl_c_all])
+      @result[:impl_api_private] = @api_private_out
     end
 
 
@@ -413,6 +417,13 @@ module SigCoverage
         found = names.any? { |n| sig_has?(n, m.name, m.singleton) }
         next if found
         next if skip?(2, m.key) || (target && target != m.class_name && skip?(2, m.key.sub(m.class_name, target)))
+        # A method its own gem marks `@api private` is left out without a
+        # line in ignore.yml (doc/sig_coverage, decision 9): the mark is the
+        # gem's, and a list of 150 names would only drift from it.
+        if m.api_private
+          @api_private_out << m
+          next
+        end
 
         if names.any? { |n| sig_has?(n, m.name, !m.singleton) }
           kind << m
@@ -492,7 +503,7 @@ module SigCoverage
         "app_name" => r[:app_name].size, "app_name_uses" => r[:app_name].uses,
         "app_bare" => r[:app_bare].size, "app_bare_uses" => r[:app_bare].uses,
         "impl_ruby" => r[:impl_ruby_all].size, "impl_ruby_missing" => r[:impl_ruby].size,
-        "impl_ruby_api_private" => r[:impl_ruby].count(&:api_private),
+        "impl_ruby_api_private" => r[:impl_api_private].size,
         "impl_c" => r[:impl_c_all].size, "impl_c_missing" => r[:impl_c].size,
         "impl_c_unresolved" => r[:impl_unresolved].size,
         "doc_methods" => doc[:methods], "doc_no_summary" => doc[:no_summary].size,
@@ -519,7 +530,7 @@ module SigCoverage
       out << "   Ruby #{c['impl_ruby_missing']} of #{c['impl_ruby']} methods in #{classes_of(r[:impl_ruby])} classes; " \
              "C #{c['impl_c_missing']} of #{c['impl_c']} in #{classes_of(r[:impl_c])} classes" \
              " (#{c['impl_c_unresolved']} targets unresolved)"
-      out << "   of the Ruby gaps, #{c['impl_ruby_api_private']} are marked @api private in their gem"
+      out << "   left out, not counted: #{c['impl_ruby_api_private']} marked @api private in their gem"
       out << "   most: #{top_classes(r[:impl_ruby] + r[:impl_c], 6)}"
       out << "3. doc gaps in Family mruby's sig/ (#{doc[:files]} files, #{doc[:methods]} methods)"
       out << "   no summary #{c['doc_no_summary']}, summary > #{SUMMARY_MAX} bytes #{c['doc_long_summary']}, " \
@@ -585,7 +596,8 @@ module SigCoverage
       md << ""
       md << "### (a) Ruby (mrblib)"
       md << ""
-      md << "A name with `*` is marked `@api private` in its gem."
+      md << "Methods their gem marks `@api private` are left out of this table and of the counts " \
+            "(#{r[:impl_api_private].size} of them)."
       md << impl_table(r[:impl_ruby_all], r[:impl_ruby], r[:impl_ruby_kind])
       md << "### (b) C (mrb_define_*)"
       md << impl_table(r[:impl_c_all], r[:impl_c], r[:impl_c_kind])
