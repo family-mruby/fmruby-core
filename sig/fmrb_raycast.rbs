@@ -1,0 +1,240 @@
+# レイキャスト (Fmrb::Raycast)。
+# 実装は lib/gems/picoruby-fmrb-raycast (mrblib/raycast.rb、raycast_core.rb、ports/esp32/raycast_binding.c)。
+# 全ビルドの family_mruby.gembox に入る。`:spinel` が使えるかはビルドで違う (`available?`)。
+
+module Fmrb
+  # 格子の地図を、壁までの距離で見る (Wolfenstein 3D 風)。
+  #
+  # **値は全部整数** (小数は使わない)。1 マス = 256 の固定小数、**角度は度 (整数)**、1 回で **40 本**の
+  # 光線を、視野 60 度に並べて撃つ。結果は光線ごとの距離・壁の種類・面。方式は `:ruby` と
+  # `:spinel` (同じ計算を ネイティブコードにしたもの)。
+  # ```ruby
+  # rc = Fmrb::Raycast.new
+  # rc.set_map(MAP, 12, 12)
+  # rc.cast(px, py, deg)
+  # d = rc.dist(20)
+  # ```
+  # <<en>>
+  # Looks at a grid map by the distance to walls (Wolfenstein 3D style). **Every value is an**
+  # **integer**: one cell is 256 in fixed point, **angles are whole degrees**, and one cast fires
+  # **40 rays** across a 60-degree field of view. The result is a distance, a wall value and a
+  # face per ray. The backends are `:ruby` and `:spinel` (the same calculation as native code).
+  # ```ruby
+  # rc = Fmrb::Raycast.new
+  # rc.set_map(MAP, 12, 12)
+  # rc.cast(px, py, deg)
+  # d = rc.dist(20)
+  # ```
+  class Raycast
+    # 光線を作る <<en>> Make a caster
+    #
+    # `backend:` (省略すると `:ruby`) は `:ruby` か `:spinel`。ほかは ArgumentError
+    # ("unknown raycast backend: x")。**`:spinel` が入っていないビルドでは RuntimeError** なので、
+    # 先に `Fmrb::Raycast.available?(:spinel)`。`:spinel` は端末に 1 つで**最初に開いたアプリが持つ**。
+    # 2 つ目のアプリは黙って `:ruby` になる (`backend` で分かる)。
+    # ```ruby
+    # rc = Fmrb::Raycast.new(backend: :ruby)
+    # ```
+    # <<en>>
+    # `backend:` (`:ruby` when left out) is `:ruby` or `:spinel`; anything else is an ArgumentError
+    # ("unknown raycast backend: x"). **A build without `:spinel` raises RuntimeError**, so check
+    # `Fmrb::Raycast.available?(:spinel)` first. `:spinel` is one per machine and **held by the app**
+    # **that opened it first**; a second app silently gets `:ruby` (see `backend`).
+    # ```ruby
+    # rc = Fmrb::Raycast.new(backend: :ruby)
+    # ```
+    def self.new: (?backend: Symbol) -> Fmrb::Raycast
+
+    # 実際に撃っている方式 <<en>> The backend actually casting
+    #
+    # ```ruby
+    # rc.backend   #=> :ruby
+    # ```
+    def backend: () -> Symbol
+
+    # 方式がこのビルドに入っているか <<en>> Whether this build has a backend
+    #
+    # `:ruby` はいつも true。`:spinel` は入ったビルドだけ。それ以外の名前は false。
+    # ```ruby
+    # Fmrb::Raycast.available?(:spinel)
+    # ```
+    # <<en>>
+    # `:ruby` is always true, `:spinel` only in a build that has it, any other name false.
+    # ```ruby
+    # Fmrb::Raycast.available?(:spinel)
+    # ```
+    def self.available?: (Symbol backend) -> bool
+
+    # 方式を問わない時計 (マイクロ秒) <<en>> The clock both backends are timed with (microseconds)
+    #
+    # 差を取って使う。`cast` が返す時間と同じ時計。
+    # ```ruby
+    # t = Fmrb::Raycast.micros
+    # ```
+    # <<en>>
+    # Use differences. The same clock as the time `cast` returns.
+    # ```ruby
+    # t = Fmrb::Raycast.micros
+    # ```
+    def self.micros: () -> Integer
+
+    # 地図を渡す <<en>> Hand over the map
+    #
+    # `cells` は **1 マス 1 値の Integer の Array** (左上から行ごと、w * h 個) か、1 マス 1 バイトの
+    # String。値は 0〜255 (下 8 ビットに丸める、nil は 0)。**0 は何もない**、**0 以外は壁で、その値が**
+    # **`wall` に返る**。**地図の外は壁 (値 1)** として扱う。`w`・`h` は幅と高さ (マス)。nil を返す。
+    # **`cast` の前に 1 回呼ぶ**。
+    #
+    # `:spinel` で渡せない地図 (大きさが 0 以下、マス数が合わない) は RuntimeError か ArgumentError
+    # ("map dimensions must be positive"・"need n map cells, got n bytes")。
+    # ```ruby
+    # rc.set_map([1,1,1, 1,0,1, 1,1,1], 3, 3)
+    # ```
+    # <<en>>
+    # `cells` is **an Array of Integers, one per cell** (row by row from the top left, w * h of
+    # them), or a String with one byte per cell. A value is 0..255 (cut to 8 bits, nil is 0).
+    # **0 is empty; anything else is a wall and its value comes back from `wall`.** **Outside the**
+    # **map counts as a wall (value 1).** `w` and `h` are the width and height in cells. Returns
+    # nil. **Call it once before `cast`.**
+    #
+    # A map `:spinel` cannot take (a size of 0 or less, a cell count that does not match) raises
+    # RuntimeError or ArgumentError ("map dimensions must be positive", "need n map cells, got n bytes").
+    # ```ruby
+    # rc.set_map([1,1,1, 1,0,1, 1,1,1], 3, 3)
+    # ```
+    def set_map: ((Array[Integer?] | String) cells, Integer w, Integer h) -> nil
+
+    # 1 フレーム分の光線を撃つ <<en>> Cast one frame of rays
+    #
+    # `px`・`py` は位置 (**1 マス = 256 の固定小数**、ふつうは `マス * 256 + 128` で真ん中)、
+    # `pa` は向き (度、整数。360 を超えても負でもよい)。**かかった時間 (マイクロ秒) を返す**。結果は
+    # 戻り値でなく、`dist`・`wall`・`side` で読む。`set_map` の前は RuntimeError ("set_map has not
+    # been called")。
+    # ```ruby
+    # us = rc.cast(px, py, deg)
+    # ```
+    # <<en>>
+    # `px` and `py` are the position (**one cell is 256 in fixed point**; `cell * 256 + 128` is
+    # the middle of a cell), `pa` the heading (whole degrees; over 360 or negative is fine).
+    # **Returns the time taken in microseconds.** The result is read with `dist`, `wall` and
+    # `side`, not from the return value. Before `set_map` it raises RuntimeError ("set_map has
+    # not been called").
+    # ```ruby
+    # us = rc.cast(px, py, deg)
+    # ```
+    def cast: (Integer px, Integer py, Integer pa) -> Integer
+
+    # 直前の `cast` の光線の数 <<en>> How many rays the last cast gave
+    #
+    # 最初の `cast` の前は 0。ふだんは 40。
+    # ```ruby
+    # rc.rays   #=> 40
+    # ```
+    # <<en>>
+    # 0 before the first `cast`. Normally 40.
+    # ```ruby
+    # rc.rays   #=> 40
+    # ```
+    def rays: () -> Integer
+
+    # 光線 i が壁に当たるまでの距離 <<en>> Distance to the wall ray i hit
+    #
+    # 固定小数 (256 = 1 マス) の整数。**視線に直角な距離に直してある** (魚眼にならない)。
+    # 0 に落ちず最小 1。`cast` の前は 0。`i` は 0 から `rays` 未満 (範囲外は NoMethodError)。
+    # ```ruby
+    # h = 6000 / rc.dist(i)
+    # ```
+    # <<en>>
+    # An integer in fixed point (256 = one cell). **Already corrected to the distance**
+    # **perpendicular to the view** (no fisheye). At least 1, never 0. 0 before `cast`. `i` runs from
+    # 0 up to under `rays` (outside it raises NoMethodError).
+    # ```ruby
+    # h = 6000 / rc.dist(i)
+    # ```
+    def dist: (Integer i) -> Integer
+
+    # 光線 i が当たった壁の値 <<en>> The wall value ray i hit
+    #
+    # 地図の値。**0 は歩数 (24 マス) の上限まで進んで当たらなかった**こと。`cast` の前は 0。
+    # ```ruby
+    # rc.wall(i)
+    # ```
+    # <<en>>
+    # The map's value. **0 means the ray ran out of its 24 steps without a hit.** 0 before `cast`.
+    # ```ruby
+    # rc.wall(i)
+    # ```
+    def wall: (Integer i) -> Integer
+
+    # 光線 i が当たった面 <<en>> Which face ray i hit
+    #
+    # 0 は縦の面、1 は横の面。面ごとに明るさを変えるのに使う。`cast` の前は 0。
+    # ```ruby
+    # dark = rc.side(i) == 1
+    # ```
+    # <<en>>
+    # 0 is a vertical face, 1 a horizontal one. Use it to shade the two apart. 0 before `cast`.
+    # ```ruby
+    # dark = rc.side(i) == 1
+    # ```
+    def side: (Integer i) -> Integer
+
+    # 整数の正弦 (度) <<en>> Fixed-point sine of whole degrees
+    #
+    # 結果は -256〜256 (256 = 1.0)。負の度も 360 を超える度もよい。**どちらの方式で撃っていても**
+    # **同じ値**なので、移動や置き場所の計算に使う。
+    # ```ruby
+    # dy = rc.fp_sin(deg) * 8 / 256
+    # ```
+    # <<en>>
+    # The result is -256..256 (256 = 1.0). Negative and over-360 degrees are fine. **The same**
+    # **on either backend**, so use it for movement and placement.
+    # ```ruby
+    # dy = rc.fp_sin(deg) * 8 / 256
+    # ```
+    def fp_sin: (Integer deg) -> Integer
+
+    # 整数の余弦 (度) <<en>> Fixed-point cosine of whole degrees
+    #
+    # `fp_sin` と同じ形 (-256〜256)。
+    # ```ruby
+    # dx = rc.fp_cos(deg) * 8 / 256
+    # ```
+    # <<en>>
+    # The same form as `fp_sin` (-256..256).
+    # ```ruby
+    # dx = rc.fp_cos(deg) * 8 / 256
+    # ```
+    def fp_cos: (Integer deg) -> Integer
+
+    # 結果のバイト列を Hash の Array にする <<en>> Turn a packed result into an Array of Hashes
+    #
+    # 光線ごとに `{ dist:, wall:, side: }`。光線 1 本ごとに Hash を作るので重く、毎フレーム
+    # の描画には使わない (`dist`・`wall`・`side` を読む)。1 本 6 バイトの形のバイト列を受ける。
+    # ```ruby
+    # Fmrb::Raycast.unpack(buf)
+    # ```
+    # <<en>>
+    # One `{ dist:, wall:, side: }` per ray. It makes a Hash per ray, so it is heavy and not for
+    # each frame's drawing (read `dist`, `wall` and `side`). It takes the 6-bytes-per-ray form.
+    # ```ruby
+    # Fmrb::Raycast.unpack(buf)
+    # ```
+    def self.unpack: (String buf) -> Array[Hash[Symbol, Integer]]
+
+    # 使い終わる <<en>> Be done with it
+    #
+    # `:spinel` の実体を手放し (ほかの方式では何もしない)、持っていた地図を捨てる。nil を返す。
+    # **`:spinel` を使ったら、アプリを終えるときに呼ぶ**。
+    # ```ruby
+    # rc.close
+    # ```
+    # <<en>>
+    # Gives up the Spinel instance (nothing for `:ruby`) and drops the map. Returns nil.
+    # **Call it when the app ends if you used `:spinel`.**
+    # ```ruby
+    # rc.close
+    # ```
+    def close: () -> nil
+  end
+end
