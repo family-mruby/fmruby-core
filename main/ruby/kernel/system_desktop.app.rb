@@ -2068,9 +2068,8 @@ class SystemDesktopApp < FmrbApp
       end
     elsif msg["cmd"] == "spawn_failed"
       # The kernel says why (it has the spawner's error code); this used to
-      # blame a missing .toml whatever the cause.
-      reason = (msg["reason"] || "See the log for the reason.").to_s
-      open_error_dialog(msg["app"] || "Unknown", "Failed to launch.\n" + reason)
+      # blame a missing .toml whatever the cause. In the user's language.
+      open_error_dialog(msg["app"] || "Unknown", spawn_failed_text(msg))
     elsif msg["cmd"] == "confirm_dialog"
       # Build callback data hash from message fields
       cb_data = {}

@@ -47,6 +47,12 @@ FmrbI18n.add(
     power_suspend_confirm: "Suspend the computer?",
     fmgr_delete_confirm:   "Delete %s?",
     close_app_confirm:     "Close %s?",
+    # The error dialog (error_dialog.rb). A failed launch's reason is the
+    # kernel's English sentence; Japanese has its own per error code below.
+    err_title:             "Error",
+    err_close_hint:        "(click or Enter to close)",
+    err_code:              "error",
+    launch_failed:         "Failed to launch",
     # The window menu (window_menu.rb, doc/window_menu)
     wm_send:               "Send to",
     wm_reload:             "Reload",
@@ -183,6 +189,23 @@ FmrbI18n.add(
     power_suspend_confirm: "休止しますか?",
     fmgr_delete_confirm:   "%s を削除しますか?",
     close_app_confirm:     "%s を閉じますか?",
+    err_title:             "エラー",
+    err_close_hint:        "(クリックか Enter で閉じる)",
+    err_code:              "エラー",
+    launch_failed:         "起動できません",
+    # One short sentence per fmrb_err.h code a launch can end with
+    # (ErrorDialogMixin#spawn_failed_reason_ja; English: Kernel#spawn_error_reason).
+    spawn_err_param:       "パスが正しくありません (長すぎるか空です)。",
+    spawn_err_no_memory:   "メモリが足りません。ほかのアプリを閉じてください。",
+    spawn_err_timeout:     "起動に時間がかかりすぎました。",
+    spawn_err_unsupported: "この端末では動かせない種類のアプリです。",
+    spawn_err_busy:        "すでに動いているか、処理中です。",
+    spawn_err_failed:      "起動できませんでした。ログを確認してください。",
+    spawn_err_not_found:   "ファイルが見つかりません。",
+    spawn_err_state:       "今はアプリを起動できない状態です。",
+    spawn_err_no_slot:     "アプリの空きがありません。ほかのアプリを閉じてください。",
+    spawn_err_read_only:   "書き込めない場所にあります。",
+    spawn_err_no_pool:     "大きいメモリプールに空きがありません。ほかのアプリを閉じてください。",
     wm_send:               "送る",
     wm_reload:             "読み直し",
     wm_close:              "閉じる",

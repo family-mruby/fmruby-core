@@ -787,8 +787,7 @@ class KeysDesktopApp < FmrbApp
       err = FmrbApp._get_last_error
       open_error_dialog(err[:name] || "Unknown", err[:error] || "Unknown error") if err
     elsif cmd == "spawn_failed"
-      reason = (msg["reason"] || "See the log for the reason.").to_s
-      open_error_dialog(msg["app"] || "Unknown", "Failed to launch.\n" + reason)
+      open_error_dialog(msg["app"] || "Unknown", spawn_failed_text(msg))
     elsif cmd == "apps_changed"
       draw_foreground if @switcher_open || @front_pid >= 0
     elsif cmd == "keys_esc_long"

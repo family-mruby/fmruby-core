@@ -2036,10 +2036,10 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
         if (pool < 0) {
             fmrb_semaphore_give(g_ctx_lock);
             if (attr->large_memory && !all_user_pools_busy()) {
-                // Room for an ordinary app, but not for this one: the same
-                // answer a busy LARGE pool always got.
-                FMRB_LOGE(TAG, "[%s] No free LARGE memory pool", attr->name);
-                return FMRB_ERR_FAILED;
+                // Room for an ordinary app, but not for this one.
+                FMRB_LOGE(TAG, "[%s] No free LARGE memory pool (all %d in use)",
+                          attr->name, FMRB_USER_APP_LARGE_POOL_COUNT);
+                return FMRB_ERR_NO_POOL;
             }
             FMRB_LOGE(TAG, "[%s] No free app memory pool (all %d in use)",
                       attr->name, FMRB_USER_APP_POOL_COUNT + FMRB_USER_APP_LARGE_POOL_COUNT);

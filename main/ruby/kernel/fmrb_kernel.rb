@@ -255,17 +255,33 @@ class FmrbKernelImpl < FmrbKernel
 
   # Why the last _spawn_app_req failed, as a sentence for the user. The code is
   # the fmrb_err.h value the C spawner returned (@last_spawn_err, set by both
-  # engines' bindings). An unmapped code keeps its number rather than having a
-  # cause invented for it -- the dialog used to blame a missing .toml for every
-  # failure, which sent us looking in the wrong place twice.
+  # engines' bindings). Every code of fmrb_err.h has a sentence (the Japanese
+  # ones are the desktop's: system_desktop/i18n.rb, spawn_err_*); a code this
+  # does not know keeps its number rather than having a cause invented for it
+  # -- the dialog used to blame a missing .toml for every failure, which sent
+  # us looking in the wrong place twice.
   def spawn_error_reason
     case @last_spawn_err
+    when -11 # FMRB_ERR_NO_POOL
+      "No large memory pool is free. Close another large app and try again."
+    when -10 # FMRB_ERR_READ_ONLY
+      "The place it is in cannot be written to."
     when -9  # FMRB_ERR_NO_RESOURCE
       "No free app slot. Close a running app and try again."
+    when -8  # FMRB_ERR_INVALID_STATE
+      "The system is not ready to start an app now."
     when -7  # FMRB_ERR_NOT_FOUND
       "The file is missing, or it is a name no built-in app has."
+    when -6  # FMRB_ERR_FAILED
+      "The app could not be started. See the log for the reason."
+    when -5  # FMRB_ERR_BUSY
+      "It is already running, or busy. Try again later."
+    when -4  # FMRB_ERR_NOT_SUPPORTED
+      "This machine cannot run this kind of app."
+    when -3  # FMRB_ERR_TIMEOUT
+      "Starting it took too long."
     when -2  # FMRB_ERR_NO_MEMORY
-      "Not enough memory to start it."
+      "Not enough memory to start it. Close a running app and try again."
     when -1  # FMRB_ERR_INVALID_PARAM
       "The path is not usable (too long, or empty)."
     else
@@ -341,8 +357,10 @@ class FmrbKernelImpl < FmrbKernel
         # Let the desktop show an error dialog to the user
         if @desktop_pid
           reason = spawn_error_reason
+          # The code goes too: the desktop words the reason in the user's
+          # language from it (ErrorDialogMixin#spawn_failed_text).
           data = MessagePack.pack({"cmd" => "spawn_failed", "app" => app_name,
-                                   "reason" => reason})
+                                   "reason" => reason, "code" => @last_spawn_err})
           _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, data)
         end
       end
