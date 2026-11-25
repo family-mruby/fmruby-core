@@ -170,6 +170,17 @@ StickS3 のボタン (KEY1) と step_sensor、NARYA v3 で step_sensor が IOErr
     エディタの C の部品) を外す**。この 2 つは単一のアプリを動かす Asterism のノードで、キーボードが無く、F1 のヘルプと
     見本は既に storage から外してある。区画は変えない (F8)。
 
+### F8 の結果 (2026-11-25、report/f8.md)
+
+`FMRB_EDITOR` (既定 1、`MINI_BUILD_DEFAULTS` で 0。ESP32 のファームだけが読む) で、AtomS3R と StickS3 からエディタの
+アプリ・editor-core・型エンジンと db・fmrb-debug を外した。ファームは約 517 KB 小さくなり、区画の空きは STICKS3
+5,344 → 522,752 バイト、ATOMS3R 20,128 → 537,552 バイト。NARYAv3・TAB5 は大きさも内蔵 RAM も差なし。エディタを
+開こうとすると `FMRB_ERR_NOT_SUPPORTED` で断る。checkpoint の表は名前が 80 減るが、移動は名前で引き当てるので
+壊れない (サブの判断。`regress:checkpoint` は未実行)。親の検収: 差分を読み、大きさの記録を照合、`rake regress` 通過。
+未確認: 2 つの端末の実機、移動の試験、NARYAv4 の大きさ。
+見つかった別の物 (直していない): 環境変数で選ぶほかのビルドの選択 (`FMRB_ASTERISM`・`FMRB_FONT_JA`・`FMRB_IMU` ほか) も、
+同じ build ディレクトリで値を変えると CMake が構成し直さず食い違う。守りは `FMRB_EDITOR` にだけ付いた。
+
 ## 3. スコープ
 
 - F1: A の 12 個。
