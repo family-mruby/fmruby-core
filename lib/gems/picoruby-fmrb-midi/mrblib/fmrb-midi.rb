@@ -685,6 +685,17 @@ module MIDI
       @transport.send_packet(@cable, CIN_PROGRAM_CHANGE,
                              PROGRAM_CHANGE | (channel & 0x0F), program, 0)
     end
+
+    # The same as picoruby-midi's pitch_bend, which clamps with Integer#clamp:
+    # that is in mruby-comparable-ext, which this build leaves out, so the
+    # original raised NoMethodError. value is -8192..8191 (0 is the centre).
+    def pitch_bend(value, channel: 0)
+      v = value + 8192
+      v = 0 if v < 0
+      v = 16383 if v > 16383
+      @transport.send_packet(@cable, CIN_PITCH_BEND, PITCH_BEND | (channel & 0x0F),
+                             v & 0x7F, (v >> 7) & 0x7F)
+    end
   end
 
   class << self
