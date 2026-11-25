@@ -2904,7 +2904,7 @@ class FmrbApp
     }
   end
 
-  def self._get_last_error
+  def self.last_error
     buf = FmrbSpxApp.fmrb_spx_app_last_error
     return nil if buf.bytesize == 0
     { name: SpxBytes.read_name(buf, 0, 64), error: SpxBytes.read_name(buf, 64, 112) }

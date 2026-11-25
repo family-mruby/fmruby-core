@@ -1997,7 +1997,7 @@ class SystemDesktopApp < FmrbApp
       # this is the failure direct boot exists to survive.
       end_direct_boot
       clear_starting
-      err = FmrbApp._get_last_error
+      err = FmrbApp.last_error
       if err
         open_error_dialog(err[:name] || "Unknown", err[:error] || "Unknown error")
       end

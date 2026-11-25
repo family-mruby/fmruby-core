@@ -114,7 +114,7 @@ const char *fmrb_spx_app_ps(void);
 const char *fmrb_spx_app_heap_info(void);
 
 /**
- * @brief Last app error (FmrbApp._get_last_error). :binstr with name at offset
+ * @brief Last app error (FmrbApp.last_error). :binstr with name at offset
  *        0 (width 64) and message at offset 64 (width 112); empty String when
  *        there is no error (Ruby returns nil).
  */

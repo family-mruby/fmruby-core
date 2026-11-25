@@ -1921,6 +1921,37 @@ class FmrbApp
   %a{fmrb.internal}
   def self.heap_info: () -> Hash
 
+  # 直前に落ちたアプリのエラー <<en>> The error of the app that failed last
+  #
+  # 最後に失敗したアプリの名前とエラーの文を `{name:, error:}` の Hash で返す。
+  # 値が入るのは、Ruby のアプリが例外で終わったとき・コンパイルできなかったとき・
+  # 起動を断られたとき・イメージから戻せなかったときと、Python のアプリを 2 つ目に
+  # 起動したとき。**どのアプリのものでも 1 つだけ**で、次に失敗したアプリが上書きする。
+  # 消えることはなく、起動してからまだどのアプリも失敗していなければ nil。
+  # `name` はアプリの名前 (31 バイトまで)、`error` は例外の文と、あればその後に
+  # 1 行ずつバックトレース (合わせて 1023 バイトまで)。自分のエラーかどうかは
+  # `name` で見分ける。
+  # ```ruby
+  # e = FmrbApp.last_error
+  # Log.info("#{e[:name]}: #{e[:error]}") if e
+  # ```
+  # <<en>>
+  # The name and the error text of the last app that failed, as a Hash
+  # `{name:, error:}`. It is filled when a Ruby app ends on an exception,
+  # does not compile, is refused at start or cannot be restored from an
+  # image, and when a second Python app is started.
+  # **There is one for all apps**: the next app that fails replaces it. It is never cleared, and is
+  # nil until some app has failed since boot. `name` is the app's name (up to
+  # 31 bytes); `error` is the exception's text followed by the backtrace, one
+  # line each, if there is one (1023 bytes in all at most). Tell whether it is
+  # your own by `name`.
+  # ```ruby
+  # e = FmrbApp.last_error
+  # Log.info("#{e[:name]}: #{e[:error]}") if e
+  # ```
+  %a{fmrb.internal}
+  def self.last_error: () -> Hash?
+
   # 自分のメモリの使用率 (百分率) <<en>> How much of its own memory is used
   #
   # ```ruby
