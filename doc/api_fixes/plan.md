@@ -181,6 +181,25 @@ StickS3 のボタン (KEY1) と step_sensor、NARYA v3 で step_sensor が IOErr
 見つかった別の物 (直していない): 環境変数で選ぶほかのビルドの選択 (`FMRB_ASTERISM`・`FMRB_FONT_JA`・`FMRB_IMU` ほか) も、
 同じ build ディレクトリで値を変えると CMake が構成し直さず食い違う。守りは `FMRB_EDITOR` にだけ付いた。
 
+### F6 の結果 (2026-11-25、report/f6.md)
+
+機種ごとの「アプリが GPIO として設定してはいけないピン」を 64 ビットの定数にし (`GPIO_RESERVED`。RAM は使わない)、
+`fmrb_pin_manager_claim_gpio` が台帳より先に見る。読むだけは通す。`FmrbHw.pin_status`・`pin_available?` は表のピンを
+「システム」「取れない」と答える。台帳・I2C・RMT は変えていない。P4 の 2 機種の SDIO と子チップのリセットは、ビルドの
+ときに sdkconfig と `_Static_assert` で照合する。
+
+親の検収 (ピンの根拠の確認を含む。ユーザの依頼):
+- 全 5 機種で、ヘッダの全ピンの定義と表を機械的に突き合わせた: 表のピンは全部名前がある。名前があって表に無いのは
+  ボタン・Grove (`I2C2`)・AtomS3R の IMU の割り込み 16・StickS3 の PM1 の割り込み 13 だけ。
+- チップ内部のピンを ESP-IDF のヘッダで確かめた: S3 の MSPI は 26〜32 (flash) と 33〜37 (8 線のデータ)、S3 の UART0 は
+  43・44、P4 の UART0 は 37・38。**サブの表は S3 の 35〜37 しか持っていなかったので、26〜34 を親が足した** (`e5a54727`)。
+- P4-Nano に焼いて (`e5a54727`): SD 39・SDIO 14・I2S 11・I2C 7・アンプ 53・Ethernet 28 の設定は IOError、`read_at(39)` は
+  読める、48 は取れる、`pin_status(39)` は 1、`pin_available?(14)` は false・`(20)` は true。WiFi は生きている。crash 0。
+- `rake regress`・`regress:size ALL=1` (5 端末のビルド) 通過。空きは STICKS3 522,496・ATOMS3R 537,312 バイト。
+未確認: Tab5・AtomS3R・StickS3・NARYA v3 の基板の配線 (ヘッダの値を正とした。回路図とは照らしていない) と実機、
+P4-Nano の 24・25 (文書に無く表に入れていない)、gpio_viewer の表示。
+**ユーザの判断待ち**: NARYA v3 のシリアルのログのピン (UART0 の 43・44) はヘッダに名前が無く、表に入っていない。
+
 ## 3. スコープ
 
 - F1: A の 12 個。
