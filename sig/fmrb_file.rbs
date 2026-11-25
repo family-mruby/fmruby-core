@@ -292,7 +292,7 @@ class File < IO
   # 絶対パスにする <<en>> Make a path absolute
   #
   # "." と ".." をたどり、重なった "/" をまとめる。
-  # **相対パスの基準は `default_dir` (省略すると ".") を環境変数 `PWD` (無ければ "/") に付けたもの**で、`Dir.getwd` ではない。
+  # **相対パスの基準は `default_dir` (省略すると ".") をアプリの作業ディレクトリ (`Dir.getwd`) に付けたもの**。
   # "~" で始まるパスは環境変数 `HOME` に置き換わり、HOME が無いと ArgumentError。
   # "~名前" の形は ArgumentError。ファイルがあるかは見ない。
   # ```ruby
@@ -301,8 +301,7 @@ class File < IO
   # <<en>>
   # Resolves "." and ".." and merges repeated "/".
   # **A relative path is based on `default_dir` (".")**
-  # **put on the environment variable `PWD` ("/" when it is not set)**,
-  # not on `Dir.getwd`. A leading "~" becomes `HOME` (ArgumentError when HOME is not
+  # **put on the app's working directory (`Dir.getwd`)**. A leading "~" becomes `HOME` (ArgumentError when HOME is not
   # set); the "~name" form is an ArgumentError. It does not check the file exists.
   # ```ruby
   # File.expand_path("/home/../tmp/a")   #=> "/tmp/a"
