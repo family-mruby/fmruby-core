@@ -81,6 +81,7 @@ module FmrbMidi
 
     def initialize(device)
       @sched = FmrbMidi.scheduler
+      @owner = FmrbMidi.next_owner
       @device = device
       @voices = voice_group_of(device)
       @lookahead_us = @voices && @sched ? LOOKAHEAD_US : 0
@@ -532,7 +533,7 @@ module FmrbMidi
 
       close_instant
       @instant_us = due_us
-      @voices.defer_voices(@lookahead_us > 0 ? due_us : nil) if @voices
+      @voices.defer_voices(@lookahead_us > 0 ? due_us : nil, @owner) if @voices
       0
     end
 
@@ -548,7 +549,7 @@ module FmrbMidi
       return 0 unless @sched
 
       close_instant
-      @sched._clear
+      @sched._clear(@owner)
       0
     end
 

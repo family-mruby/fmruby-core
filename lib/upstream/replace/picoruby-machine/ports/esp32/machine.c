@@ -154,7 +154,10 @@ Machine_sleep(uint32_t seconds)
 void
 Machine_delay_ms(uint32_t ms)
 {
-  vTaskDelay(ms / ESP32_MSEC_PER_TICK);
+  // The tick is CONFIG_FREERTOS_HZ (1 ms on these builds), not the 10 ms
+  // this port once assumed: ms / 10 waited a tenth of the time and did not
+  // sleep at all under 10 ms (measured on a P4-Nano, 2026-11-25).
+  vTaskDelay(pdMS_TO_TICKS(ms));
 }
 
 /*

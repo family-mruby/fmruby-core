@@ -62,15 +62,43 @@ A1〜A8・A10 を直し、A12 は sig の文を直した。A9 (`GPIO#read` の�
 4. **直前のエラー文を読む公開の名前を作る** (`FmrbApp._get_last_error` → 公開の名前。sig に書き、AI ヘルパーを
    切り替え、古い名前は消す)。midi_bench の 3 つは試験用なのでそのまま。
 
+### F2 の結果 (2026-11-25、report/f2.md)
+
+B1 (`IO#puts`。Kernel の `puts` も `$stdout.puts` を呼ぶだけなので一緒に変わる)・B2 (`FmrbUI#bg=`。部品の ivar の数は
+変えていない)・B4 (`FmrbApp.last_error`) を直した。親の検収: 差分を読み、sim で `puts [1, [2, 3]], "a\n", 4` が
+5 行、`FmrbApp.last_error` が nil・古い名前が無いことを再現。
+**B3 (GPIO) は止めた**: 同梱の `flash/app/test/step_sensor.app.rb` が StickS3 の KEY1 (GPIO 11。システムのピン) を
+`GPIO.new(11, GPIO::IN)` で読んでいて、例外にすると KEY1 で歩数を 0 にする機能が無くなる (設計どおりの使い方。
+doc/headless_s3/report/m3s.md)。直し方の候補: (a) 台帳に「アプリが入力として読んでよいシステムのピン」の区別を足し
+IN だけ通す、(b) 例外にして step_sensor を別の読み方に変える、(c) システムのピンは今のまま通し、ほかのアプリが
+使用中のピンと read の失敗だけ例外にする。**ユーザの判断待ち**。あわせて見つかった物: 台帳で断られた `GPIO.new` も
+続く `set_dir_at` でシステムのピンの向きを変えてしまう、`*_at` のクラスメソッドも台帳を通らない。
+
+### C: `Machine.delay_ms` (2026-11-25、実機で測って直した)
+
+P4-Nano で測った (計測アプリを WiFi で送って起動): `delay_ms(300)` = 30.4 ms、`(100)` = 10.5 ms、`(10)` = 1.3 ms、
+`(5)` 以下は約 0.05 ms (眠らない)。読みどおり `vTaskDelay(ms / 10)` が 1 ms の tick で 1/10 になっていた。
+`vTaskDelay(pdMS_TO_TICKS(ms))` に直した (`lib/upstream/replace/picoruby-machine/ports/esp32/machine.c`)。
+直した後の実機の確認 (同じ計測、起動ログ、Asterism の待ち、ランチャー) は F3 の後にまとめて焼いて行う。
+
+### B の決定 2 回目 (2026-11-25 ユーザ) -- F3 で直す
+
+5. **`Kernel::MSG_TASK_HOST`・`MSG_TASK_SYSTEM` を本体の番号に合わせる** (本体の定義から取る。カーネルの番号の定数も
+   足す。受け付ける番号の上限も本体の上限に合わせる)。
+6. **`SmfPlayer#drop_queued` は調べてから直す**: ホストの試験で再現し、再現したら「自分が予約した分だけ消す」形に。
+   予約 1 件あたりのメモリの増分を測る。
+7. **`rescue Foo => e` の `e` に型を付ける** (型エンジン。クラスを省いた rescue は StandardError、複数ならそのどれか)。
+8. **定数は `TRANSPARENT_COLOR` と `FmrbGfx::FONT_METRICS` だけ sig に載せる**。`CLOSE_BTN_CX_OFFSET`・`CLOSE_BTN_CY`・
+   `CLOSE_BTN_HIT_R` は載せない一覧へ (見本がそれを読んでいる点は課題に残す)。
+
 ## 3. スコープ
 
 - F1: A の 12 個。
 - F2: B のうち、ユーザが直すと決めた 4 つ (上の「B の決定」)。
-- B の残り (まだ聞いていない): `File.expand_path` の基準、`Dir.chdir` の後の相対パス、`Kernel.*` の task_id の上限、
-  `Kernel::MSG_TASK_HOST`・`MSG_TASK_SYSTEM` の番号が本体と合わない、`I2C.new` の失敗の文、`JSON.generate` の NaN、
-  `SmfPlayer#drop_queued` の共有の待ち行列、Spinel の基底の `app_settings`、枠なしの Window の定数 5 を sig に載せるか、
-  `TableClient#leave` の戻り値、`ROS::Subscription#handler=` (A11)、書くだけの mode で `read` が "" を返す、
-  `rescue Foo => e` の型。
+- F3: 上の「B の決定 2 回目」の 4 つ。
+- B の残り (まだ聞いていない): GPIO の直し方 (F2 で止めた)、`File.expand_path` の基準、`Dir.chdir` の後の相対パス、
+  `I2C.new` の失敗の文、`JSON.generate` の NaN、Spinel の基底の `app_settings`、`TableClient#leave` の戻り値、
+  `ROS::Subscription#handler=` (A11)、書くだけの mode で `read` が "" を返す。
 
 ## 4. 受け入れ条件
 

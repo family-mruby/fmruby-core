@@ -137,6 +137,17 @@ module FmrbMidi
       end
     end
 
+    # A number for one player, which it stamps on the commands it queues so
+    # that stopping it drops only those (Sched._clear(owner)). Several
+    # players in one app share the app's part of the queue. 1-255, then
+    # round again; 0 is left for commands no player queued.
+    # @api private
+    def next_owner
+      n = (@last_owner || 0) + 1
+      n = 1 if n > 255
+      @last_owner = n
+    end
+
     # The clock the due times are on. Falls back to the millisecond clock
     # where there is no scheduler, so the same player code runs on the host.
     def now_us
@@ -279,6 +290,7 @@ module FmrbMidi
       # When an instant carries a due time, its writes go to the C queue to
       # be sent at that microsecond instead of now (see FmrbMidi.scheduler).
       @instant_us = nil
+      @instant_owner = 0
       @sched = FmrbMidi.scheduler
 
       # Per MIDI channel controller state.
@@ -475,11 +487,14 @@ module FmrbMidi
     # never held back waiting for a boundary.
 
     # due_us marks the instant on the scheduler's clock; nil means now.
-    def defer_voices(due_us = nil)
+    # owner is the player the queued commands belong to (see
+    # FmrbMidi.next_owner), so that player can later drop only its own.
+    def defer_voices(due_us = nil, owner = 0)
       return 0 if @deferring
 
       @deferring = true
       @instant_us = @sched ? due_us : nil
+      @instant_owner = owner
       i = 0
       while i < 4
         @touched[i] = false
@@ -612,7 +627,7 @@ module FmrbMidi
 
     def emit(voice, freq, volume, duty, sweep)
       if @instant_us
-        @sched._push_apu_note(@instant_us, voice, freq, volume, duty, sweep)
+        @sched._push_apu_note(@instant_us, voice, freq, volume, duty, sweep, @instant_owner)
       else
         @audio.note_on(voice, freq, volume, duty, sweep)
       end
@@ -622,7 +637,7 @@ module FmrbMidi
     def silence(voice)
       @current[voice] = nil
       if @instant_us
-        @sched._push_apu_off(@instant_us, voice)
+        @sched._push_apu_off(@instant_us, voice, @instant_owner)
       else
         @audio.note_off(voice)
       end

@@ -698,14 +698,14 @@ static mrb_value mrb_kernel_sync_time_to_host(mrb_state *mrb, mrb_value self)
 // write past its local and shifted a sender's size and data by the src_pid
 // field. The data stays limited to 64 bytes as these methods always said.
 #define KERNEL_MSG_DATA_MAX 64
-// Task id range these methods accept (doc: 0-15). The body's ceiling is
-// PROC_ID_MAX; an id between the two is refused by the queue registry.
-#define KERNEL_MSG_TASK_ID_LIMIT 16
 
+// Task ids these methods accept: the body's process ids, 0 up to PROC_ID_MAX
+// (FMRB_MAX_APPS, the same ceiling the queue registry checks in fmrb_msg.c).
 static void kernel_msg_check_task_id(mrb_state *mrb, mrb_int task_id)
 {
-    if (task_id < 0 || task_id >= KERNEL_MSG_TASK_ID_LIMIT) {
-        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid task ID (must be 0-15)");
+    if (task_id < 0 || task_id >= PROC_ID_MAX) {
+        mrb_raisef(mrb, E_ARGUMENT_ERROR, "Invalid task ID (must be 0-%d)",
+                   (int)PROC_ID_MAX - 1);
     }
 }
 
@@ -791,6 +791,10 @@ static mrb_value mrb_kernel_mod_message_queue_exists(mrb_state *mrb, mrb_value s
 void mrb_fmrb_kernel_msg_init(mrb_state *mrb)
 {
     struct RClass *kernel_module = mrb->kernel_module;
+    // The task ids, taken from the body's process ids (fmrb_task_config.h)
+    mrb_define_const(mrb, kernel_module, "MSG_TASK_KERNEL", mrb_fixnum_value(PROC_ID_KERNEL));
+    mrb_define_const(mrb, kernel_module, "MSG_TASK_HOST", mrb_fixnum_value(PROC_ID_HOST));
+    mrb_define_const(mrb, kernel_module, "MSG_TASK_SYSTEM", mrb_fixnum_value(PROC_ID_SYSTEM_APP));
     mrb_define_module_function(mrb, kernel_module, "send_message", mrb_kernel_mod_send_message, MRB_ARGS_ARG(3, 1));
     mrb_define_module_function(mrb, kernel_module, "receive_message", mrb_kernel_mod_receive_message, MRB_ARGS_ARG(1, 1));
     mrb_define_module_function(mrb, kernel_module, "broadcast_message", mrb_kernel_mod_broadcast_message, MRB_ARGS_ARG(2, 1));

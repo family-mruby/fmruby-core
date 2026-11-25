@@ -65,10 +65,12 @@ typedef struct {
 /* Start the timer. Idempotent; called from the first push. */
 fmrb_err_t fmrb_midi_sched_start(void);
 
-/* Queue one command. Returns false when the queue is full (nothing is
- * dropped silently: the caller is expected to wait and try again). */
+/* Queue one command. owner names the player within the app that queued it
+ * (0 for none), so one player can drop its own commands. Returns false when
+ * the queue is full (nothing is dropped silently: the caller is expected to
+ * wait and try again). */
 bool fmrb_midi_sched_push(uint64_t due_us, uint8_t kind, uint8_t src_pid,
-                          const uint8_t *payload);
+                          uint8_t owner, const uint8_t *payload);
 
 /* Drop everything still queued. Does NOT silence anything - the caller owns
  * that, and does it by sending note offs on the immediate path, which is
@@ -78,6 +80,10 @@ void fmrb_midi_sched_clear(void);
 /* Drop what one app queued. Called when its VM closes, so a killed app
  * cannot keep playing. */
 void fmrb_midi_sched_clear_pid(uint8_t src_pid);
+
+/* Drop what one player of an app queued (the owner it pushed with), and end
+ * the voices and channels those commands were for. */
+void fmrb_midi_sched_clear_owner(uint8_t src_pid, uint8_t owner);
 
 int fmrb_midi_sched_depth(void);
 int fmrb_midi_sched_free(void);

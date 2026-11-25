@@ -139,32 +139,40 @@ module Kernel
 
   # ---- 待ち行列に直接送る・受ける (低水準) ----
   #
-  # 本体の task 番号 (0-15) の待ち行列を直接触る 4 つ。**アプリどうしの伝言には**
+  # 本体の task 番号 (0 から上限未満。上限は端末で 9、ブラウザ版で 32) の
+  # 待ち行列を直接触る 4 つ。**アプリどうしの伝言には**
   # **`FmrbApp#send_message` を使う**。こちらは生の文字列 (64 バイトまで) を
   # 渡すだけで、アプリの待ち (`_spin`) が読む MessagePack の Hash とは形が
   # 違い、同梱のアプリ・カーネルのどれも呼んでいない。
-  # 番号は `Kernel::MSG_TASK_HOST` (0) と `Kernel::MSG_TASK_SYSTEM` (1) の
-  # 定数がある。
+  # 番号は `Kernel::MSG_TASK_KERNEL` (0)・`Kernel::MSG_TASK_HOST` (1)・
+  # `Kernel::MSG_TASK_SYSTEM` (2) の定数がある。
+
+  # カーネルの task 番号 (0) <<en>> The kernel's task id (0)
+  MSG_TASK_KERNEL: Integer
+  # ホストの task 番号 (1) <<en>> The host task's id (1)
+  MSG_TASK_HOST: Integer
+  # デスクトップ (システムのアプリ) の task 番号 (2) <<en>> The system app's task id (2)
+  MSG_TASK_SYSTEM: Integer
 
   # 待ち行列に生の文字列を送る <<en>> Put a raw string on a task's queue
   #
-  # task_id は 0-15 (**範囲の外は ArgumentError**)。data は 64 バイトまで
-  # (**超えると ArgumentError**)。`timeout_ms` (省略すると 100) は、行列が
-  # 満杯のときに待つ長さ。
+  # task_id は 0 から上限 (端末で 9) 未満 (**範囲の外は ArgumentError**)。
+  # data は 64 バイトまで (**超えると ArgumentError**)。`timeout_ms`
+  # (省略すると 100) は、行列が満杯のときに待つ長さ。
   #
-  # **送れたら true** で、行列が無い・満杯のまま timeout_ms が過ぎた・task_id が
-  # 本体の上限 (9) 以上のときは **false** (例外は出ない)。
+  # **送れたら true** で、行列が無い・満杯のまま timeout_ms が過ぎたときは
+  # **false** (例外は出ない)。
   # ```ruby
   # Kernel.send_message(0, 1, "key_down:13")
   # ```
   # <<en>>
-  # task_id is 0-15 (**outside it raises ArgumentError**). data is at most 64
-  # bytes (**more raises ArgumentError**). `timeout_ms` (100 when left out) is
-  # how long to wait while the queue is full.
+  # task_id is from 0 to below the limit (9 on the devices) (**outside it**
+  # **raises ArgumentError**). data is at most 64 bytes (**more raises**
+  # **ArgumentError**). `timeout_ms` (100 when left out) is how long to wait
+  # while the queue is full.
   #
   # **It returns true when sent.** It returns **false** when the task has no
-  # queue, the queue stays full for timeout_ms, or task_id is at or above the
-  # system's limit (9); no exception is raised.
+  # queue or the queue stays full for timeout_ms; no exception is raised.
   # ```ruby
   # Kernel.send_message(0, 1, "key_down:13")
   # ```
@@ -173,8 +181,8 @@ module Kernel
   # 待ち行列から 1 通取り出す <<en>> Take one message off a task's queue
   #
   # `[種類, 文字列]` の配列を返す。待っても来なければ **nil** (timeout_ms は
-  # 省略すると 1000)。task_id が 0-15 の外なら ArgumentError、行列が無い
-  # ときは (番号が上限の 9 以上も含む) **RuntimeError** で、nil ではない。
+  # 省略すると 1000)。task_id が 0 から上限 (端末で 9) 未満の外なら
+  # ArgumentError、行列が無いときは **RuntimeError** で、nil ではない。
   # **アプリ自身の番号を渡すと、`_spin` が読んでいるのと同じ行列を取り合う**。
   # ```ruby
   # msg = Kernel.receive_message(2, 5000)
@@ -182,9 +190,9 @@ module Kernel
   # ```
   # <<en>>
   # Returns a `[type, string]` array, or **nil** when nothing came within
-  # timeout_ms (1000 when left out). task_id outside 0-15 raises
-  # ArgumentError, and a task with no queue raises **RuntimeError**, not nil
-  # (a number at or above the limit 9 included).
+  # timeout_ms (1000 when left out). task_id outside 0 to below the limit
+  # (9 on the devices) raises ArgumentError, and a task with no queue raises
+  # **RuntimeError**, not nil.
   # **Passing the app's own number reads the very queue `_spin` reads.**
   # ```ruby
   # msg = Kernel.receive_message(2, 5000)
@@ -211,13 +219,13 @@ module Kernel
 
   # その task に待ち行列があるか <<en>> Whether a task has a queue
   #
-  # task_id が 0-15 の外なら ArgumentError。**9 以上は常に false**。
+  # task_id が 0 から上限 (端末で 9) 未満の外なら ArgumentError。
   # ```ruby
   # ready = Kernel.message_queue_exists?(0)
   # ```
   # <<en>>
-  # task_id outside 0-15 raises ArgumentError. **9 and above is always**
-  # **false.**
+  # task_id outside 0 to below the limit (9 on the devices) raises
+  # ArgumentError.
   # ```ruby
   # ready = Kernel.message_queue_exists?(0)
   # ```
