@@ -19,7 +19,7 @@
 // This structure is shared between IO and File classes
 typedef struct {
   fmrb_file_t handle;  // HAL file handle (includes standard streams)
-  int flags;           // Open flags
+  int flags;           // FMRB_O_* open flags (standard streams included)
   int closed;          // Closed flag
 } mrb_io_data_t;
 
@@ -51,6 +51,25 @@ io_mode_to_flags(const char *mode)
       flags = FMRB_O_RDONLY;
   }
   return flags;
+}
+
+// The direction checks of read and write. A stream opened only for the other
+// direction raises IOError with CRuby's messages, instead of reading "" from
+// a write-only file or failing in the HAL with a RuntimeError.
+static void
+io_check_readable(mrb_state *mrb, const mrb_io_data_t *io)
+{
+  if (!(io->flags & (FMRB_O_RDONLY | FMRB_O_RDWR))) {
+    mrb_raise(mrb, mrb_class_get(mrb, "IOError"), "not opened for reading");
+  }
+}
+
+static void
+io_check_writable(mrb_state *mrb, const mrb_io_data_t *io)
+{
+  if (!(io->flags & (FMRB_O_WRONLY | FMRB_O_RDWR))) {
+    mrb_raise(mrb, mrb_class_get(mrb, "IOError"), "not opened for writing");
+  }
 }
 
 /*
@@ -107,15 +126,15 @@ mrb_io__new(mrb_state *mrb, mrb_value self)
   switch (fd) {
     case 0:
       io->handle = FMRB_STDIN_HANDLE;
-      io->flags |= 2; // readable
+      io->flags = FMRB_O_RDONLY;
       break;
     case 1:
       io->handle = FMRB_STDOUT_HANDLE;
-      io->flags |= 1; // writable
+      io->flags = FMRB_O_WRONLY;
       break;
     case 2:
       io->handle = FMRB_STDERR_HANDLE;
-      io->flags |= 1; // writable
+      io->flags = FMRB_O_WRONLY;
       break;
     default:
       if (fd <= 0) {
@@ -156,6 +175,7 @@ mrb_io_read(mrb_state *mrb, mrb_value self)
   }
 
   mrb_get_args(mrb, "|i", &length);
+  io_check_readable(mrb, io);
 
   if (length <= 0) {
     return mrb_str_new_cstr(mrb, "");
@@ -201,6 +221,7 @@ mrb_io_write(mrb_state *mrb, mrb_value self)
   }
 
   mrb_get_args(mrb, "S", &str);
+  io_check_writable(mrb, io);
   ptr = RSTRING_PTR(str);
   len = RSTRING_LEN(str);
 

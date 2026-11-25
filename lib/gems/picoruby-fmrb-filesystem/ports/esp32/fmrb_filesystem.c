@@ -18,7 +18,7 @@
 // alias for readability.
 typedef struct {
   fmrb_file_t handle;  // File handle from HAL
-  int flags;           // Open flags
+  int flags;           // FMRB_O_* open flags
   int closed;          // Closed flag
 } mrb_file_data_t;
 
@@ -161,6 +161,12 @@ mrb_file_read(mrb_state *mrb, mrb_value self)
   }
 
   mrb_get_args(mrb, "|i", &length);
+
+  // A file opened only for writing ("w", "a") raises, as IO#read does,
+  // instead of reading "" (the flags are the FMRB_O_* IO._new stored).
+  if (!(file->flags & (FMRB_O_RDONLY | FMRB_O_RDWR))) {
+    mrb_raise(mrb, mrb_class_get(mrb, "IOError"), "not opened for reading");
+  }
 
   // If length not specified, read entire file
   if (length < 0) {

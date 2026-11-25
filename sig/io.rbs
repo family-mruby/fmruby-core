@@ -10,7 +10,8 @@
 #
 # 標準出力 (`$stdout`) もファイルも同じ IO。
 # **ストリームが閉じた後の `read`・`write` は IOError でなく RuntimeError**
-# ("closed stream")。エラーはどれも RuntimeError で、
+# ("closed stream")。開いた向きと逆の操作 (書くだけの `"w"`・`"a"` で `read`、読むだけの
+# `"r"` で `write`・`puts`・`print`) は IOError。それ以外のエラーは RuntimeError で、
 # 理由 (errno) は区別できない。
 # ```ruby
 # $stdout.puts "hello"
@@ -18,8 +19,9 @@
 # <<en>>
 # The parent of File. `$stdout` and a file are the same kind
 # of IO. **`read` and `write` on a closed stream raise RuntimeError** ("closed
-# stream"), not IOError. Every failure is a RuntimeError; the reason (errno) is not
-# told apart.
+# stream"), not IOError. Going the other way to how it was opened (`read` on a
+# write-only `"w"` or `"a"`, `write`, `puts` or `print` on a read-only `"r"`) raises
+# IOError. Every other failure is a RuntimeError; the reason (errno) is not told apart.
 # ```ruby
 # $stdout.puts "hello"
 # ```
@@ -28,7 +30,8 @@ class IO
   #
   # length バイトまでを読んで文字列で返す。**length を省くと 1024 バイト**
   # (標準入力などのストリーム用。ファイルは File#read で、省くと全部読む)。
-  # length が 0 以下なら "" を返す。読めなかったときは RuntimeError
+  # length が 0 以下なら "" を返す。**書くだけで開いたもの (`"w"`・`"a"`、標準出力) は
+  # IOError ("not opened for reading")**。読めなかったときは RuntimeError
   # ("failed to read from stream")、閉じたストリームなら RuntimeError ("closed stream")。
   # ```ruby
   # s = $stdin.read(16)
@@ -36,9 +39,10 @@ class IO
   # <<en>>
   # Reads up to length bytes and returns them. **length defaults to 1024** (for
   # streams such as stdin; a file goes through File#read, which reads everything
-  # when it is left out). length of 0 or less returns "". RuntimeError when the
-  # read fails ("failed to read from stream") or the stream is closed
-  # ("closed stream").
+  # when it is left out). length of 0 or less returns "". **A stream opened
+  # for writing only (`"w"`, `"a"`, stdout) raises IOError ("not opened for
+  # reading")**. RuntimeError when the read fails ("failed to read from stream")
+  # or the stream is closed ("closed stream").
   # ```ruby
   # s = $stdin.read(16)
   # ```
@@ -47,16 +51,18 @@ class IO
   # 書き込む <<en>> Write a string
   #
   # str を書き、**書いたバイト数**を返す。str は String だけ (数値などは TypeError。
-  # `puts`・`print` は to_s してから渡す)。書けなかったときは RuntimeError ("write failed")、
-  # 閉じたストリームなら RuntimeError ("closed stream")。
+  # `puts`・`print` は to_s してから渡す)。**読むだけで開いたもの (`"r"`、標準入力) は
+  # IOError ("not opened for writing")** (`puts`・`print` も)。書けなかったときは RuntimeError
+  # ("write failed")、閉じたストリームなら RuntimeError ("closed stream")。
   # ```ruby
   # n = f.write("hello\n")   #=> 6
   # ```
   # <<en>>
   # Writes str and returns **the number of bytes written**. Only a String is
   # accepted (a number raises TypeError; `puts` and `print` call to_s first).
-  # RuntimeError when the write fails ("write failed") or the stream is closed
-  # ("closed stream").
+  # **A stream opened for reading only (`"r"`, stdin) raises IOError ("not opened
+  # for writing")**, through `puts` and `print` too. RuntimeError when the write
+  # fails ("write failed") or the stream is closed ("closed stream").
   # ```ruby
   # n = f.write("hello\n")   #=> 6
   # ```

@@ -205,7 +205,8 @@ class File < IO
   # と、`"r+"` (読み書き。無いと失敗)・`"w+"` (空にして読み書き)・`"a+"` (読めて、書くと
   # 必ず末尾に足す。無ければ作る)。`b` は付けてもよく (`"rb+"` は `"r+"` と同じ)、
   # **ほかの文字で始まる mode は読み取り専用として開く** (エラーにならない)。
-  # `perm` は受け取るだけで使わない。
+  # `"w"`・`"a"` で開いたものの `read` と、`"r"` で開いたものの `write`・`puts`・`print` は
+  # IOError。`perm` は受け取るだけで使わない。
   #
   # **開けないと RuntimeError ("failed to open file: パス")**。理由 (無い・場所が無い・
   # 開いている数が上限) は区別できない。開いたままにできるのは、ESP32 では全アプリで 10 個。
@@ -221,7 +222,8 @@ class File < IO
   # `"w+"` (truncate, read and write) and `"a+"` (read, and every write goes to the
   # end; created when missing). A `b` may be added (`"rb+"` is `"r+"`).
   # **A mode starting with any other letter opens read-only**
-  # (no error). `perm` is accepted and ignored.
+  # (no error). `read` on a `"w"` or `"a"` file, and `write`, `puts` or `print`
+  # on an `"r"` file, raise IOError. `perm` is accepted and ignored.
   #
   # **RuntimeError ("failed to open file: path") when it cannot open**; the reason
   # (missing, no room, too many open) is not told apart. Only 10 files can be open on
