@@ -418,6 +418,11 @@
 #define FMRB_PIN_RESTRICTED_PSRAM2  GPIO_NUM_37  // PSRAM 8M
 #define FMRB_PIN_RESTRICTED_STRAP1  GPIO_NUM_45  // Strapping pin (VDD_SPI)
 #define FMRB_PIN_RESTRICTED_STRAP2  GPIO_NUM_46  // Strapping pin (boot mode)
+// UART0, the console: the USB-serial bridge's log and flashing line (the
+// chip's default pins, soc/esp32s3 U0TXD_GPIO_NUM / U0RXD_GPIO_NUM). Not
+// brought out for apps on this board (2026-11-25).
+#define FMRB_PIN_CONSOLE_TX         GPIO_NUM_43
+#define FMRB_PIN_CONSOLE_RX         GPIO_NUM_44
 
 // SD Card SPI Interface (SPI3)
 #define FMRB_PIN_SD_CS     GPIO_NUM_15
