@@ -286,9 +286,16 @@ task :setup do
   setup_copy "lib/upstream/patch/picoruby-sandbox/mrbgem.rake", "#{mrbgem_path}/picoruby-sandbox/"
   # (sandbox.c patch dropped: upstream fixed the uninitialized name in Sandbox.new)
 
-  # picoruby-i2c: add I2C#close method and I2C_release declaration
+  # picoruby-i2c: add I2C#close method and I2C_release declaration, and a
+  # message per cause when I2C.new fails
   setup_copy "lib/upstream/patch/picoruby-i2c/include/i2c.h", "#{mrbgem_path}/picoruby-i2c/include/"
   setup_copy "lib/upstream/patch/picoruby-i2c/src/mruby/i2c.c", "#{mrbgem_path}/picoruby-i2c/src/mruby/"
+
+  # picoruby-gpio: ask the board's pin table before setting a pin up or
+  # writing it (GPIO_claim), and raise when a read fails (doc/api_fixes F4)
+  setup_copy "lib/upstream/patch/picoruby-gpio/include/gpio.h", "#{mrbgem_path}/picoruby-gpio/include/"
+  setup_copy "lib/upstream/patch/picoruby-gpio/src/mruby/gpio.c", "#{mrbgem_path}/picoruby-gpio/src/mruby/"
+  setup_copy "lib/upstream/patch/picoruby-gpio/mrblib/gpio.rb", "#{mrbgem_path}/picoruby-gpio/mrblib/"
 
   # picoruby-socket: esp32p4 (ESP-IDF) build support, default socket timeouts,
   # TLS via the ESP-IDF certificate bundle (esp_crt_bundle), and a GC-time

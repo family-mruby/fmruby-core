@@ -9,15 +9,24 @@ static const char *TAG = "hw_proxy_gpio";
 void hw_proxy_gpio_execute(hw_proxy_request_t *req)
 {
     switch (req->op) {
-    case HW_PROXY_OP_GPIO_RESET: {
-        hw_proxy_gpio_reset_params_t *p = (hw_proxy_gpio_reset_params_t *)req->params;
-        fmrb_err_t acq = fmrb_pin_manager_acquire(p->pin, FMRB_PIN_USER_GPIO, req->caller);
-        if (acq != FMRB_OK) {
-            req->result = acq;
+    case HW_PROXY_OP_GPIO_CLAIM: {
+        // Judged and taken here, on the proxy task, so two apps cannot both
+        // be granted the same free pin. A refusal changes nothing on the pin.
+        // A button (granted shared) is never reset: the system set it up.
+        hw_proxy_gpio_claim_params_t *p = (hw_proxy_gpio_claim_params_t *)req->params;
+        fmrb_pin_gpio_verdict_t v = fmrb_pin_manager_claim_gpio(
+            p->pin, (fmrb_pin_gpio_use_t)p->use, req->caller);
+        *p->out_verdict = (int)v;
+        if (!fmrb_pin_gpio_granted(v)) {
+            req->result = FMRB_ERR_BUSY;
             break;
         }
-        esp_err_t ret = gpio_reset_pin(p->pin);
-        req->result = (ret == ESP_OK) ? FMRB_OK : FMRB_ERR_FAILED;
+        if (p->reset && v == FMRB_PIN_GPIO_OK) {
+            esp_err_t ret = gpio_reset_pin(p->pin);
+            req->result = (ret == ESP_OK) ? FMRB_OK : FMRB_ERR_FAILED;
+            break;
+        }
+        req->result = FMRB_OK;
         break;
     }
     case HW_PROXY_OP_GPIO_CONFIG: {

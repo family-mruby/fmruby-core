@@ -494,7 +494,7 @@ module FmrbMidi
           return 1
         end
 
-        if (now - due) > 5_000 && @lookahead_us > 0 && @sched && @sched._depth == 0
+        if (now - due) > 5_000 && @lookahead_us > 0 && @sched && @sched._depth(@owner) == 0
           @underrun_count += 1
         end
 
@@ -511,9 +511,11 @@ module FmrbMidi
       end
     end
 
+    # Only this player's commands count: another player (of this app or
+    # another) still playing must not keep this one "playing".
     def drain_or_finish
       close_instant
-      if @sched && @sched._depth > 0
+      if @sched && @sched._depth(@owner) > 0
         return DRAIN_POLL_MS
       end
 

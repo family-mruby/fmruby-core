@@ -58,6 +58,70 @@ void fmrb_pin_manager_release_by_owner(void *owner);
 // Check if a pin is available for user use
 bool fmrb_pin_manager_is_available(int pin);
 
+// ---- What an app may do with a pin through the GPIO class ----------------
+//
+// A system pin is refused, except the board's own buttons (FMRB_PIN_BUTTON_*
+// in fmrb_pin_assign.h), which an app may set up as an input and read while
+// the system keeps them. Reading a level never changes a pin, so it is
+// allowed on any pin.
+
+// What the app is about to do.
+typedef enum {
+    FMRB_PIN_GPIO_READ   = 0,  // read the level
+    FMRB_PIN_GPIO_INPUT  = 1,  // input direction, pull-up / pull-down
+    FMRB_PIN_GPIO_OUTPUT = 2,  // output direction, write, open drain, alternate function
+} fmrb_pin_gpio_use_t;
+
+// The answer. Only the first two let the app go on.
+typedef enum {
+    FMRB_PIN_GPIO_OK            = 0,  // the caller owns the pin (taken now or before)
+    FMRB_PIN_GPIO_OK_SHARED     = 1,  // allowed without owning it: a read, or input on a button
+    FMRB_PIN_GPIO_NO_RANGE      = 2,  // no such pin on this chip
+    FMRB_PIN_GPIO_NO_SYSTEM     = 3,  // a pin the system uses
+    FMRB_PIN_GPIO_NO_INPUT_ONLY = 4,  // a button, asked for output
+    FMRB_PIN_GPIO_NO_IN_USE     = 5,  // held by another app, or for another use (I2C ...)
+} fmrb_pin_gpio_verdict_t;
+
+static inline bool fmrb_pin_gpio_granted(fmrb_pin_gpio_verdict_t v)
+{
+    return v == FMRB_PIN_GPIO_OK || v == FMRB_PIN_GPIO_OK_SHARED;
+}
+
+// The rule on one pin's status, without touching the table (the unit the
+// host test checks). system_input: the pin is one of the board's buttons.
+static inline fmrb_pin_gpio_verdict_t
+fmrb_pin_gpio_judge(fmrb_pin_status_t st, bool system_input,
+                    fmrb_pin_gpio_use_t use, const void *caller)
+{
+    if (use == FMRB_PIN_GPIO_READ) {
+        return FMRB_PIN_GPIO_OK_SHARED;
+    }
+    switch (st.usage) {
+    case FMRB_PIN_UNUSED:
+        return FMRB_PIN_GPIO_OK;
+    case FMRB_PIN_SYSTEM_EXCLUSIVE:
+        if (!system_input) {
+            return FMRB_PIN_GPIO_NO_SYSTEM;
+        }
+        return use == FMRB_PIN_GPIO_INPUT ? FMRB_PIN_GPIO_OK_SHARED
+                                          : FMRB_PIN_GPIO_NO_INPUT_ONLY;
+    case FMRB_PIN_USER_GPIO:
+        return st.owner == caller ? FMRB_PIN_GPIO_OK : FMRB_PIN_GPIO_NO_IN_USE;
+    default:
+        return FMRB_PIN_GPIO_NO_IN_USE;
+    }
+}
+
+// Whether the pin is one of the board's buttons: a system pin an app may
+// read as an input. Decided from fmrb_pin_assign.h at build time (no table).
+bool fmrb_pin_manager_is_system_input(int pin);
+
+// Judge a GPIO use of the pin for caller and, when the pin is free and the
+// use sets it up (INPUT, OUTPUT), take it for caller as FMRB_PIN_USER_GPIO.
+// A refusal leaves the table as it was.
+fmrb_pin_gpio_verdict_t fmrb_pin_manager_claim_gpio(int pin, fmrb_pin_gpio_use_t use,
+                                                    void *caller);
+
 #ifdef __cplusplus
 }
 #endif

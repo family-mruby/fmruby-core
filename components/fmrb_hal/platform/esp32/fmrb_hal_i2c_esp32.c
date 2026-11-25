@@ -9,7 +9,8 @@ int fmrb_hal_i2c_init(int unit, uint32_t frequency, int8_t sda_pin, int8_t scl_p
     };
     hw_proxy_request_t req = { .op = HW_PROXY_OP_I2C_INIT, .params = &params };
     fmrb_err_t ret = hw_proxy_call(&req);
-    return (ret == FMRB_OK) ? FMRB_I2C_OK : FMRB_I2C_ERROR;
+    // The refusal's own code, so the caller can tell the reasons apart.
+    return (ret == FMRB_OK) ? FMRB_I2C_OK : (int)ret;
 }
 
 int fmrb_hal_i2c_release(int unit)

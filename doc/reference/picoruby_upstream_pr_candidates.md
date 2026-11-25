@@ -277,6 +277,9 @@ Handshake` と返すので `HandshakeError: Invalid handshake response` にな�
 - **`MIDI::Device#pitch_bend` が `Integer#clamp` を使う** [Midori の picoruby-midi]: clamp の無い mruby の構成で
   NoMethodError。修正: 比較 2 つで丸める。
 - 上流 PR: 4 つとも数行で、そのまま出せる小ささ。JSON の 2 つは 1 本にまとめてよい。
+- **`JSON.generate` が NaN・無限大をそのまま `NaN`・`Infinity` と書く** [picoruby-json mrblib/json.rb の `generate_number`]
+  (doc/api_fixes/report/f4.md): JSON として読めない字が出る。修正: Float で `finite?` でなければ
+  `JSON::GeneratorError` ("NaN not allowed in JSON"。CRuby と同じ)。JSON の 2 つと 1 本にまとめてよい。
 
 ## fmrb固有でPRに含めないもの
 

@@ -39,11 +39,13 @@ module JSON
   class ParserError < JSON::JSONError
   end
 
-  # JSON.generate の例外 (実装は出さない) <<en>> JSON.generate error (never raised)
+  # JSON.generate の例外 (NaN・無限大) <<en>> JSON.generate error (NaN, infinity)
   #
-  # 名前だけあり、`JSON.generate` はこれを出さない。作れない値は文字列にして書く。
+  # `JSON.generate` が Float の NaN・無限大 (入れ子の中も) に出す。文は `"NaN not allowed in JSON"` など。
+  # それ以外の書けない値は文字列にして書くので、これは出ない。
   # <<en>>
-  # The name exists but `JSON.generate` never raises it: a value it cannot write is written as a string.
+  # `JSON.generate` raises it for a Float NaN or infinity (nested ones too), with a message such as
+  # `"NaN not allowed in JSON"`. Other values it cannot write are written as strings instead.
   class GeneratorError < JSON::JSONError
   end
 
@@ -97,8 +99,8 @@ module JSON
   # Hash のキーは `to_s` した文字列になる。**それ以外のオブジェクトも `to_s` した文字列**で
   # 書く (エラーにならない)。
   #
-  # 空白も改行も入れず 1 行で返す。日本語はそのまま (エスケープしない)。`NaN` や無限大も
-  # 例外にならず、JSON として正しくない `NaN` などの字がそのまま入る。
+  # 空白も改行も入れず 1 行で返す。日本語はそのまま (エスケープしない)。Float の `NaN`・無限大は
+  # JSON に書けないので `JSON::GeneratorError` (入れ子の中も)。
   # ```ruby
   # JSON.generate({ "a" => [1, nil] })
   # #=> "{\"a\":[1,null]}"
@@ -106,8 +108,8 @@ module JSON
   # <<en>>
   # Writes Hash, Array, String, Integer, Float, true, false and nil. **A Symbol becomes a string**, and a Hash key is written as its `to_s`. **Any other object is written as its `to_s`** (no error).
   #
-  # The result is one line with no spaces. Japanese is left as it is (not escaped). `NaN` and
-  # infinity do not raise either: the text `NaN` and the like go in, which is not valid JSON.
+  # The result is one line with no spaces. Japanese is left as it is (not escaped). A Float `NaN`
+  # or infinity has no JSON form and raises `JSON::GeneratorError` (nested ones too).
   # ```ruby
   # JSON.generate({ "a" => [1, nil] })
   # #=> "{\"a\":[1,null]}"

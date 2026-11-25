@@ -1,4 +1,5 @@
 #include "fmrb_hal_gpio.h"
+#include "fmrb_hal_pin_manager.h"
 #include "fmrb_log_port.h"
 #include <stdint.h>
 #include <stdbool.h>
@@ -8,15 +9,17 @@ static const char *TAG = "fmrb_hal_gpio";
 static uint32_t gpio_states[64] = {0};
 static bool gpio_configured[64] = {false};
 
-fmrb_err_t fmrb_hal_gpio_reset(fmrb_gpio_num_t gpio_num) {
-    if (gpio_num < 0 || gpio_num >= 64) {
-        return FMRB_ERR_INVALID_PARAM;
+// The same judgement as the device, with no task to own the pin (the
+// simulation has no GPIO class and no system pins).
+int fmrb_hal_gpio_claim(fmrb_gpio_num_t gpio_num, int use, bool reset) {
+    fmrb_pin_gpio_verdict_t v =
+        fmrb_pin_manager_claim_gpio(gpio_num, (fmrb_pin_gpio_use_t)use, NULL);
+    if (reset && v == FMRB_PIN_GPIO_OK && gpio_num < 64) {
+        gpio_states[gpio_num] = 0;
+        gpio_configured[gpio_num] = false;
+        ESP_LOGI(TAG, "Linux GPIO %d reset", gpio_num);
     }
-
-    gpio_states[gpio_num] = 0;
-    gpio_configured[gpio_num] = false;
-    ESP_LOGI(TAG, "Linux GPIO %d reset", gpio_num);
-    return FMRB_OK;
+    return (int)v;
 }
 
 fmrb_err_t fmrb_hal_gpio_config(fmrb_gpio_num_t gpio_num,

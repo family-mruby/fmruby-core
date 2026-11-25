@@ -66,18 +66,21 @@ static void handle_init(hw_proxy_request_t *req)
 
 #ifdef FMRB_HAS_LOCAL_DISPLAY
     if (p->unit == HW_PROXY_I2C_MEDIATED_UNIT) {
+        // Each refusal has its own code so that I2C.new can say which it
+        // was: the pins (NOT_SUPPORTED) and the display (INVALID_STATE) apart
+        // from a bad unit (INVALID_PARAM) and another owner (BUSY).
         if (p->sda != HW_PROXY_I2C_MEDIATED_SDA ||
             p->scl != HW_PROXY_I2C_MEDIATED_SCL) {
             FMRB_LOGE(TAG, "I2C%d on this board is fixed to SDA=%d SCL=%d",
                       p->unit, HW_PROXY_I2C_MEDIATED_SDA,
                       HW_PROXY_I2C_MEDIATED_SCL);
-            req->result = FMRB_ERR_INVALID_PARAM;
+            req->result = FMRB_ERR_NOT_SUPPORTED;
             return;
         }
         if (!display_local_is_ready()) {
             FMRB_LOGE(TAG, "I2C%d mediation unavailable (display not ready)",
                       p->unit);
-            req->result = FMRB_ERR_BUSY;
+            req->result = FMRB_ERR_INVALID_STATE;
             return;
         }
         s_i2c[p->unit].bus_handle = NULL;

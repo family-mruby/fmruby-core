@@ -13,7 +13,11 @@ extern "C" {
 
 typedef enum {
  I2C_ERROR_NONE          =  0,
- I2C_ERROR_INVALID_UNIT  = -1,
+ I2C_ERROR_INVALID_UNIT  = -1,  /* no such unit */
+ I2C_ERROR_BUSY          = -2,  /* another app has the unit */
+ I2C_ERROR_FIXED_PINS    = -3,  /* the unit is wired to other pins here */
+ I2C_ERROR_NOT_READY     = -4,  /* the driver that lends the unit is not up */
+ I2C_ERROR_BUS_FAILED    = -5,  /* the bus did not start on these pins */
 } i2c_status_t;
 
 int I2C_unit_name_to_unit_num(const char *);

@@ -86,6 +86,10 @@ void fmrb_midi_sched_clear_pid(uint8_t src_pid);
 void fmrb_midi_sched_clear_owner(uint8_t src_pid, uint8_t owner);
 
 int fmrb_midi_sched_depth(void);
+/* How many commands one player of an app (the owner it pushed with) still
+ * has queued. A player is over when this reaches 0, whatever other players
+ * and apps have queued. */
+int fmrb_midi_sched_depth_owner(uint8_t src_pid, uint8_t owner);
 int fmrb_midi_sched_free(void);
 
 void fmrb_midi_sched_get_stats(fmrb_midi_sched_stats_t *out);

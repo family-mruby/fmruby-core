@@ -2,14 +2,18 @@
 # 実装は picoruby の gem picoruby-gpio (mrblib/gpio.rb、src/mruby/gpio.c、include/gpio.h) と、
 # 端末側のつなぎ lib/upstream/picoruby-gpio-proxy/gpio.c -> main/drivers/hw_proxy/hw_proxy_gpio.c。
 # **入るのは ESP32 の実機 (S3・P4) だけ**。Linux sim・ネイティブ版・ブラウザ版には `GPIO` が無く、
-# NameError になる。同梱のアプリは `GPIO` を使っていない (ピンの台帳の `FmrbHw` だけ)。
+# NameError になる。同梱のアプリで `GPIO` を使うのは step_sensor (StickS3 の KEY1 を入力で読む) だけ。
+# ピンはピンの台帳 (`FmrbHw.pin_status`) に照らす: 空いているピンは最初に設定したアプリの物になり、
+# アプリが終わると返る。システムのピンは断られる。ただし**本体のボタン** (StickS3 の 11・12、
+# AtomS3R の 41、NARYA v3 の 6・7・8) は、入力として設定して読むことだけできる。
 # 注: tools/ti/test_sig/gpio.rbs は型エンジンの試験用の見本で、ファイル名が同じなので試験のときは
 # そちらが優先される。
 
 # 1 本のピンを入れ出力に使う <<en>> Use one pin as input or output
 #
 # `GPIO.new(ピン, フラグ)` で作り、`read` と `write` を使う。フラグは `GPIO::IN | GPIO::PULL_UP`
-# のように `|` でつなぐ。**ピンは整数だけ**。使ってよいピンは `FmrbHw.pin_available?` で調べる。
+# のように `|` でつなぐ。**ピンは整数だけ**。使ってよいピンは `FmrbHw.pin_available?` で調べる
+# (システムのピン・使用中のピンは IOError になる)。
 # ```ruby
 # led = GPIO.new(5, GPIO::OUT)
 # led.write(1)
@@ -17,7 +21,7 @@
 # <<en>>
 # `GPIO.new(pin, flags)` makes it, then `read` and `write`.
 # Join flags with `|`, as in `GPIO::IN | GPIO::PULL_UP`. **A pin is an integer only.** Check
-# with `FmrbHw.pin_available?` which pins you may use.
+# with `FmrbHw.pin_available?` which pins you may use (a system pin or one in use raises IOError).
 # ```ruby
 # led = GPIO.new(5, GPIO::OUT)
 # led.write(1)
@@ -47,11 +51,14 @@ class GPIO
   # `flags` に `IN`・`OUT`・`HIGH_Z` のどれか **1 つ**と、必要なら `PULL_UP` か `PULL_DOWN` を `|` で渡す。
   # `alt_function` (省略すると 0) は ALT 用で、この端末では効かない。
   #
-  # **ピンが使用中でも例外にならない**: 作るときに台帳へ取る (acquire) が、断られても結果は
-  # 見られず、そのまま設定と読み書きに進む。**システム専用のピンを触らない**ように、先に
-  # `FmrbHw.pin_available?` で確かめる。
+  # 作るときにピンの台帳へ取る。**取れないときは IOError で、ピンの設定 (向き・プル) は変えない**:
+  # システムのピンは "GPIO n is used by the system"、ほかのアプリ (または I2C などの別の使い方) が
+  # 持っているピンは "GPIO n is in use by another app or driver"。**本体のボタン**は台帳には取らず、
+  # `IN` (プルつきも) でだけ開ける。`OUT` などで開くと "GPIO n is a system button: input only"。
+  # 取ったピンはアプリが終わると台帳へ返る。
   #
-  # 文字列・Symbol のピンは ArgumentError ("Wrong GPIO pin name")、負の数も同じ。方向が無い・
+  # 文字列・Symbol のピンは ArgumentError ("Wrong GPIO pin name")、負の数も同じ。端末に無い番号は
+  # ArgumentError ("GPIO n does not exist on this board")。方向が無い・
   # 2 つ以上は ArgumentError ("You must specify one of IN, OUT, HIGH_Z, and ALT"・
   # "IN, OUT and HIGH_Z are exclusive")、`PULL_UP` と `PULL_DOWN` の両方も ArgumentError。
   # ```ruby
@@ -61,12 +68,17 @@ class GPIO
   # Pass in `flags` **one** of `IN`, `OUT` and `HIGH_Z`, plus `PULL_UP` or `PULL_DOWN` if
   # needed, joined with `|`. `alt_function` (0 when left out) is for ALT and has no effect here.
   #
-  # **A pin that is already in use does not raise.** The pin is claimed in the table, but a
-  # refusal is not looked at and setup and I/O go on. **To keep off system-only pins**, check
-  # `FmrbHw.pin_available?` first.
+  # The pin is claimed in the pin table.
+  # **When it cannot be, IOError is raised and the pin's setup (direction, pull) is left alone**:
+  # a system pin is "GPIO n is used by the system", a pin
+  # another app (or another use such as I2C) holds is "GPIO n is in use by another app or driver".
+  # **The board's buttons** are not claimed and open with `IN` (pulls too) only; `OUT` and the like
+  # raise "GPIO n is a system button: input only". A claimed pin goes back to the table when the
+  # app ends.
   #
   # A String or Symbol pin is an ArgumentError ("Wrong GPIO pin name"), and so is a negative
-  # number. No direction, or two or more, is an ArgumentError ("You must specify one of IN, OUT,
+  # number; a number this board does not have is an ArgumentError ("GPIO n does not exist on
+  # this board"). No direction, or two or more, is an ArgumentError ("You must specify one of IN, OUT,
   # HIGH_Z, and ALT", "IN, OUT and HIGH_Z are exclusive"), and so are both `PULL_UP` and `PULL_DOWN`.
   # ```ruby
   # sw = GPIO.new(7, GPIO::IN | GPIO::PULL_UP)
@@ -83,13 +95,13 @@ class GPIO
   # 向きとプルを設定し直す <<en>> Set direction and pull again
   #
   # `new` と同じ組み合わせを渡せる。**向きのフラグを渡さなければ向きは今のまま**、プルも同じ。
-  # 戻り値は 0。
+  # 戻り値は 0。本体のボタンを出力にしようとすると IOError。
   # ```ruby
   # sw.setmode(GPIO::IN | GPIO::PULL_DOWN)
   # ```
   # <<en>>
   # Takes the same combinations as `new`. **Without a direction flag the direction stays as**
-  # **it is**, and so does the pull. Returns 0.
+  # **it is**, and so does the pull. Returns 0. Making a board button an output raises IOError.
   # ```ruby
   # sw.setmode(GPIO::IN | GPIO::PULL_DOWN)
   # ```
@@ -97,12 +109,12 @@ class GPIO
 
   # 読む (0 か 1) <<en>> Read the level (0 or 1)
   #
-  # 失敗すると **-1** (例外にならない)。-1 は 0 でないので、`high?` は true になる。
+  # 読めなかったときは IOError ("GPIO n could not be read")。
   # ```ruby
   # sw.read   #=> 0 か 1
   # ```
   # <<en>>
-  # **-1** on failure (no exception). -1 is not 0, so `high?` is true then.
+  # IOError ("GPIO n could not be read") when the level cannot be read.
   # ```ruby
   # sw.read   #=> 0 or 1
   # ```
@@ -111,13 +123,13 @@ class GPIO
   # 書く (0 か 1) <<en>> Write the level (0 or 1)
   #
   # 0 と 1 以外は ArgumentError ("Wrong value. 0 and 1 are only valid")。戻り値は 0。
-  # 出力に設定したピンに使う。
+  # 出力に設定したピンに使う。本体のボタンでは IOError ("... input only")。
   # ```ruby
   # led.write(1)
   # ```
   # <<en>>
   # Anything but 0 and 1 is an ArgumentError ("Wrong value. 0 and 1 are only valid"). Returns 0.
-  # Use it on a pin set as an output.
+  # Use it on a pin set as an output. On a board button it raises IOError ("... input only").
   # ```ruby
   # led.write(1)
   # ```
@@ -125,12 +137,12 @@ class GPIO
 
   # 高いか <<en>> Whether the level is high
   #
-  # 読んだ値が 0 でなければ true (読めずに -1 のときも true)。
+  # 読んだ値が 0 でなければ true。読めなかったときは IOError。
   # ```ruby
   # pressed = !sw.high?
   # ```
   # <<en>>
-  # true when the value read is not 0 (also when the read failed and gave -1).
+  # true when the value read is not 0. IOError when the level cannot be read.
   # ```ruby
   # pressed = !sw.high?
   # ```
@@ -138,27 +150,29 @@ class GPIO
 
   # 低いか <<en>> Whether the level is low
   #
-  # 読んだ値が 0 なら true。
+  # 読んだ値が 0 なら true。読めなかったときは IOError。
   # ```ruby
   # pressed = sw.low?
   # ```
   # <<en>>
-  # true when the value read is 0.
+  # true when the value read is 0. IOError when the level cannot be read.
   # ```ruby
   # pressed = sw.low?
   # ```
   def low?: () -> bool
 
-  # ピン番号で向きを設定する (台帳に取らない) <<en>> Set direction by pin number (no claim)
+  # ピン番号で向きを設定する <<en>> Set direction by pin number
   #
-  # **`GPIO.new` を通さないので台帳に取らず**、ほかの設定も覚えない。`dir` は `IN`・`OUT`。
-  # 戻り値は 0。普通は `GPIO.new` を使う。
+  # `GPIO.new` と同じく台帳に照らす: 空いているピンはこのアプリの物になり、システムのピン・
+  # 使用中のピンは IOError (設定は変えない)。本体のボタンは `IN` だけ。ほかの設定は覚えない。
+  # `dir` は `IN`・`OUT`。戻り値は 0。普通は `GPIO.new` を使う。
   # ```ruby
   # GPIO.set_dir_at(5, GPIO::OUT)
   # ```
   # <<en>>
-  # **It skips `GPIO.new`, so the pin is not claimed** and nothing else is remembered. `dir`
-  # is `IN` or `OUT`. Returns 0. Normally use `GPIO.new`.
+  # Checked against the pin table as `GPIO.new` is: a free pin becomes this app's, a system pin
+  # or one in use raises IOError (nothing is changed). A board button takes `IN` only. Nothing
+  # else is remembered. `dir` is `IN` or `OUT`. Returns 0. Normally use `GPIO.new`.
   # ```ruby
   # GPIO.set_dir_at(5, GPIO::OUT)
   # ```
@@ -166,12 +180,12 @@ class GPIO
 
   # ピン番号でプルアップにする <<en>> Pull a pin up by number
   #
-  # `set_dir_at` と同じく台帳に取らない。戻り値は 0。
+  # `set_dir_at` と同じく台帳に照らす (本体のボタンにもかけられる)。戻り値は 0。
   # ```ruby
   # GPIO.pull_up_at(7)
   # ```
   # <<en>>
-  # Like `set_dir_at`, it does not claim the pin. Returns 0.
+  # Checked against the pin table like `set_dir_at` (a board button takes it too). Returns 0.
   # ```ruby
   # GPIO.pull_up_at(7)
   # ```
@@ -179,12 +193,12 @@ class GPIO
 
   # ピン番号でプルダウンにする <<en>> Pull a pin down by number
   #
-  # `set_dir_at` と同じく台帳に取らない。戻り値は 0。
+  # `set_dir_at` と同じく台帳に照らす (本体のボタンにもかけられる)。戻り値は 0。
   # ```ruby
   # GPIO.pull_down_at(7)
   # ```
   # <<en>>
-  # Like `set_dir_at`, it does not claim the pin. Returns 0.
+  # Checked against the pin table like `set_dir_at` (a board button takes it too). Returns 0.
   # ```ruby
   # GPIO.pull_down_at(7)
   # ```
@@ -192,12 +206,12 @@ class GPIO
 
   # ピン番号でオープンドレインにする (何もしない) <<en>> Open drain by number (does nothing)
   #
-  # この端末のつなぎは何もせず、戻り値は 0。
+  # この端末のつなぎは何もせず、戻り値は 0。出力と同じく台帳に照らす (断られると IOError)。
   # ```ruby
   # GPIO.open_drain_at(7)
   # ```
   # <<en>>
-  # This machine's link does nothing. Returns 0.
+  # This machine's link does nothing. Returns 0. Checked against the pin table as an output (IOError when refused).
   # ```ruby
   # GPIO.open_drain_at(7)
   # ```
@@ -205,12 +219,12 @@ class GPIO
 
   # ピン番号で代替機能にする (何もしない) <<en>> Alternate function by number (does nothing)
   #
-  # この端末のつなぎは何もせず、戻り値は 0。
+  # この端末のつなぎは何もせず、戻り値は 0。出力と同じく台帳に照らす (断られると IOError)。
   # ```ruby
   # GPIO.set_function_at(7, 1)
   # ```
   # <<en>>
-  # This machine's link does nothing. Returns 0.
+  # This machine's link does nothing. Returns 0. Checked against the pin table as an output (IOError when refused).
   # ```ruby
   # GPIO.set_function_at(7, 1)
   # ```
@@ -218,12 +232,15 @@ class GPIO
 
   # ピン番号で読む <<en>> Read by pin number
   #
-  # `GPIO#read` と同じ (0・1、失敗は -1)。文字列・Symbol や負の数は ArgumentError。
+  # 0 か 1。**読むだけなので、システムのピンも使用中のピンも読める** (台帳に取らず、設定も変えない)。
+  # 読めなかったときは IOError。文字列・Symbol・負の数・端末に無い番号は ArgumentError。
   # ```ruby
   # GPIO.read_at(7)
   # ```
   # <<en>>
-  # Same as `GPIO#read` (0 or 1, -1 on failure). A String, a Symbol or a negative number is an ArgumentError.
+  # 0 or 1. **Reading changes nothing, so any pin can be read**, a system pin or one in use too
+  # (it is not claimed). IOError when it cannot be read. A String, a Symbol, a negative number or
+  # a number this board does not have is an ArgumentError.
   # ```ruby
   # GPIO.read_at(7)
   # ```
@@ -231,12 +248,14 @@ class GPIO
 
   # ピン番号で書く <<en>> Write by pin number
   #
-  # `GPIO#write` と同じ (0・1 だけ、戻り値は 0)。
+  # `GPIO#write` と同じ (0・1 だけ、戻り値は 0)。`set_dir_at` と同じく台帳に照らす: 空いている
+  # ピンはこのアプリの物になり、システムのピン (ボタンも)・使用中のピンは IOError。
   # ```ruby
   # GPIO.write_at(5, 1)
   # ```
   # <<en>>
-  # Same as `GPIO#write` (0 or 1 only; returns 0).
+  # Same as `GPIO#write` (0 or 1 only; returns 0). Checked against the pin table like
+  # `set_dir_at`: a free pin becomes this app's; a system pin (a button too) or one in use raises IOError.
   # ```ruby
   # GPIO.write_at(5, 1)
   # ```
@@ -244,12 +263,12 @@ class GPIO
 
   # ピン番号で高いか <<en>> Whether a pin is high, by number
   #
-  # 読んだ値が 0 でなければ true。
+  # 読んだ値が 0 でなければ true。`read_at` と同じく、どのピンも読める。読めなければ IOError。
   # ```ruby
   # GPIO.high_at?(7)
   # ```
   # <<en>>
-  # True when the value read is not 0.
+  # True when the value read is not 0. Any pin can be read, as with `read_at`; IOError when it cannot be.
   # ```ruby
   # GPIO.high_at?(7)
   # ```
@@ -257,12 +276,12 @@ class GPIO
 
   # ピン番号で低いか <<en>> Whether a pin is low, by number
   #
-  # 読んだ値が 0 なら true。
+  # 読んだ値が 0 なら true。`read_at` と同じく、どのピンも読める。読めなければ IOError。
   # ```ruby
   # GPIO.low_at?(7)
   # ```
   # <<en>>
-  # True when the value read is 0.
+  # True when the value read is 0. Any pin can be read, as with `read_at`; IOError when it cannot be.
   # ```ruby
   # GPIO.low_at?(7)
   # ```

@@ -22,11 +22,19 @@ typedef enum {
 
 
 /**
- * @brief Reset GPIO pin to default state
+ * @brief Ask for a pin on behalf of an app's GPIO class (the pin manager's
+ *        fmrb_pin_manager_claim_gpio, run on the hw_proxy task for the
+ *        calling task)
  * @param gpio_num GPIO pin number
- * @return FMRB_OK on success, error code otherwise
+ * @param use fmrb_pin_gpio_use_t: read, input or output
+ * @param reset reset the pin to its default state when the caller takes it
+ *        now (GPIO.new); a button the system keeps is never reset
+ * @return fmrb_pin_gpio_verdict_t as an int; FMRB_PIN_GPIO_OK (0) and
+ *         FMRB_PIN_GPIO_OK_SHARED (1) let the caller go on. Nothing on the
+ *         pin changes when it is refused. -1 when the pin was granted but
+ *         its reset failed.
  */
-fmrb_err_t fmrb_hal_gpio_reset(fmrb_gpio_num_t gpio_num);
+int fmrb_hal_gpio_claim(fmrb_gpio_num_t gpio_num, int use, bool reset);
 
 /**
  * @brief Configure GPIO pin

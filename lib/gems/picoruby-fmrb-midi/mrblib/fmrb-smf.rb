@@ -412,7 +412,7 @@ module FmrbMidi
         end
 
         late = now - due
-        if late > UNDERRUN_US && @lookahead_us > 0 && @sched && @sched._depth == 0
+        if late > UNDERRUN_US && @lookahead_us > 0 && @sched && @sched._depth(@owner) == 0
           # Nothing was left queued and this is already audibly overdue: the
           # music gapped because the decoding did not keep up.
           @underrun_count += 1
@@ -438,9 +438,11 @@ module FmrbMidi
 
     # The song is decoded to the end; it is over once the queue has played
     # out what is left, and not a moment before.
+    # Only this player's commands count: another player (of this app or
+    # another) still playing must not keep this one "playing".
     def drain_or_finish
       close_instant
-      if @sched && @sched._depth > 0
+      if @sched && @sched._depth(@owner) > 0
         return DRAIN_POLL_MS
       end
 

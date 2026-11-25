@@ -23,7 +23,7 @@ static void execute_request(hw_proxy_request_t *req)
         hw_proxy_file_execute(req);
     } else if (req->op >= HW_PROXY_OP_I2C_INIT && req->op <= HW_PROXY_OP_I2C_RELEASE) {
         hw_proxy_i2c_execute(req);
-    } else if (req->op >= HW_PROXY_OP_GPIO_RESET && req->op <= HW_PROXY_OP_GPIO_PULL) {
+    } else if (req->op >= HW_PROXY_OP_GPIO_CLAIM && req->op <= HW_PROXY_OP_GPIO_PULL) {
         hw_proxy_gpio_execute(req);
     } else if (req->op >= HW_PROXY_OP_RMT_INIT && req->op <= HW_PROXY_OP_RMT_WRITE) {
         hw_proxy_rmt_execute(req);

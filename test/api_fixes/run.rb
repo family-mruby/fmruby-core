@@ -7,8 +7,9 @@
 #   - File.path (class method) returns its argument
 #     (lib/gems/picoruby-fmrb-filesystem/mrblib/file.rb, loaded into a module
 #     so it does not replace the host's own File)
-#   - JSON::Digger#dig raises past the end of an Array, and JSON.parse makes
-#     \uXXXX a UTF-8 character (lib/upstream/patch/picoruby-json/mrblib/json.rb)
+#   - JSON::Digger#dig raises past the end of an Array, JSON.parse makes
+#     \uXXXX a UTF-8 character, and JSON.generate refuses NaN and the
+#     infinities (lib/upstream/patch/picoruby-json/mrblib/json.rb)
 #   - MIDI::Device#pitch_bend works without Integer#clamp
 #     (lib/gems/picoruby-fmrb-midi/mrblib/fmrb-midi.rb over picoruby-midi)
 #   - SmfPlayer stops a note at the pitch it started at when transpose
@@ -23,6 +24,11 @@
 #     commands (doc/api_fixes F3; fmrb-midi.rb, fmrb-mml.rb, fmrb-smf.rb over
 #     a stand-in for the C queue that keeps the owner the way
 #     fmrb_midi_sched.c does)
+#   - A player's playing? ends with its own queued commands, not with the
+#     whole queue (doc/api_fixes F4, C3)
+#   - The pin table's GPIO rule on every board: the buttons are input only,
+#     the other system pins and another app's pins refuse GPIO (C, compiled
+#     here with gcc: test/api_fixes/pin_ledger)
 #
 # The C halves (File.open modes, Kernel.send_message) are checked on the sim
 # (doc/api_fixes/report/f1.md, f3.md).
@@ -95,6 +101,19 @@ check("u3042 in text", ubytes("\"x#{esc("3042")}y\""), [0x78, 0xE3, 0x81, 0x82, 
 check("surrogate pair", ubytes("\"#{esc("d83d", "de00")}\""), [0xF0, 0x9F, 0x98, 0x80])
 check("u cut short", raised { JSON.parse("\"#{BS}u30\"") },
       ["JSON::ParserError", "Incomplete unicode escape sequence"])
+
+# JSON.generate refuses NaN and the infinities, nested too (doc/api_fixes F4)
+nan = 0.0 / 0.0
+inf = 1.0 / 0.0
+check("generate NaN", raised { JSON.generate(nan) }, ["JSON::GeneratorError", "NaN not allowed in JSON"])
+check("generate Infinity", raised { JSON.generate(inf) },
+      ["JSON::GeneratorError", "Infinity not allowed in JSON"])
+check("generate -Infinity", raised { JSON.generate(-inf) },
+      ["JSON::GeneratorError", "-Infinity not allowed in JSON"])
+check("generate nested NaN", raised { JSON.generate({ "a" => { "b" => [1, nan] } }) },
+      ["JSON::GeneratorError", "NaN not allowed in JSON"])
+check("GeneratorError is a JSONError", JSON::GeneratorError.ancestors.include?(JSON::JSONError), true)
+check("generate finite floats", JSON.generate([1, 1.5, -0.25, { "x" => 2.0 }]), '[1,1.5,-0.25,{"x":2.0}]')
 
 # ---- MIDI --------------------------------------------------------------------
 
@@ -362,7 +381,16 @@ class QueueStandIn
   end
 
   def owners = @cmds.map { |c| c[3] }.uniq.sort
-  def _depth = @cmds.size
+  # No owner: the whole queue. An owner: that player's (fmrb_midi_sched.c
+  # counts this app's commands with that owner).
+  def _depth(owner = nil) = owner.nil? ? @cmds.size : @cmds.count { |c| c[3] == owner }
+
+  # The timer: everything due by now has been sent.
+  def fire!(now_us)
+    @now_us = now_us
+    @cmds.reject! { |c| c[0] <= now_us }
+  end
+
   def _free = 127 - @cmds.size
   def _now_us = @now_us
   def _reset_stats = nil
@@ -426,8 +454,99 @@ mml_player(TUNE, 2).tick
 q._clear
 check("midi: clearing the app takes all", q.cmds, [])
 
+# playing? of one player ends when its own commands have played, while
+# another player still has some queued (doc/api_fixes F4, C3).
+q.now_us = 0
+short = mml_player("o4 l16 c d", 0)
+long = mml_player("o3 l16 " + "cdefgab" * 6, 1)
+short.tick
+long.tick
+osh = short.instance_variable_get(:@owner)
+check("midi: both queued", q.owners.include?(osh) && q.owners.size == 2, true)
+q.fire!(400_000) # the short one's two notes are over, the long one goes on
+long.tick
+short.tick
+check("midi: the long one still has commands", q._depth > 0 && q._depth(osh) == 0, true)
+check("midi: the short one has ended though the other plays", [short.playing?, short.finished?, long.playing?],
+      [false, true, true])
+long.stop
+# And one player alone still waits for its own queue to play out.
+q.now_us = 0
+solo2 = mml_player("o4 l16 c d", 0)
+solo2.tick
+solo2.tick
+check("midi: alone, still playing while its notes are queued", solo2.playing?, true)
+q.fire!(400_000)
+solo2.tick
+check("midi: alone, over once they played", solo2.playing?, false)
+
+# The same for an SmfPlayer: one quarter note (480 ticks, 120 bpm = 0.5 s)
+# beside a long MmlPlayer.
+def smf_bytes(track)
+  hdr = "MThd" + [6, 0, 1, 480].pack("Nnnn")
+  hdr + "MTrk" + [track.bytesize].pack("N") + track
+end
+one_note = [0x00, 0x90, 60, 100, 0x83, 0x60, 0x80, 60, 0, 0x00, 0xFF, 0x2F, 0x00].pack("C*")
+q.now_us = 0
+sm = FmrbMidi::SmfPlayer.new(FmrbMidi.device(nil))
+check("midi: smf one note loads", sm.load_string(smf_bytes(one_note)), true)
+sm.start
+long2 = mml_player("o3 l16 " + "cdefgab" * 12, 1)
+sm.tick
+long2.tick
+q.fire!(700_000)
+long2.tick
+sm.tick       # decodes the note off (due at 0.5 s), late
+q.fire!(700_000)
+long2.tick
+sm.tick
+osm = sm.instance_variable_get(:@owner)
+check("midi: smf ends while the mml plays", [q._depth(osm), q._depth > 0, sm.playing?, long2.playing?],
+      [0, true, false, true])
+long2.stop
+
 FmrbMidi.instance_variable_set(:@scheduler, nil)
 FmrbMidi.instance_variable_set(:@scheduler_checked, false)
+
+# ---- The pin table's GPIO rule, per board (doc/api_fixes F4, C1) -----------
+#
+# test/api_fixes/pin_ledger/pin_ledger_test.c over the ESP32 pin manager,
+# compiled for each board with its real fmrb_pin_assign.h. The buttons are the
+# only system pins an app may read as an input; the rest refuse GPIO.
+
+require "tmpdir"
+require "open3"
+
+PIN_BOARDS = {
+  # board => [chip define, the buttons (input only), the other system pins]
+  "NARYAV3" => [nil, [6, 7, 8],
+                [0, 1, 3, 4, 5, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 35, 36, 37, 38, 39, 45, 46]],
+  "TAB5" => ["CONFIG_IDF_TARGET_ESP32P4", [], [24, 25]],
+  "NARYAV4" => ["CONFIG_IDF_TARGET_ESP32P4", [], [35, 37, 38]],
+  "ATOMS3R" => [nil, [41], [14, 15, 19, 20, 21, 35, 36, 37, 42, 46, 48]],
+  "STICKS3" => [nil, [11, 12], [0, 19, 20, 21, 35, 36, 37, 39, 40, 41, 45]],
+}
+pl = File.join(ROOT, "test/api_fixes/pin_ledger")
+Dir.mktmpdir("pin_ledger") do |tmp|
+  PIN_BOARDS.each do |board, (chip, inputs, system)|
+    exe = File.join(tmp, board)
+    cmd = ["gcc", "-std=gnu11", "-Wall", "-Wno-unused-variable", "-Werror"]
+    cmd << "-DFMRB_HW_#{board}" unless board == "NARYAV3" # the default branch
+    cmd << "-D#{chip}" if chip
+    cmd += ["-I#{pl}/stub", "-I#{ROOT}/components/fmrb_hal", "-I#{ROOT}/components/fmrb_common/include",
+            "-o", exe, "#{pl}/pin_ledger_test.c",
+            "#{ROOT}/components/fmrb_hal/platform/esp32/fmrb_hal_pin_manager_esp32.c"]
+    out, st = Open3.capture2e(*cmd)
+    check("pin ledger #{board}: builds", [st.success?, out], [true, ""])
+    next unless st.success?
+
+    out, st = Open3.capture2e(exe)
+    nums = ->(label) { (out[/^#{label}:(.*)$/, 1] || "").split.map(&:to_i) }
+    check("pin ledger #{board}: verdicts", [st.success?, out[/^FAIL.*$/]], [true, nil])
+    check("pin ledger #{board}: buttons (input only)", nums.call("inputs"), inputs)
+    check("pin ledger #{board}: other system pins", nums.call("system"), system)
+  end
+end
 
 if $failures.zero?
   puts "api_fixes: #{$count} checks passed"

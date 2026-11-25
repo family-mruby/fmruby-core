@@ -362,6 +362,14 @@ module FmrbMidi
 
     # 鳴っている最中かどうか <<en>> Whether it is playing
     #
+    # 曲を最後まで読み、**このプレーヤーが予約した音**が全部鳴ったら false になる。ほかのプレーヤー
+    # (同じアプリでも別のアプリでも) が鳴らしている間も、自分の分が終われば false。
+    # ```ruby
+    # draw_bar if @smf.playing?
+    # ```
+    # <<en>>
+    # Turns false once the song is read to the end and **what this player queued** has all played.
+    # Another player (of this app or another) still playing does not keep it true.
     # ```ruby
     # draw_bar if @smf.playing?
     # ```
@@ -937,6 +945,14 @@ module FmrbMidi
 
     # 鳴っている最中かどうか <<en>> Whether it is playing
     #
+    # 曲を最後まで読み、**このプレーヤーが予約した音**が全部鳴ったら false になる。ほかのプレーヤー
+    # (同じアプリでも別のアプリでも) が鳴らしている間も、自分の分が終われば false。
+    # ```ruby
+    # draw_bar if @mml.playing?
+    # ```
+    # <<en>>
+    # Turns false once the song is read to the end and **what this player queued** has all played.
+    # Another player (of this app or another) still playing does not keep it true.
     # ```ruby
     # draw_bar if @mml.playing?
     # ```

@@ -513,7 +513,7 @@ check("not answered: nil", owner.last(:refused), [:refused, nil, nil])
 
 puts "leave"
 tc, owner = seated
-tc.leave
+check("leave returns nil", tc.leave, nil)
 check("the host told", Asterism.host.calls.last, ["h/games/othello1", :leave, "tok-me"])
 check("off the table", [tc.table, tc.token, tc.view_v, tc.host_gone?], [nil, nil, 0, false])
 n = Asterism.host.count(:view)

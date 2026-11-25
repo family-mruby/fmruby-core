@@ -15,7 +15,15 @@ int I2C_unit_name_to_unit_num(const char *unit_name)
 i2c_status_t I2C_gpio_init(int unit_num, uint32_t frequency, int8_t sda_pin, int8_t scl_pin)
 {
     int ret = fmrb_hal_i2c_init(unit_num, frequency, sda_pin, scl_pin);
-    return (ret == FMRB_I2C_OK) ? I2C_ERROR_NONE : I2C_ERROR_INVALID_UNIT;
+    switch (ret) {
+    case FMRB_I2C_OK:            return I2C_ERROR_NONE;
+    case FMRB_ERR_INVALID_PARAM: return I2C_ERROR_INVALID_UNIT;
+    case FMRB_ERR_BUSY:          return I2C_ERROR_BUSY;
+    case FMRB_ERR_NOT_SUPPORTED: return I2C_ERROR_FIXED_PINS;
+    case FMRB_ERR_INVALID_STATE: return I2C_ERROR_NOT_READY;
+    case FMRB_ERR_FAILED:        return I2C_ERROR_BUS_FAILED;
+    default:                     return (i2c_status_t)ret;
+    }
 }
 
 void I2C_release(int unit_num)
