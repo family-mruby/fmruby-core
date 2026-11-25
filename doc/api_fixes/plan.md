@@ -104,6 +104,23 @@ B8: `TRANSPARENT_COLOR`・`FmrbGfx::FONT_METRICS` を sig に、`CLOSE_BTN_*` �
 見つかった別の物 (直していない): MIDI の `_depth`・`_free` が待ち行列の全体を数えるので、ほかのプレーヤーやアプリが
 鳴らしている間 `playing?` が true のまま残る見込み (読みだけ)。
 
+### 実機 (P4-Nano) とまとめの回帰 (2026-11-25)
+
+- **P4-Nano に焼いて確かめた** (develop `1e89a5f6`、`FMRB_HW_TARGET=NARYAv4` で作り `rake flash:app_sync`):
+  起動ログに crash 0、周期ダンプ 10 秒ごと、内蔵 RAM の空きは直す前と同じ水準 (起動後 208 KB 台)。
+  `delay_ms`: 300 → 300.5 ms、100 → 100.3 ms、10 → 10.0 ms、5 → 5.3 ms、2 → 2.5 ms、1 → 1.5 ms (直す前は約 1/10、
+  10 ms 未満は眠らない)。確認用のアプリを WiFi で送って: `a+` の追記と無いファイルの作成、`rb+`、`File.path`、
+  Digger の DiggerError、`\u3042` が UTF-8 の 3 バイト、Kernel の定数 0・1・2 と番号 9 の ArgumentError、
+  `FmrbApp.last_error`、`pitch_bend`、`puts` の配列が 1 要素 1 行、がどれも意図どおり。
+  麻雀 (スタック 24 KB): ロビー → 卓 → 対局 5 巡でスタックの余り 9,784 バイト (和了・結果の画面は未確認)。
+  未確認: S3 (Retro)・StickS3 の実機、GPIO、Asterism の待ちの間の CPU の計測、ランチャーを開く時間の比較。
+- **回帰**: `rake regress`・`regress:live` (17/17)・`regress:screens` (28/28)・`regress:size` (S3・P4 のビルド) は通過。
+  **`regress:run` (VM プール) は基準 (2026-11-21) から外れた**: system_desktop +1.7〜2.1 KB、FlappyDemo +768 B。
+  直しの前の版 (`521eb2e7`) で流すと system_desktop は既に +1.9 KB (2026-11-24 の起動失敗のエラーメッセージの分)。
+  F1〜F3 の分は system_desktop +約 0.2 KB、アプリ 1 つあたり +約 0.8 KB (FlappyDemo)。`IO#puts` の補助のメソッドを
+  1 つにまとめる形を試したが減らなかった (揺れの幅の内) ので戻した。mrblib に足したコードの分と見ている (切り分けは
+  そこまで)。**基準は更新していない** (ユーザの確認待ち)。
+
 ## 3. スコープ
 
 - F1: A の 12 個。
