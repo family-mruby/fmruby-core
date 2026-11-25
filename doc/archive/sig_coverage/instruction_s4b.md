@@ -45,7 +45,7 @@
    各領域の大きさの前後を控える (シグネチャの領域は今 63%。80% を超えそうなら報告の先頭に書く)。
    **ビルドと sim の確認はしない** (親が検収で行う)。
 
-## 報告に必ず書くこと (doc/sig_coverage/report/s4b.md)
+## 報告に必ず書くこと (doc/archive/sig_coverage/report/s4b.md)
 
 1. **根拠の表**: 書いたメソッドごとに、読んだ実装の `パス:行`。失敗のしかた・呼べる場面・単位を書いたものは、その根拠の行も。
 2. 書いた数 (クラスごと)、素直 / つまずくの内訳。
@@ -62,7 +62,7 @@
 
 - 触ってよい: `sig/fmrb_midi.rbs`・`sig/fmrb_audio.rbs`・`sig/fmrb_tile.rbs`・`sig/fmrb_p5.rbs`・`sig/fmrb_picture.rbs`・
   `sig/fmrb_misc.rbs` (対象のクラスの宣言があるとき)、`sdk/` (境界の作り直しが要るときだけ)、
-  `tools/sig_coverage/baseline.json`、`doc/sig_coverage/report/s4b.md`、`rake docs:index` による `doc/README.md`。
+  `tools/sig_coverage/baseline.json`、`doc/archive/sig_coverage/report/s4b.md`、`rake docs:index` による `doc/README.md`。
 - 変えない: 実装・アプリ・上の一覧に無い sig・`sig/README.md`・plan.md・`tools/` の道具と ignore.yml・型エンジンの試験の
   期待値 (試験が落ちたら止まって報告)。既にある宣言の要約。
 - ビルドをしない (sim・ESP32・ブラウザ版・ネイティブ版とも。`rake clean`・`rake build:*` を流さない)。

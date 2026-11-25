@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# sig coverage (doc/sig_coverage S0): what sig/*.rbs is missing, counted the
+# sig coverage (doc/archive/sig_coverage S0): what sig/*.rbs is missing, counted the
 # same way every time, so the order of the work and "is this range done"
 # both come from one number.
 #
@@ -425,7 +425,7 @@ module SigCoverage
         next if found
         next if skip?(2, m.key) || (target && target != m.class_name && skip?(2, m.key.sub(m.class_name, target)))
         # A method its own gem marks `@api private` is left out without a
-        # line in ignore.yml (doc/sig_coverage, decision 9): the mark is the
+        # line in ignore.yml (doc/archive/sig_coverage, decision 9): the mark is the
         # gem's, and a list of 150 names would only drift from it.
         if m.api_private
           @api_private_out << m

@@ -36,7 +36,7 @@
    シグネチャ・見出しのリンク) を確かめる。撮った画像は scratchpad に置き、パスを報告に書く。
 4. サイトの側はブランチ `api-reference` にコミットする (生成物と、`mkdocs.yml`・話題のページの印の行)。
 
-## 報告 (fmruby-core の doc/sig_coverage/report/s7.md)
+## 報告 (fmruby-core の doc/archive/sig_coverage/report/s7.md)
 
 1. 道具に足したもの (上の項目ごと) と試験。
 2. 生成の結果: クラスの数・ページの数・大きさ、ビルド時間、リンクの検査の結果、警告。
@@ -48,7 +48,7 @@
 ## 範囲と止まる条件
 
 - 触ってよい: fmruby-core の `tools/ti/gen_site.rb`・`tools/ti/site_exclude.yml`・道具の試験・`rakelib/ti.rake`
-  (と試験を並びに足す `rakelib/test.rake`)・`doc/sig_coverage/report/s7.md`・`doc/README.md` (`rake docs:index`)。
+  (と試験を並びに足す `rakelib/test.rake`)・`doc/archive/sig_coverage/report/s7.md`・`doc/README.md` (`rake docs:index`)。
   サイトの checkout のブランチ `api-reference` (`docs/api/reference/`・`mkdocs.yml`・話題のページの印の行の間・
   要れば CSS 1 つ)。
 - 変えない: `sig/`・実装・ほかの道具・`gen_help.rb` (端末のヘルプ)・サイトの手で書いた本文・サイトの `main`。

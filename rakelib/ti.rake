@@ -109,7 +109,7 @@ namespace :ti do
     rm_f Dir["#{PICORUBY_TI_WASM_DIR}/{ti.js,ti.wasm,help.json}"]
   end
 
-  # The class reference of the documentation site (doc/sig_coverage S7): one
+  # The class reference of the documentation site (doc/archive/sig_coverage S7): one
   # page per class and language from sig/, the index, and the nav entries in
   # the site's mkdocs.yml. The pages are committed in the site's repository,
   # like the browser build (rake wasm:site).

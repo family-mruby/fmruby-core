@@ -43,7 +43,7 @@
    「3. doc gaps」は全部 0 のまま)。`rake sig:coverage:update` で基準を更新し、別コミットにする。型データベースの
    各領域の大きさの前後を控える。**ビルドと sim の確認はしない** (親が検収で行う)。
 
-## 報告に必ず書くこと (doc/sig_coverage/report/s5a.md)
+## 報告に必ず書くこと (doc/archive/sig_coverage/report/s5a.md)
 
 1. **根拠の表**: 書いたメソッドごとに、読んだ実装の `パス:行` と、どのビルドに入るか。失敗のしかた・呼べる場面を
    書いたものは、その根拠の行も。
@@ -59,7 +59,7 @@
 ## 範囲と止まる条件
 
 - 触ってよい: 上に挙げた sig のファイル (新規と、今ある宣言への追加)、`sdk/` (境界の作り直しが要るときだけ)、
-  `tools/sig_coverage/baseline.json`、`doc/sig_coverage/report/s5a.md`、`rake docs:index` による `doc/README.md`。
+  `tools/sig_coverage/baseline.json`、`doc/archive/sig_coverage/report/s5a.md`、`rake docs:index` による `doc/README.md`。
 - 変えない: 実装・アプリ・上の一覧に無い sig・`sig/README.md`・plan.md・`tools/` の道具と ignore.yml・型エンジンの試験の
   期待値 (試験が落ちたら止まって報告)。既にある宣言の要約。Asterism 関係の sig (`sig/fmrb_asterism.rbs`)。
 - ビルドをしない (sim・ESP32・ブラウザ版・ネイティブ版とも。`rake clean`・`rake build:*` を流さない)。

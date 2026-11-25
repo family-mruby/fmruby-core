@@ -1,4 +1,4 @@
-# What sig/ leaves out on purpose (doc/sig_coverage, decision 4): the tool
+# What sig/ leaves out on purpose (doc/archive/sig_coverage, decision 4): the tool
 # removes these from its counts and reports only how many it removed.
 #
 #   - name: Class               the class and its methods (not nested classes)
@@ -8,7 +8,7 @@
 #
 # Only what is internal by reading the implementation goes here. Anything
 # that may be meant for apps stays counted until the parent session and the
-# user decide (doc/sig_coverage/report/s0.md lists those).
+# user decide (doc/archive/sig_coverage/report/s0.md lists those).
 
 # ---- drawing, editor, kernel internals ----------------------------------
 
@@ -80,7 +80,7 @@
 - file: flash/app/debug/compile_err.app.rb
   reason: Broken on purpose, to show a compile error.
 
-# ---- decided with the user (doc/sig_coverage/plan.md, decisions 8 to 16) ---
+# ---- decided with the user (doc/archive/sig_coverage/plan.md, decisions 8 to 16) ---
 
 - name: PicoRabbit::Theme
   reason: Inside the slide app (PicoRabbit); not a part for other apps (decision 10).
@@ -114,291 +114,291 @@
 - name: FmrbApp#destroy
   reason: >-
     Called by start when the app ends; no app or template calls it, so there
-    is no safe example to give (doc/sig_coverage S3). Its summary stays.
+    is no safe example to give (doc/archive/sig_coverage S3). Its summary stays.
 - name: FmrbApp#main_loop
-  reason: Called by start; apps do not call it (doc/sig_coverage S3).
+  reason: Called by start; apps do not call it (doc/archive/sig_coverage S3).
 
-# ---- FmrbUI's widgets, the inside (doc/sig_coverage S4a, decision 11) ------
+# ---- FmrbUI's widgets, the inside (doc/archive/sig_coverage S4a, decision 11) ------
 
 - name: "FmrbUI::Widget.new"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#activate"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#direction"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#dirty="
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#draw_widget"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#enabled="
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#field_text"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#fires_on_press?"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#fit_widget_text"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#focus"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#follow_theme_ground"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#group"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#on?"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#option_text"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#press"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#relayout"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#release"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#set_field_text"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#set_on"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#set_range"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#set_text"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#set_value"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#shown"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#shown="
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#take_ground"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#text_h"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#type_key"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#value"
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Widget#visible="
   reason: >-
-    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/sig_coverage decision 11).
+    The base every widget shares: what FmrbUI itself calls to draw, press and lay out a widget, and the do-nothing receivers it calls on any widget. Apps use FmrbUI's own methods (value, set_text, set_enabled ...) (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Button.new"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Button#activate"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Button#draw_widget"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Button#fit_widget_text"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Button#press"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Button#relayout"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Button#release"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Button#set_text"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Stepper.new"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Stepper#activate"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Stepper#arrow_w"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Stepper#draw_widget"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Stepper#fit_widget_text"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Stepper#press"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Stepper#relayout"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Stepper#release"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Toggle.new"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Toggle#activate"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Toggle#draw_widget"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Toggle#fit_widget_text"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Toggle#press"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Toggle#relayout"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Toggle#release"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Toggle#set_text"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Scrollbar.new"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Scrollbar#activate"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Scrollbar#direction"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Scrollbar#draw_widget"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Scrollbar#fires_on_press?"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Scrollbar#press"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Scrollbar#release"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Label.new"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Label#draw_widget"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Label#fit_widget_text"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Label#relayout"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::Label#set_text"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::TextField.new"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::TextField#activate"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::TextField#draw_widget"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::TextField#focus"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbUI::TextField#type_key"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 - name: "FmrbApp.new"
   reason: >-
-    Called by the runtime (new) or by FmrbUI.new itself (attach_ui); no app calls it (doc/sig_coverage S4a).
+    Called by the runtime (new) or by FmrbUI.new itself (attach_ui); no app calls it (doc/archive/sig_coverage S4a).
 - name: "FmrbApp#attach_ui"
   reason: >-
-    Called by the runtime (new) or by FmrbUI.new itself (attach_ui); no app calls it (doc/sig_coverage S4a).
+    Called by the runtime (new) or by FmrbUI.new itself (attach_ui); no app calls it (doc/archive/sig_coverage S4a).
 - name: "FmrbUI::Enum.new"
   reason: >-
-    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/sig_coverage decision 11).
+    Inside FmrbUI: the widget's constructor and what the container calls to draw, press and lay it out. Apps make it with FmrbUI's methods and change it through the container (doc/archive/sig_coverage decision 11).
 
-# ---- sound and picture internals (doc/sig_coverage S4b) ---------------------
+# ---- sound and picture internals (doc/archive/sig_coverage S4b) ---------------------
 
 - name: "FmrbMidi::SerialTransport.new"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#all_off"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#baud"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#bytes_available"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#close"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#connected?"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#defer_voices"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#device_info"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#flush_voices"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#note_off"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#note_on"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#path"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#read_available"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#rx_pin"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#send_packet"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#send_raw"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#transport_id"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#tx_pin"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::SerialTransport#uart_num"
   reason: >-
-    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/sig_coverage decision 12).
+    The sender for an outside MIDI sound module. Apps do not make one: FmrbMidi.sam2695_device hands back a MIDI::Device on top of it (doc/archive/sig_coverage decision 12).
 - name: "FmrbMidi::ApuTransport#audio"
   reason: >-
     The packet side of the built-in sound's sender; the methods apps call are in sig (decision 12).
@@ -428,25 +428,25 @@
     The packet side of the built-in sound's sender; the methods apps call are in sig (decision 12).
 - name: "FmrbMidi::SmfPlayer#close_instant"
   reason: >-
-    Steps of the player's own tick (doc/sig_coverage S4b).
+    Steps of the player's own tick (doc/archive/sig_coverage S4b).
 - name: "FmrbMidi::SmfPlayer#drain_or_finish"
   reason: >-
-    Steps of the player's own tick (doc/sig_coverage S4b).
+    Steps of the player's own tick (doc/archive/sig_coverage S4b).
 - name: "FmrbMidi::SmfPlayer#drop_queued"
   reason: >-
-    Steps of the player's own tick (doc/sig_coverage S4b).
+    Steps of the player's own tick (doc/archive/sig_coverage S4b).
 - name: "FmrbMidi::SmfPlayer#ms_until"
   reason: >-
-    Steps of the player's own tick (doc/sig_coverage S4b).
+    Steps of the player's own tick (doc/archive/sig_coverage S4b).
 - name: "FmrbMidi::SmfPlayer#open_instant"
   reason: >-
-    Steps of the player's own tick (doc/sig_coverage S4b).
+    Steps of the player's own tick (doc/archive/sig_coverage S4b).
 - name: "FmrbMidi::SmfPlayer#run_due"
   reason: >-
-    Steps of the player's own tick (doc/sig_coverage S4b).
+    Steps of the player's own tick (doc/archive/sig_coverage S4b).
 - name: "FmrbMidi::SmfPlayer#voice_group_of"
   reason: >-
-    Steps of the player's own tick (doc/sig_coverage S4b).
+    Steps of the player's own tick (doc/archive/sig_coverage S4b).
 - name: "MIDI::Device#send_control_change"
   reason: >-
     The raw senders the players call; apps use note_on, note_off, control_change and program_change (decision 12).
@@ -479,288 +479,288 @@
     The SAM2695 module's own setup, reached through FmrbMidi.sam2695_device (decision 12).
 - name: "NsfHeader.extract_string"
   reason: >-
-    The parser's constructor and helper; apps use the class's reading methods that are in sig (doc/sig_coverage S4b).
+    The parser's constructor and helper; apps use the class's reading methods that are in sig (doc/archive/sig_coverage S4b).
 - name: "NsfHeader.new"
   reason: >-
-    The parser's constructor and helper; apps use the class's reading methods that are in sig (doc/sig_coverage S4b).
+    The parser's constructor and helper; apps use the class's reading methods that are in sig (doc/archive/sig_coverage S4b).
 - name: "BMP332.save_bmp"
   reason: >-
-    Used by the sprite editor's own save path (doc/sig_coverage S4b).
+    Used by the sprite editor's own save path (doc/archive/sig_coverage S4b).
 - name: "FmrbMidi::MmlPlayer#voice_group_of"
   reason: >-
-    A step of the player's own tick (doc/sig_coverage S4b).
+    A step of the player's own tick (doc/archive/sig_coverage S4b).
 
-# ---- data, devices and the calculation cores, the inside (doc/sig_coverage S5a) --
+# ---- data, devices and the calculation cores, the inside (doc/archive/sig_coverage S5a) --
 
 - name: "JSON::Digger#dig_array"
   reason: >-
-    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+    Steps of Digger#dig; apps call new, dig and parse (doc/archive/sig_coverage S5a, decision 15).
 - name: "JSON::Digger#dig_number"
   reason: >-
-    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+    Steps of Digger#dig; apps call new, dig and parse (doc/archive/sig_coverage S5a, decision 15).
 - name: "JSON::Digger#dig_object"
   reason: >-
-    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+    Steps of Digger#dig; apps call new, dig and parse (doc/archive/sig_coverage S5a, decision 15).
 - name: "JSON::Digger#dig_string"
   reason: >-
-    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+    Steps of Digger#dig; apps call new, dig and parse (doc/archive/sig_coverage S5a, decision 15).
 - name: "JSON::Digger#dig_value"
   reason: >-
-    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+    Steps of Digger#dig; apps call new, dig and parse (doc/archive/sig_coverage S5a, decision 15).
 - name: "JSON::Digger#pop_stack"
   reason: >-
-    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+    Steps of Digger#dig; apps call new, dig and parse (doc/archive/sig_coverage S5a, decision 15).
 - name: "JSON::Digger#push_stack"
   reason: >-
-    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+    Steps of Digger#dig; apps call new, dig and parse (doc/archive/sig_coverage S5a, decision 15).
 - name: "JSON::Digger#reset"
   reason: >-
-    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+    Steps of Digger#dig; apps call new, dig and parse (doc/archive/sig_coverage S5a, decision 15).
 - name: "JSON::Digger#skip_whitespace"
   reason: >-
-    Steps of Digger#dig; apps call new, dig and parse (doc/sig_coverage S5a, decision 15).
+    Steps of Digger#dig; apps call new, dig and parse (doc/archive/sig_coverage S5a, decision 15).
 - name: "FmrbToml.dig"
   reason: >-
-    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/sig_coverage S5a).
+    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/archive/sig_coverage S5a).
 - name: "FmrbToml.dump_float"
   reason: >-
-    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/sig_coverage S5a).
+    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/archive/sig_coverage S5a).
 - name: "FmrbToml.header_name"
   reason: >-
-    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/sig_coverage S5a).
+    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/archive/sig_coverage S5a).
 - name: "FmrbToml.line_key"
   reason: >-
-    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/sig_coverage S5a).
+    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/archive/sig_coverage S5a).
 - name: "FmrbToml.quote"
   reason: >-
-    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/sig_coverage S5a).
+    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/archive/sig_coverage S5a).
 - name: "FmrbToml.read"
   reason: >-
-    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/sig_coverage S5a).
+    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/archive/sig_coverage S5a).
 - name: "FmrbToml.set_line"
   reason: >-
-    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/sig_coverage S5a).
+    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/archive/sig_coverage S5a).
 - name: "FmrbToml.split_name"
   reason: >-
-    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/sig_coverage S5a).
+    The parser's and writer's own helpers; apps call parse, load, get and the writers in sig (doc/archive/sig_coverage S5a).
 - name: "FmrbNet::Request.new"
   reason: >-
-    Made and driven by FmrbNet.request / fetch; apps read the result through the methods in sig (doc/sig_coverage S5a).
+    Made and driven by FmrbNet.request / fetch; apps read the result through the methods in sig (doc/archive/sig_coverage S5a).
 - name: "FmrbNet::Request#fetch_now"
   reason: >-
-    Made and driven by FmrbNet.request / fetch; apps read the result through the methods in sig (doc/sig_coverage S5a).
+    Made and driven by FmrbNet.request / fetch; apps read the result through the methods in sig (doc/archive/sig_coverage S5a).
 - name: "FmrbNet::Request#release"
   reason: >-
-    Made and driven by FmrbNet.request / fetch; apps read the result through the methods in sig (doc/sig_coverage S5a).
+    Made and driven by FmrbNet.request / fetch; apps read the result through the methods in sig (doc/archive/sig_coverage S5a).
 - name: "FmrbNet::Request#start_in_page"
   reason: >-
-    Made and driven by FmrbNet.request / fetch; apps read the result through the methods in sig (doc/sig_coverage S5a).
+    Made and driven by FmrbNet.request / fetch; apps read the result through the methods in sig (doc/archive/sig_coverage S5a).
 - name: "GPIO#open_drain"
   reason: >-
-    The pin setup GPIO.new does itself; apps use new, read, write and the predicates (doc/sig_coverage S5a).
+    The pin setup GPIO.new does itself; apps use new, read, write and the predicates (doc/archive/sig_coverage S5a).
 - name: "GPIO#set_dir"
   reason: >-
-    The pin setup GPIO.new does itself; apps use new, read, write and the predicates (doc/sig_coverage S5a).
+    The pin setup GPIO.new does itself; apps use new, read, write and the predicates (doc/archive/sig_coverage S5a).
 - name: "GPIO#set_function"
   reason: >-
-    The pin setup GPIO.new does itself; apps use new, read, write and the predicates (doc/sig_coverage S5a).
+    The pin setup GPIO.new does itself; apps use new, read, write and the predicates (doc/archive/sig_coverage S5a).
 - name: "GPIO#set_pull"
   reason: >-
-    The pin setup GPIO.new does itself; apps use new, read, write and the predicates (doc/sig_coverage S5a).
+    The pin setup GPIO.new does itself; apps use new, read, write and the predicates (doc/archive/sig_coverage S5a).
 - name: "FmrbColors.lookup"
   reason: >-
-    The table's own reader and writer, used by the Config app; apps use by_name, to_color and the palette readers (doc/sig_coverage S5a).
+    The table's own reader and writer, used by the Config app; apps use by_name, to_color and the palette readers (doc/archive/sig_coverage S5a).
 - name: "FmrbColors.read"
   reason: >-
-    The table's own reader and writer, used by the Config app; apps use by_name, to_color and the palette readers (doc/sig_coverage S5a).
+    The table's own reader and writer, used by the Config app; apps use by_name, to_color and the palette readers (doc/archive/sig_coverage S5a).
 - name: "FmrbColors.write"
   reason: >-
-    The table's own reader and writer, used by the Config app; apps use by_name, to_color and the palette readers (doc/sig_coverage S5a).
+    The table's own reader and writer, used by the Config app; apps use by_name, to_color and the palette readers (doc/archive/sig_coverage S5a).
 - name: "Fmrb::Fft.spinel_close"
   reason: >-
-    The Spinel back end's open and close, called by Fmrb::Fft.new (doc/sig_coverage S5a).
+    The Spinel back end's open and close, called by Fmrb::Fft.new (doc/archive/sig_coverage S5a).
 - name: "Fmrb::Fft.spinel_open"
   reason: >-
-    The Spinel back end's open and close, called by Fmrb::Fft.new (doc/sig_coverage S5a).
+    The Spinel back end's open and close, called by Fmrb::Fft.new (doc/archive/sig_coverage S5a).
 - name: "Fmrb::Raycast.open"
   reason: >-
-    The back end's open, close and map packer, called by Fmrb::Raycast itself (doc/sig_coverage S5a).
+    The back end's open, close and map packer, called by Fmrb::Raycast itself (doc/archive/sig_coverage S5a).
 - name: "Fmrb::Raycast.pack_map"
   reason: >-
-    The back end's open, close and map packer, called by Fmrb::Raycast itself (doc/sig_coverage S5a).
+    The back end's open, close and map packer, called by Fmrb::Raycast itself (doc/archive/sig_coverage S5a).
 
-# ---- Asterism, the ROS 2 bridge and the table client, the inside (doc/sig_coverage S5b) --
+# ---- Asterism, the ROS 2 bridge and the table client, the inside (doc/archive/sig_coverage S5b) --
 
 - name: "FmrbAsterism::TableClient#add_table"
   reason: >-
-    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::TableClient#collect_join"
   reason: >-
-    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::TableClient#collect_view"
   reason: >-
-    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::TableClient#find_tables"
   reason: >-
-    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::TableClient#host_of"
   reason: >-
-    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::TableClient#link_down"
   reason: >-
-    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::TableClient#link_up"
   reason: >-
-    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::TableClient#node_joined"
   reason: >-
-    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::TableClient#node_left"
   reason: >-
-    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::TableClient#ours?"
   reason: >-
-    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::TableClient#state_came"
   reason: >-
-    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::TableClient#subscribe_states"
   reason: >-
-    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::TableClient#view_due?"
   reason: >-
-    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::TableClient#watch_states"
   reason: >-
-    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/sig_coverage S5b).
+    What the table client does for itself, or what FmrbAsterism::Link calls on it (link_up, link_down ...); apps call join, leave, update and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS.const_missing"
   reason: >-
-    Loads a part of the gem on first use; not something to call (doc/sig_coverage S5b).
+    Loads a part of the gem on first use; not something to call (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS.fields_of"
   reason: >-
-    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS.gid_for"
   reason: >-
-    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS.load_type_file"
   reason: >-
-    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS.mangle"
   reason: >-
-    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS.now_ms"
   reason: >-
-    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS.now_ns"
   reason: >-
-    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS.pause"
   reason: >-
-    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS.strip_slashes"
   reason: >-
-    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS.type_constant"
   reason: >-
-    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS.type_of"
   reason: >-
-    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism.config_text"
   reason: >-
-    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/sig_coverage S5b).
+    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism.first_line"
   reason: >-
-    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/sig_coverage S5b).
+    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism.migrate"
   reason: >-
-    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/sig_coverage S5b).
+    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism.read_file"
   reason: >-
-    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/sig_coverage S5b).
+    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism.router_unset?"
   reason: >-
-    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/sig_coverage S5b).
+    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism.strings_of"
   reason: >-
-    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/sig_coverage S5b).
+    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism.warn_old_files"
   reason: >-
-    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/sig_coverage S5b).
+    Reading and migrating the settings files, used by FmrbAsterism.settings (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::Link#close_session"
   reason: >-
-    Steps of Link#update; apps call new, update, close and the readers in sig (doc/sig_coverage S5b).
+    Steps of Link#update; apps call new, update, close and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::Link#connect"
   reason: >-
-    Steps of Link#update; apps call new, update, close and the readers in sig (doc/sig_coverage S5b).
+    Steps of Link#update; apps call new, update, close and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::Link#now_ms"
   reason: >-
-    Steps of Link#update; apps call new, update, close and the readers in sig (doc/sig_coverage S5b).
+    Steps of Link#update; apps call new, update, close and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::Link#poll"
   reason: >-
-    Steps of Link#update; apps call new, update, close and the readers in sig (doc/sig_coverage S5b).
+    Steps of Link#update; apps call new, update, close and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::Link#prepare"
   reason: >-
-    Steps of Link#update; apps call new, update, close and the readers in sig (doc/sig_coverage S5b).
+    Steps of Link#update; apps call new, update, close and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::Link#tell_down"
   reason: >-
-    Steps of Link#update; apps call new, update, close and the readers in sig (doc/sig_coverage S5b).
+    Steps of Link#update; apps call new, update, close and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::Link#wifi_ready?"
   reason: >-
-    Steps of Link#update; apps call new, update, close and the readers in sig (doc/sig_coverage S5b).
+    Steps of Link#update; apps call new, update, close and the readers in sig (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS::Client.new"
   reason: >-
-    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS::Client#decode_response"
   reason: >-
-    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS::Timer#due?"
   reason: >-
-    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS::Timer#fire"
   reason: >-
-    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/archive/sig_coverage S5b).
 - name: "Asterism.const_missing"
   reason: >-
-    Loads a part of the gem on first use; not something to call (doc/sig_coverage S5b).
+    Loads a part of the gem on first use; not something to call (doc/archive/sig_coverage S5b).
 - name: "Asterism::AsyncProxy.new"
   reason: >-
-    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/archive/sig_coverage S5b).
 - name: "Asterism::CurrentCall.new"
   reason: >-
-    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/archive/sig_coverage S5b).
 - name: "Asterism::Future.new"
   reason: >-
-    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/archive/sig_coverage S5b).
 - name: "Asterism::Proxy.new"
   reason: >-
-    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS::Attachment.le_int"
   reason: >-
-    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS::Call.new"
   reason: >-
-    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS::Message.plain"
   reason: >-
-    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS::Node#fire"
   reason: >-
-    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/sig_coverage S5b).
+    The wire-level side of the ROS 2 bridge (name mangling, type files, timers' own steps); apps use the node's methods in sig (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS::Publisher.new"
   reason: >-
-    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS::Service.new"
   reason: >-
-    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/archive/sig_coverage S5b).
 - name: "Asterism::ROS::Subscription.new"
   reason: >-
-    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/archive/sig_coverage S5b).
 - name: "FmrbAsterism::Settings.new"
   reason: >-
-    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/sig_coverage S5b).
+    Made by the library (a connection, a node or a call hands it out); apps do not construct it (doc/archive/sig_coverage S5b).
 
-# ---- not written for apps, by the user's decision (2026-11-25, doc/sig_coverage) --
+# ---- not written for apps, by the user's decision (2026-11-25, doc/archive/sig_coverage) --
 
 - name: Net::HTTP
   reason: Upstream PicoRuby's HTTP client; apps are to use FmrbNet (decision 26).

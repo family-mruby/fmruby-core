@@ -46,7 +46,7 @@
    - `e = ArgumentError.new("x")` と `"a".byteslice(1, 2, 3)` の指摘が今までどおり。
    - エディタを 1 回起動して 1 打鍵する所まで (標準構成の決まり) を含む。画面は scratchpad に置く。
 
-## 報告 (doc/sig_coverage/report/s8.md)
+## 報告 (doc/archive/sig_coverage/report/s8.md)
 
 1. 直した所 (関数ごと) と、データベースでの入れ子のクラスの持ち方。
 2. 足した試験の場面。`rake ti:test`・`rake regress` の結果。
@@ -59,7 +59,7 @@
 ## 範囲と止まる条件
 
 - 触ってよい: `vendor/picoruby-ti/` (fork。`src/`・`host_test/`・要れば `tidbgen/`)、fmruby-core の
-  `lib/upstream/PICORUBY_TI_PIN`・`tools/ti/test_sig/`・`doc/sig_coverage/report/s8.md`・`doc/README.md`。
+  `lib/upstream/PICORUBY_TI_PIN`・`tools/ti/test_sig/`・`doc/archive/sig_coverage/report/s8.md`・`doc/README.md`。
 - 変えない: `sig/`・アプリ・エディタの Ruby (`main/ruby/default_app/editor/`)・エディタの C の橋。そこを変えないと
   直らないと分かったら、止まって報告する。データベースの形 (行の大きさ・領域) を変える必要が出たときも止まる。
 - ESP32 のビルドはしない (`build/` に触らない)。sim のビルドはしてよい。ブラウザ版は作らない。

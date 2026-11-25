@@ -43,7 +43,7 @@
    だけになる)。`rake sig:coverage:update` で基準を更新し、別コミットにする。型データベースの各領域の大きさの
    前後を控える。**ビルドと sim の確認はしない** (親が検収でまとめて行う)。
 
-## 報告に必ず書くこと (doc/sig_coverage/report/s2b.md)
+## 報告に必ず書くこと (doc/archive/sig_coverage/report/s2b.md)
 
 1. **根拠の表**: 書いたメソッドごと (上流由来のクラスは 1 つずつ、`Machine`・`GC` は仲間ごとでよい) に、読んだ実装の
    ファイルと行 (`パス:行`) と、どの gem・どのビルド設定に入っているか。
@@ -59,7 +59,7 @@
 - 触ってよい: `sig/machine.rbs`・`sig/gc.rbs` (新規)、上流由来の sig ファイルへの追加 (`string.rbs`・`array.rbs`・
   `hash.rbs`・`integer.rbs`・`float.rbs`・`object.rbs`・`kernel.rbs`・`symbol.rbs`・`range.rbs`・`proc.rbs`・`nil_class.rbs`)、
   `sdk/` (境界の検査が落ちて作り直しが要るときだけ。`ruby tools/boundary/gen.rb`)、`tools/sig_coverage/baseline.json`、
-  `doc/sig_coverage/report/s2b.md`、`rake docs:index` による `doc/README.md`。
+  `doc/archive/sig_coverage/report/s2b.md`、`rake docs:index` による `doc/README.md`。
 - 実装・アプリ・sig の既にある宣言と要約・`sig/README.md`・plan.md・`tools/sig_coverage/` の道具と ignore.yml・
   型エンジンの試験の期待値は変えない (試験が落ちたら止まって報告)。
 - ビルドをしない (sim・ESP32・ブラウザ版・ネイティブ版とも。`rake clean`・`rake build:*` を流さない)。

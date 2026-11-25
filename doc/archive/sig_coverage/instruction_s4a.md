@@ -48,7 +48,7 @@
    書き方の欠け「3. doc gaps」は 0 のまま)。`rake sig:coverage:update` で基準を更新し、別コミットにする。
    型データベースの各領域の大きさの前後を控える。**ビルドと sim の確認はしない** (親が検収で行う)。
 
-## 報告に必ず書くこと (doc/sig_coverage/report/s4a.md)
+## 報告に必ず書くこと (doc/archive/sig_coverage/report/s4a.md)
 
 1. **根拠の表**: 書いたメソッドごとに、読んだ実装の `パス:行`。失敗のしかた・呼べる場面を書いたものは、その根拠の行も。
 2. 書いた数 (クラスごと)、素直 / つまずくの内訳。
@@ -64,7 +64,7 @@
 
 - 触ってよい: `sig/fmrb_ui.rbs`・`sig/fmrb_app.rbs`・`sig/fmrb_misc.rbs`・`sig/kernel.rbs`・`sig/object.rbs` (メッセージの
   受け手に合わせて)・`FmrbI18n` の宣言のあるファイル・`sig/fmrb_assoc.rbs` (新規でもよい)、`sdk/` (境界の作り直しが
-  要るときだけ)、`tools/sig_coverage/baseline.json`、`doc/sig_coverage/report/s4a.md`、`rake docs:index` による `doc/README.md`。
+  要るときだけ)、`tools/sig_coverage/baseline.json`、`doc/archive/sig_coverage/report/s4a.md`、`rake docs:index` による `doc/README.md`。
 - 変えない: 実装・アプリ・上の一覧に無い sig・`sig/README.md`・plan.md・`tools/sig_coverage/` の道具と ignore.yml・
   型エンジンの試験の期待値 (試験が落ちたら止まって報告)。既にある宣言の**要約**は変えない (シグネチャは上の決まりで
   直してよい。長文に足すのもよい)。

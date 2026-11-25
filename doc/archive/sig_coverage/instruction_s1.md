@@ -49,7 +49,7 @@ S2 以降で大量に書く前に、(1) 書き方を 1 つに揃える型紙を�
 ## 範囲と止まる条件
 - 触ってよい: `sig/README.md`・`sig/string.rbs`・型エンジンの試験の期待値 (`tools/ti/` の下。落ちたときだけ)・
   `flash/help/` (追跡されているなら生成の結果)・`sdk/` (境界の作り直しで変わるなら)・`tools/sig_coverage/baseline.json`・
-  `doc/sig_coverage/report/s1.md`・`rake docs:index` による `doc/README.md`。
+  `doc/archive/sig_coverage/report/s1.md`・`rake docs:index` による `doc/README.md`。
 - 実装 (lib/gems・main・components・vendor)・ほかの sig・アプリ・plan.md・asterism-tutor は変えない。
 - **ビルドは sim (`build-linux/`) だけ**。ESP32 のビルドをしない (`build/` は Tab5 用が残っている。触らない)。
   ブラウザ版・ネイティブ版もビルドしない。
@@ -58,7 +58,7 @@ S2 以降で大量に書く前に、(1) 書き方を 1 つに揃える型紙を�
 - push しない・マージしない。ユーザに質問しない。実在の値を書かない。コメントとコミットは英語、報告は日本語 (常体)。
   AI ホストの知識のまとまりは「バンドル」と書く。
 
-## 報告 (doc/sig_coverage/report/s1.md)
+## 報告 (doc/archive/sig_coverage/report/s1.md)
 1. 型紙の要点 (README のどこに何を足したか) と、決めかねた所。
 2. `String#byteslice` の実装で確かめたこと (使える形・失敗のしかた・エンジンごとの違いがあれば)。
 3. 3 つの読み手それぞれの確認の結果 (画面の写しのパス、ヘルプのファイル、検索の出力の要点)。

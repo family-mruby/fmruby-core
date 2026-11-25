@@ -281,12 +281,12 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   (2026-11-21。VPS で台帳の行に役割を付け忘れ、`up, joined` と出るのに console の図にもほかのノードからも見えなかった。
   今の `up, joined` は証明書で接続できたことまで)。案: 自分のオブジェクトの meta を自分で問い合わせて答えが返るかを見る。未着手。
 
-- アプリが内部用の印 (`_` で始まる) のメソッドを呼んでいる (2026-11-24、doc/sig_coverage/report/s0.md 4.2 の 10)。
+- アプリが内部用の印 (`_` で始まる) のメソッドを呼んでいる (2026-11-24、doc/archive/sig_coverage/report/s0.md 4.2 の 10)。
   AI ヘルパーの `FmrbApp._get_last_error`、midi_bench の `_clear`・`_stats`・`_audio_note_bytes`。`_` で始まるものは
   sig に書かない決まりなので、補完にも AI ホストの知識にも出ない。アプリから使うものなら公開の名前を用意する
   (API の変更になるのでユーザの判断)。sig には載せていない。未着手。
 
-- **ESP32 の `Machine.delay_ms` が、指定の約 1/10 しか待たない見込み** (2026-11-24、doc/sig_coverage/report/s2b.md。
+- **ESP32 の `Machine.delay_ms` が、指定の約 1/10 しか待たない見込み** (2026-11-24、doc/archive/sig_coverage/report/s2b.md。
   コードの読みだけで、実機では未計測)。`lib/upstream/replace/picoruby-machine/ports/esp32/machine.c` の
   `Machine_delay_ms` は `vTaskDelay(ms / ESP32_MSEC_PER_TICK)` で、`ESP32_MSEC_PER_TICK` は 10 (tick が 10 ms の前提)。
   ビルドの `CONFIG_FREERTOS_HZ` は 1000 (tick = 1 ms) なので、`delay_ms(300)` は 30 tick = 30 ms、`delay_ms(5)` は
@@ -315,7 +315,7 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   `delay_ms(5)` を直す前後で (シェルの irb)、(2) 直した後の起動ログ (BMI270 の初期化が通る・起動の時間)、
   (3) Asterism の同期の呼び出しの間の CPU (10 秒周期のタスクの表) と応答の時間、(4) ランチャーを開く時間。
 
-- ファイルまわりで見つかった実装の不具合の疑い (2026-11-25、doc/sig_coverage/report/s2c.md。sig を書くために実装を
+- ファイルまわりで見つかった実装の不具合の疑い (2026-11-25、doc/archive/sig_coverage/report/s2c.md。sig を書くために実装を
   読んで見つけたもの。どれも直していない):
   - `File.path("x")` (クラスメソッド) が nil を返す (**sim で確認**)。`file.rb` の `self.instance_of?(self.class)` の判定。
   - mode `"a+"` が追記にならず、先頭から上書きする (**sim で確認**: "abc" に `a+` で "Z" を書くと "Zbc")。`"rb+"` は
@@ -327,7 +327,7 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   直すかどうかはユーザの判断。直したら sig の該当の長文も直す。
 
 - **`Kernel.send_message`・`receive_message`・`broadcast_message` (C の gem `picoruby-fmrb-kernel`) のメッセージの構造体が、
-  本体のものと形が違う** (2 つの定義を読み比べて確認、2026-11-25、doc/sig_coverage/report/s4a.md)。gem の中の自前の型は
+  本体のものと形が違う** (2 つの定義を読み比べて確認、2026-11-25、doc/archive/sig_coverage/report/s4a.md)。gem の中の自前の型は
   `{type, size, data[64]}` (72 バイト)、本体 (`components/fmrb_msg/fmrb_msg.h`) は `{type, src_pid, size, data[176]}`。
   `receive_message` は queue の 1 件ぶん (本体の大きさ) を 72 バイトの局所変数に受けるので、呼ぶとスタックを壊す見込み。
   `send_message` は足りない分を読み過ぎ、受け手の `size`・`data` が 4 バイトずれる。sim で `Kernel.respond_to?` は true
@@ -340,13 +340,13 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   写して持つ)、`FmrbI18n.add` の長文「Existing keys are left alone」は実装 (上書きする) と合わない、Spinel の基底に
   `app_settings` 系 3 つが無い、`Kernel.*` の task_id の検査 (0〜15) と本体の上限 (9) が合わない。
 
-- 音のまわりで見つかった実装の不具合の疑い (2026-11-25、doc/sig_coverage/report/s4b.md。読みだけ、直していない):
+- 音のまわりで見つかった実装の不具合の疑い (2026-11-25、doc/archive/sig_coverage/report/s4b.md。読みだけ、直していない):
   `SmfPlayer#transpose` を鳴らしている間に変えると、前に始めた音の note off が別の高さに行って音が止まらなくなる疑い。
   `MIDI::Device#pitch_bend` が `Integer#clamp` を使う (この mruby に無いというコメントが別の所にある。アプリは呼んでいない)。
   `MmlPlayer#load_text` で空のパートの後に鳴るパートが来ると `error` が残る。`SmfPlayer#drop_queued` は共有の待ち行列を
   空にするので、プレーヤーを 2 つ同時に鳴らすと互いの予約が消える。
 
-- データと機器のまわりで見つかった実装の不具合の疑い (2026-11-25、doc/sig_coverage/report/s5a.md。直していない):
+- データと機器のまわりで見つかった実装の不具合の疑い (2026-11-25、doc/archive/sig_coverage/report/s5a.md。直していない):
   - `JSON::Digger#dig` に配列の範囲の外の位置を渡しても例外が出ず、別の要素が返る (**sim で確認**:
     `JSON::Digger.new('[1]').dig(5).parse` が 1)。冒頭のコメントは例外が出ると書いている。
   - `JSON.parse` の `\uXXXX` は 1 バイトに丸められる読み (`[code].pack('C*')`)。ASCII の範囲 (`\u0041`) は sim で "A" に
@@ -355,7 +355,7 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
     `high?` が true になる。`I2C.new` の失敗の文が 1 種類に畳まれる。`JSON.generate` は NaN をそのまま入れる。
     `gpio_viewer.app.rb` の `PIN_COUNT = 49` は直書きで、P4 (55) と合わない。いずれも読みだけ (sim に GPIO・I2C は無い)。
 
-- (済 2026-11-25、doc/sig_coverage/report/s8.md。残りは `rescue Foo => e` の `e` に型が付かないこと) **エディタの型支援が、入れ子のクラス (`A::B`) を受け手にした呼び出しを解けない** (2026-11-25、doc/sig_coverage の S5b の
+- (済 2026-11-25、doc/archive/sig_coverage/report/s8.md。残りは `rescue Foo => e` の `e` に型が付かないこと) **エディタの型支援が、入れ子のクラス (`A::B`) を受け手にした呼び出しを解けない** (2026-11-25、doc/archive/sig_coverage の S5b の
   検収で確認。sim のエディタ)。`m = FmrbMidi::MmlPlayer.new(d)` や `Asterism::Types.number(...)`、
   `FmrbAsterism::Link.new(...)` の結果に型が付かず (Ctrl+T は "No type here")、その先の補完・Ctrl+E の検査が働かない。
   最上位のクラス (`FmrbUI.new`・`TileSheet.new`)、モジュールの関数の戻り値 (`FmrbMidi.device(self)` → `MIDI::Device`)、
@@ -366,7 +366,7 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
 - 通信のまわりで見つかった疑い (2026-11-25、report/s5b.md。読みだけ): `ROS::Subscription#handler=` は `node.subscribe` で
   作った物だけ `Node#poll` に拾われ、`node.subscription` に後から付けても呼ばれない。`TableClient#leave` の戻り値が false。
 - AI ホスト (asterism-tutor 0.3.1) の検査 `enumerator_next` が、`conn.each(pattern)` をブロックなしで書いた正しい形
-  (sig の例・見本どおり) を落とす (2026-11-25、doc/sig_coverage/report/s6_ai_host.md)。答え直しが 2 回起きた。直していない。
+  (sig の例・見本どおり) を落とす (2026-11-25、doc/archive/sig_coverage/report/s6_ai_host.md)。答え直しが 2 回起きた。直していない。
 - `FmrbGfx#draw_text_mixed` は同梱のアプリが 9 か所で使うが sig に無い (`draw_text(..., mixed: true)` の、Hash を作らない形)。
   アプリを書く人に見せるかは未決定。
 - **S3 (NARYAv3) のファームの区画の空きが 288 KB (5%)** (2026-11-25、`rake regress:size`。区画 6 MB、像 6,003,680 バイト)。

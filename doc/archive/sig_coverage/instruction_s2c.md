@@ -45,7 +45,7 @@
    だけになる)。`rake sig:coverage:update` で基準を更新し、別コミットにする。型データベースの各領域の大きさの
    前後を控える。**ビルドと sim の確認はしない** (親が検収で、sim のシェルで実際にファイルを読み書きして確かめる)。
 
-## 報告に必ず書くこと (doc/sig_coverage/report/s2c.md)
+## 報告に必ず書くこと (doc/archive/sig_coverage/report/s2c.md)
 
 1. **根拠の表**: 書いたメソッドごとに、読んだ実装のファイルと行 (`パス:行`)、どの gem・どのビルド設定に入っているか。
    **失敗のしかたを書いたものは、その根拠の行も** (例外を上げている行、nil を返している行)。
@@ -62,7 +62,7 @@
 - 触ってよい: `sig/fmrb_file.rbs`・`sig/class.rbs` への追加、`sig/dir.rbs`・`sig/time.rbs`・`sig/io.rbs` (新規)、
   上流由来の sig ファイルへの追加 (`kernel.rbs`・`object.rbs`。`puts` などが要るとき)、`sdk/` (境界の検査が落ちて
   作り直しが要るときだけ。`ruby tools/boundary/gen.rb`)、`tools/sig_coverage/baseline.json`、
-  `doc/sig_coverage/report/s2c.md`、`rake docs:index` による `doc/README.md`。
+  `doc/archive/sig_coverage/report/s2c.md`、`rake docs:index` による `doc/README.md`。
 - 実装・アプリ・sig の既にある宣言と要約・`sig/README.md`・plan.md・`tools/sig_coverage/` の道具と ignore.yml・
   型エンジンの試験の期待値は変えない (試験が落ちたら止まって報告)。
 - ビルドをしない (sim・ESP32・ブラウザ版・ネイティブ版とも。`rake clean`・`rake build:*` を流さない)。

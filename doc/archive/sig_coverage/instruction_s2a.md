@@ -37,7 +37,7 @@
    - 型データベースの各領域の大きさ (名前・シグネチャ・要約) の前後を控える。
    - **ビルドと sim の確認はしない** (親が検収でまとめて行う)。
 
-## 報告に必ず書くこと (doc/sig_coverage/report/s2a.md)
+## 報告に必ず書くこと (doc/archive/sig_coverage/report/s2a.md)
 
 1. **根拠の表**: 書いた定数・メソッドの仲間ごとに、読んだ実装のファイルと行 (`パス:行`)。1 つずつでなくてよいが、
    どの定義を見て書いたかが後から追えること。値をそのまま sig に書いたものは、値の出どころも。
@@ -51,7 +51,7 @@
 
 - 触ってよい: `sig/fmrb_const.rbs`・`sig/math.rbs` (と、既に宣言があるファイルへの追加)・`sdk/` (境界の検査が
   落ちて作り直しが要るときだけ。`ruby tools/boundary/gen.rb`)・`tools/sig_coverage/baseline.json`・
-  `doc/sig_coverage/report/s2a.md`・`rake docs:index` による `doc/README.md`。
+  `doc/archive/sig_coverage/report/s2a.md`・`rake docs:index` による `doc/README.md`。
 - 実装・アプリ・ほかの sig の既にある宣言・`sig/README.md`・plan.md・`tools/sig_coverage/` の道具と ignore.yml は
   変えない。
 - ビルドをしない (sim・ESP32・ブラウザ版・ネイティブ版とも。`rake clean`・`rake build:*` を流さない)。

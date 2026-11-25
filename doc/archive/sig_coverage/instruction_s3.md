@@ -43,7 +43,7 @@ Family mruby の sig (上流由来の 15 ファイル以外。23 ファイル・
 - 要約 (1 行目) は変えないので、型データベースの大きさは変わらないはず。変わったら報告に書く。
 - **ビルドと sim の確認はしない** (親が検収で行う)。
 
-## 報告に必ず書くこと (doc/sig_coverage/report/s3.md)
+## 報告に必ず書くこと (doc/archive/sig_coverage/report/s3.md)
 
 1. 足した例の数 (ファイルごと)、長文を足した数、直した強調の数、英語を足した数。
 2. **根拠**: 例を書いたメソッドのうち、アプリの使い方を写したものはそのファイル、実装から書いたものは読んだ
@@ -57,7 +57,7 @@ Family mruby の sig (上流由来の 15 ファイル以外。23 ファイル・
 ## 範囲と止まる条件
 
 - 触ってよい: 上流由来の 15 ファイル以外の `sig/*.rbs` の**コメント** (長文と例)、`sdk/` (境界の作り直しが要るときだけ)、
-  `tools/sig_coverage/baseline.json`、`doc/sig_coverage/report/s3.md`、`rake docs:index` による `doc/README.md`。
+  `tools/sig_coverage/baseline.json`、`doc/archive/sig_coverage/report/s3.md`、`rake docs:index` による `doc/README.md`。
 - 変えない: sig のシグネチャ (`def` の行)・要約 (コメントの 1 行目)・宣言の順番、上流由来の 15 ファイル、実装・アプリ・
   `sig/README.md`・plan.md・`tools/sig_coverage/` の道具と ignore.yml・型エンジンの試験の期待値。
 - ビルドをしない (sim・ESP32・ブラウザ版・ネイティブ版とも。`rake clean`・`rake build:*` を流さない)。

@@ -45,7 +45,7 @@
 
 ## 範囲と止まる条件
 
-- 触ってよい: `tools/sig_coverage/`、`rakelib/` (タスクの追加)、`.gitignore` (明細の置き場)、`doc/sig_coverage/report/s0.md`、
+- 触ってよい: `tools/sig_coverage/`、`rakelib/` (タスクの追加)、`.gitignore` (明細の置き場)、`doc/archive/sig_coverage/report/s0.md`、
   `rake docs:index` による `doc/README.md`。
 - sig・実装・アプリ・`sig/README.md`・plan.md は変えない (plan への反映は親)。
 - push しない・マージしない。ユーザに質問しない。範囲の外の変更が要る・見立てと食い違う事実がある・
@@ -53,7 +53,7 @@
 - 実在の値 (ドメイン・IP・ノード名・鍵) を書かない。コメントとコミットは英語、報告は日本語 (常体)。
   AI ホストの知識のまとまりは「バンドル」と書く (「束」と書かない)。
 
-## 報告 (doc/sig_coverage/report/s0.md) に書くこと
+## 報告 (doc/archive/sig_coverage/report/s0.md) に書くこと
 
 1. 数え方 (何を使われていると見なし、何を除いたか) と、今の数 (1〜3)。plan.md 2 章との違い。
 2. 「アプリが使っているのに無い」の上位 30 と、S2〜S5 のどの段に入るかの案。

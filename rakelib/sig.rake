@@ -1,12 +1,12 @@
 # rakelib/sig.rake
-# What sig/*.rbs is missing (doc/sig_coverage): the apps' calls, the
+# What sig/*.rbs is missing (doc/archive/sig_coverage): the apps' calls, the
 # implementation's methods and the doc comments, counted by
 # tools/sig_coverage/coverage.rb (host ruby with the rbs gem, Prism).
 # Part of the Rakefile split: shared constants, helper defs, and the
 # docker command strings live in the top-level Rakefile, which Rake
 # loads before every file in rakelib/.
 #
-# A report, not a gate (doc/sig_coverage decision 3): it is not in
+# A report, not a gate (doc/archive/sig_coverage decision 3): it is not in
 # `rake regress`. The summary goes to stdout, the details to
 # tmp/sig_coverage/report.md, and the difference from
 # tools/sig_coverage/baseline.json is printed every time.

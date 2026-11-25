@@ -53,7 +53,7 @@ lib/gems/picoruby-fmrb-editor-core/ports/esp32/editor_ti_bridge.c)。
 
 - **実在するメソッドだけ**書く。実装 (mrblib の Ruby と C バインディング) を
   読んで書き、推測で書かない。`_` で始まる内部用は書かない。
-- **引数は実装のとおりに書く** (doc/sig_coverage の決定 22)。省略できる引数は
+- **引数は実装のとおりに書く** (doc/archive/sig_coverage の決定 22)。省略できる引数は
   `?Integer length`、キーワードは `name: Type` (省略できるなら `?name: Type`) の
   形でシグネチャに書く。型エンジンはどちらも読み、エディタのまちがい探し
   (Ctrl+E) が引数の数と名前をそのシグネチャで検査するので、必須引数だけの形に
@@ -143,7 +143,7 @@ lib/gems/picoruby-fmrb-editor-core/ports/esp32/editor_ti_bridge.c)。
   `integer` `kernel` `nil_class` `object` `proc` `range` `string` `symbol`
   `true_class` `untyped`) は、picoruby-ti の example/rbs の宣言に、うちの
   説明 (日本語・長文・例) を足したもの。**足りないメソッドは直接足してよい**
-  (doc/sig_coverage の決定 1。それまでの「変更禁止」をやめた)。決まりは次の
+  (doc/archive/sig_coverage の決定 1。それまでの「変更禁止」をやめた)。決まりは次の
   とおり。
   - **足すだけ**。既にある宣言の順番と文 (シグネチャ) は変えない。足す
     メソッドは、近い名前の宣言の隣に置く (`byteslice` は `bytesize` の後)。

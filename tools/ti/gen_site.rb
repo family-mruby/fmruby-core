@@ -3,7 +3,7 @@
 #
 # Turn sig/*.rbs into the class reference of the documentation site
 # (family-mruby.github.io): one page per class and language, an index, and the
-# navigation entries (doc/sig_coverage S7).
+# navigation entries (doc/archive/sig_coverage S7).
 #
 # The site's API pages written by hand are guides by topic (how the parts fit,
 # pictures, tables). These pages are the other half: every class with every

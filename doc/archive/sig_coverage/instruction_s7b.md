@@ -37,7 +37,7 @@ report/s7.md の 4 章の 1〜5 と 7 を全部直す。一覧は道具で出し
 - 境界の検査が落ちたら `ruby tools/boundary/gen.rb` で SDK を作り直してコミットに入れる。
 - ビルド・sim・サイトの生成はしない (親が行う)。
 
-## 報告 (doc/sig_coverage/report/s7b.md)
+## 報告 (doc/archive/sig_coverage/report/s7b.md)
 
 1. 直した数 (上の 1〜5 ごと、クラスの一覧)。
 2. クラスのコメントを新しく書いた物について、根拠 (読んだ実装・sig の場所) の表。
@@ -49,7 +49,7 @@ report/s7.md の 4 章の 1〜5 と 7 を全部直す。一覧は道具で出し
 ## 範囲と止まる条件
 
 - 触ってよい: `sig/*.rbs` のコメント (上流由来のファイルも可。sig/README.md のとおり)、`sdk/` (境界の作り直しのとき)、
-  `tools/sig_coverage/baseline.json`、`doc/sig_coverage/report/s7b.md`、`doc/README.md` (`rake docs:index`)。
+  `tools/sig_coverage/baseline.json`、`doc/archive/sig_coverage/report/s7b.md`、`doc/README.md` (`rake docs:index`)。
 - 変えない: 宣言 (`def`・`class`・定数の型)、既にある要約の日本語の意味、実装、道具、型エンジンの試験の期待値
   (試験が落ちたら止まって報告)、`sig/README.md`、plan.md。
 - ビルドをしない。push しない・マージしない。ユーザに質問しない。実在の値を書かない。

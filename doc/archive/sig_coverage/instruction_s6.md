@@ -39,7 +39,7 @@ sig を知識のバンドルとして LLM に渡すので、(1) 足した範囲�
 4. **数を控える**: 頼みごとの時間・LLM の呼び出しの数・往復 (`search_source`・`read_source` の回数)・出力トークン・
    キャッシュの書き / 読み・費用。バンドルの大きさ (バイトとトークン) の前と後。
 
-## 報告 (doc/sig_coverage/report/s6_ai_host.md)
+## 報告 (doc/archive/sig_coverage/report/s6_ai_host.md)
 
 1. 並べ方 (版・sources・モデル・設定で変えた所)。
 2. 頼み 10 個の表: 前と後の、検査・実在しない API の数・形の違う呼び出しの数・往復・費用・時間。
@@ -49,7 +49,7 @@ sig を知識のバンドルとして LLM に渡すので、(1) 足した範囲�
 
 ## 範囲と止まる条件
 
-- 触ってよい: `doc/sig_coverage/report/s6_ai_host.md` と `rake docs:index` による `doc/README.md` (fmruby-core の
+- 触ってよい: `doc/archive/sig_coverage/report/s6_ai_host.md` と `rake docs:index` による `doc/README.md` (fmruby-core の
   ブランチ `sig-s6` にコミット)。ほかは scratchpad だけ。
 - 変えない: fmruby-core の実装・sig・道具、asterism-tutor、VPS・端末・家のサーバ。**fmruby-core でビルドをしない**
   (`rake build:*`・`rake clean*` を流さない。親が同じ checkout で大きさの回帰を流している)。

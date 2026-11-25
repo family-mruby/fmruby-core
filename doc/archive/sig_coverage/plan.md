@@ -1,6 +1,6 @@
 # sig (API の型定義) を充実させる
 
-> 状態: 進行中 | 更新: 2026-11-24 | `sig/*.rbs` を、アプリを書く人と AI ホストの両方が頼れる所まで埋める。抜けを数える道具 (S0)・書き方の型紙 (S1) を先に作り、アプリがよく使う順に足す (S2〜S5)。調査の数字は 2 章、決定は 7 章 (上流由来のファイルも直接直す・キーワード引数は今のまま・道具は最初は報告だけ)。S0〜S3 済 (道具 `rake sig:coverage`、型紙は sig/README.md、FmrbConst・Math・Machine・GC・乱数・File・Dir・Time・IO、書き方の欠けは 0、report/s0.md〜s3.md)。S0〜S5 済 (sig 125 クラス・1,470 メソッド)。S6 済。次は S7 (サイトの公開)
+> 状態: 完了 | 更新: 2026-11-25 | `sig/*.rbs` を 67 クラス・815 メソッドから 142 クラス・1,475 メソッドに埋めた (S0〜S8)。抜けを数える道具 `rake sig:coverage`、サイトのクラスリファレンス `rake ti:site` (公開済)、エディタの型エンジンが入れ子のクラスを解く直しまで。日々の手順は doc/reference/sig_writing_and_coverage.md、決定は 7 章、閉じたときの状態は 9 章
 
 ## 1. 目的
 
@@ -345,3 +345,31 @@ C で定義したメソッド (`mrb_define_method`) は、この調査では数�
 
 - S2〜S5 の順番と切り方 (S0 の数が出てから見直す)。
 - (済) シグネチャの領域の手当ては決定 24 で行った。
+
+## 9. 閉じたときの状態 (2026-11-25)
+
+受け入れ条件 (6 章) の結果:
+
+1. アプリが使うのに sig に無いもの: クラス 1 (`FmrbMidi::NoteScheduler`。試験のアプリ midi_bench だけが使う)、
+   受け手の分かるメソッド 1 (`FmrbApp._get_last_error`。`_` で始まる内側)、定数 5 (`CLOSE_BTN_HIT_R`・
+   `CLOSE_BTN_CX_OFFSET`・`CLOSE_BTN_CY`・`TRANSPARENT_COLOR`・`FmrbGfx::FONT_METRICS`。枠なしの Window の見本 3 つが使う)。
+   **0 にはしていない**。定数 5 は載せるかを決めていない (残件)。
+2. Family mruby の分の全メソッドに例がある (書き方の欠けは全部 0)。
+3. 要約はすべて 111 バイト以内で英語がある。クラスと定数の説明も両言語 (S7b と、その後の 15 クラス)。
+4. `rake regress`・`rake ti:test` は通る。型データベースの位置は 24 ビットにしたので領域の上限は外れた (決定 12・24)。
+   型データベースのクラスの数は 143 (上限 255 の 56%)。
+5. 増分: 型データベース約 +160 KB、F1 のヘルプ 808 KB。S3 の storage の像は作れている。
+   **S3 のファームの区画の空きは 5%** (決定 29。doc/reference/TODO.md)。
+6. AI ホストの前後比較 (report/s6_ai_host.md): 実在しない API は 0、良くなった頼み 5、軽く悪くなった 1 (直した)。
+
+公開: fmruby-core develop `9274e3b8` まで push 済 (CI 成功)、picoruby-ti `4536029`、サイトのクラスリファレンスは
+main `1f9a02c` で公開。その後の手元の直し (MIDI の説明の「口」→ デバイス) は次の push で出る。
+
+残件 (doc/reference/TODO.md にあるもの以外):
+
+- 上の定数 5 を sig に載せるか。
+- `rescue Foo => e` の `e` に型が付かない (型エンジンが rescue を扱っていない)。
+- `String#__ljust_rjust_argcheck` (上流由来の sig にある内側のメソッド。実装と引数の数も食い違う。report/s7b.md)。
+- ブラウザ版の型エンジンの作り直し (入れ子のクラスの直しを入れる)。
+- sig を直したらサイトを作り直す (直下の doc/release.md)。
+

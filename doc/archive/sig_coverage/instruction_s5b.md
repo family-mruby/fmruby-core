@@ -52,7 +52,7 @@
    各領域の大きさの前後を控える (シグネチャと要約の領域は 24 ビットになったので、上限は気にしなくてよい。
    クラスの数は上限 255 なので、200 を超えそうなら報告の先頭に書く)。**ビルドと sim の確認はしない** (親が検収で行う)。
 
-## 報告に必ず書くこと (doc/sig_coverage/report/s5b.md)
+## 報告に必ず書くこと (doc/archive/sig_coverage/report/s5b.md)
 
 1. **根拠の表**: 書いたメソッドごと (クラスが大きければ仲間ごと) に、読んだ実装の `パス:行`。失敗のしかた・
    呼べる場面を書いたものは、その根拠の行も。
@@ -69,7 +69,7 @@
 ## 範囲と止まる条件
 
 - 触ってよい: `sig/fmrb_asterism.rbs` と、分けるなら `sig/asterism_ros.rbs`・`sig/fmrb_table_client.rbs` (新規)、
-  `sdk/` (境界の作り直しが要るときだけ)、`tools/sig_coverage/baseline.json`、`doc/sig_coverage/report/s5b.md`、
+  `sdk/` (境界の作り直しが要るときだけ)、`tools/sig_coverage/baseline.json`、`doc/archive/sig_coverage/report/s5b.md`、
   `rake docs:index` による `doc/README.md`。
 - 変えない: 実装 (`vendor/` を含む)・アプリ・上の一覧に無い sig・`sig/README.md`・plan.md・`tools/` の道具と ignore.yml・
   型エンジンの試験の期待値 (試験が落ちたら止まって報告)。既にある宣言の要約。
