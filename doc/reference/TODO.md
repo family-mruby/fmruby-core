@@ -355,7 +355,7 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
     `high?` が true になる。`I2C.new` の失敗の文が 1 種類に畳まれる。`JSON.generate` は NaN をそのまま入れる。
     `gpio_viewer.app.rb` の `PIN_COUNT = 49` は直書きで、P4 (55) と合わない。いずれも読みだけ (sim に GPIO・I2C は無い)。
 
-- **エディタの型支援が、入れ子のクラス (`A::B`) を受け手にした呼び出しを解けない** (2026-11-25、doc/sig_coverage の S5b の
+- (済 2026-11-25、doc/sig_coverage/report/s8.md。残りは `rescue Foo => e` の `e` に型が付かないこと) **エディタの型支援が、入れ子のクラス (`A::B`) を受け手にした呼び出しを解けない** (2026-11-25、doc/sig_coverage の S5b の
   検収で確認。sim のエディタ)。`m = FmrbMidi::MmlPlayer.new(d)` や `Asterism::Types.number(...)`、
   `FmrbAsterism::Link.new(...)` の結果に型が付かず (Ctrl+T は "No type here")、その先の補完・Ctrl+E の検査が働かない。
   最上位のクラス (`FmrbUI.new`・`TileSheet.new`)、モジュールの関数の戻り値 (`FmrbMidi.device(self)` → `MIDI::Device`)、

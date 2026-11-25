@@ -344,13 +344,6 @@ module TiSite
                 "Every class an app can use, with every method, constant and example the API " \
                 "signatures carry. The pages are generated; the guides by topic are under " \
                 "[API Reference](../index.md).",
-              notice_title: "Made from the development version",
-              notice: ->(v) {
-                "These pages are generated from the API signatures on the development branch of " \
-                "fmruby-core#{v ? " (#{v})" : ''}, not from a release. A method listed here may be " \
-                "missing from, or work differently on, the firmware you have installed; " \
-                "the [release notes](../../releases.md) say what each release contains."
-              },
               guide_line: "Class reference",
               guide_all: "every class",
               klass: "Class / module", methods: "Methods", none: "(no description yet)" },
@@ -361,13 +354,6 @@ module TiSite
               index_title: "クラスリファレンス", index_lead:
                 "アプリから使えるクラスの、すべてのメソッド・定数・例を、API の型定義から自動で作った" \
                 "ページです。使い方の流れは [API リファレンス](../index.md) の各ページにあります。",
-              notice_title: "開発中の版から作っています",
-              notice: ->(v) {
-                "これらのページは、リリースの版ではなく、fmruby-core の開発中のブランチ" \
-                "#{v ? " (#{v})" : ''} の型定義から作っています。ここにあるメソッドが、お使いの" \
-                "ファームウェアには無いことや、動きが違うことがあります。各リリースの中身は" \
-                "[リリースノート](../../releases.md) にあります。"
-              },
               guide_line: "クラスリファレンス",
               guide_all: "すべてのクラス",
               klass: "クラス / モジュール", methods: "メソッド数", none: "(説明はまだありません)" },
@@ -494,7 +480,6 @@ module TiSite
   def render_index(groups, lang, version)
     t = T[lang]
     out = +"# #{t[:index_title]}\n\n"
-    out << "!!! note \"#{t[:notice_title]}\"\n    #{t[:notice].call(version)}\n\n"
     out << "#{t[:index_lead]}\n\n"
     groups.each do |(en, ja), list|
       out << "## #{lang == 'en' ? en : ja}\n\n| #{t[:klass]} | #{t[:what]} | #{t[:methods]} |\n|---|---|---|\n"
