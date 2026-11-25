@@ -132,6 +132,18 @@ static const char *TAG = "pin_manager";
 #define RESERVED_HDMI 0ULL
 #endif
 
+// The ESP32-S3's memory bus: GPIO 26-32 carry the SPI flash (and a quad
+// PSRAM's chip select), 33-34 two of the octal data lines; 35-37 are the
+// FMRB_PIN_RESTRICTED_PSRAM* above (soc/esp32s3 spi_pins.h, MSPI_IOMUX_PIN_NUM_*:
+// CS1 26, HD 27, WP 28, CS0 29, CLK 30, MISO 31, MOSI 32, D4 33, D5 34). No
+// module brings 26-32 out, and reconfiguring one stops the flash. The
+// ESP32-P4's flash and PSRAM have pins of their own, not GPIOs.
+#if !defined(CONFIG_IDF_TARGET_ESP32P4)
+#define RESERVED_MSPI (0x1FFULL << 26)
+#else
+#define RESERVED_MSPI 0ULL
+#endif
+
 #ifdef FMRB_PIN_BUTTON_UP
 #define BUTTON_UP_BIT PIN_BIT(FMRB_PIN_BUTTON_UP)
 #else
@@ -151,7 +163,7 @@ static const char *TAG = "pin_manager";
 
 // The buttons are masked out last: an app may read them as an input.
 #define GPIO_RESERVED \
-    ((RESERVED_CHIP | RESERVED_BOARD | RESERVED_LINK_UART | RESERVED_SDMMC | \
+    ((RESERVED_CHIP | RESERVED_MSPI | RESERVED_BOARD | RESERVED_LINK_UART | RESERVED_SDMMC | \
       RESERVED_LCD_SPI | RESERVED_BACKLIGHT | RESERVED_INPUT_DEVICES | RESERVED_I2S | \
       RESERVED_AMP | RESERVED_SDIO | RESERVED_RADIO_EN | RESERVED_ETH | \
       RESERVED_IR_TX | RESERVED_IR_RX | RESERVED_HDMI) & ~BUTTONS)
