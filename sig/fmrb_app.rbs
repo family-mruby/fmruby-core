@@ -2221,7 +2221,7 @@ class FmrbApp
 
   # USB の生の入力を受け取る <<en>> Start receiving raw USB input
   #
-  # その口の生のレポートが `on_control` に届くようになる。HID Inspector が
+  # その機器の生のレポートが `on_control` に届くようになる。HID Inspector が
   # 使っている。
   # ```ruby
   # FmrbApp.hid_raw_subscribe(slot)

@@ -1,15 +1,15 @@
 # MIDI。実装は lib/gems/picoruby-fmrb-midi/mrblib/ と
 # lib/gems/picoruby-midi/mrblib/midi_device.rb。
 #
-# FmrbMidi.device(self) で音を出す口 (MIDI::Device) をもらい、
+# FmrbMidi.device(self) で音を出すデバイス (MIDI::Device) をもらい、
 # そこへ音符を送る。曲のファイルは SmfPlayer、MML は MmlPlayer が鳴らす。
 
-# MIDI の入り口。音を出す口・曲・MML <<en>> MIDI entry point: devices, songs, MML
+# MIDI の入り口。音を出すデバイス・曲・MML <<en>> MIDI entry point: devices, songs, MML
 #
-# `FmrbMidi.device(self)` で内蔵音源 (APU) につながった口 (MIDI::Device) をもらい、
+# `FmrbMidi.device(self)` で内蔵音源 (APU) につながったデバイス (MIDI::Device) をもらい、
 # `note_on` などで音符を送る。標準 MIDI ファイルは `FmrbMidi::SmfPlayer`、MML は
 # `FmrbMidi::MmlPlayer` が鳴らす。外の音源へは `sam2695_device`・`serial_device` が
-# 口を作り、`register` で出し先を足す。曲の時間は `now_us` で測る。
+# デバイスを作り、`register` で出し先を足す。曲の時間は `now_us` で測る。
 # <<en>>
 # `FmrbMidi.device(self)` gives a device (MIDI::Device) wired to the built-in
 # sound chip (the APU); send notes to it with `note_on` and the like. A
@@ -18,9 +18,9 @@
 # `serial_device` make the device and `register` adds a transport. Measure a
 # song's time with `now_us`.
 module FmrbMidi
-  # このアプリ用の音を出す口を作る <<en>> Make this app's way of sounding notes
+  # このアプリ用の音を出すデバイスを作る <<en>> Make this app's way of sounding notes
   #
-  # **内蔵音源 (APU) につながった口**が返る。外の音源に出すなら
+  # **内蔵音源 (APU) につながったデバイス**が返る。外の音源に出すなら
   # 出し先を `register` する。
   # ```ruby
   # @midi = FmrbMidi.device(self)
@@ -109,14 +109,14 @@ module FmrbMidi
   # ```
   GM_DRUM_CHANNEL: Integer
 
-  # 外の音源 (SAM2695) の口を作る <<en>> Make a device for an outside SAM2695 unit
+  # 外の音源 (SAM2695) のデバイスを作る <<en>> Make a device for an outside SAM2695 unit
   #
   # M5Stack Unit MIDI など。シリアルで MIDI を送る (31250 baud)。
   # **つながらなければ nil** (sim では受け皿の FIFO が無いとき、実機では
   # 端末に MIDI の出口が無いときやピンが使われているとき)。
   # nil のまま使うと NoMethodError なので、必ず確かめる。
   # つなぐたびに音源へ GM System On を送り全 channel を止めるので、
-  # **一度だけ作って持っておく**。内蔵音源の口 (`FmrbMidi.device`) とは
+  # **一度だけ作って持っておく**。内蔵音源のデバイス (`FmrbMidi.device`) とは
   # 別物で、`SmfPlayer#device=` で切り替える。
   # `path:` (sim だけ)・`uart:`・`tx:` (実機だけ)・`rx:` (省略すると -1 =
   # 送るだけ)・`baud:` (省略すると 31250)。省略した分は端末の既定。
@@ -141,7 +141,7 @@ module FmrbMidi
   # ```
   def self.sam2695_device: (?path: String, ?uart: Integer, ?tx: Integer, ?rx: Integer, ?baud: Integer) -> MIDI::Device?
 
-  # シリアルの MIDI の口を作る <<en>> Make a device on a plain serial MIDI port
+  # シリアルの MIDI のデバイスを作る <<en>> Make a device on a plain serial MIDI port
   #
   # `sam2695_device` と同じで、音源のリセットを送らない版。**つながらなければ nil**。
   # 引数も同じ (`path:` `uart:` `tx:` `rx:` `baud:`、省略すると端末の既定)。
@@ -181,7 +181,7 @@ module FmrbMidi
   #
   # `MIDI::Device#trigger` の音を止めるのはこれ。毎回の `on_update` で 1 回
   # 呼ぶ。呼ばないと、trigger の音は次の MIDI メッセージまで鳴りっぱなし。
-  # 内蔵音源 (`FmrbMidi.device`) もシリアルも、作った口は全部ここで見る。
+  # 内蔵音源 (`FmrbMidi.device`) もシリアルも、作ったデバイスは全部ここで見る。
   # ```ruby
   # def on_update
   #   FmrbMidi.tick
@@ -487,16 +487,16 @@ module FmrbMidi
     # ```
     def path: () -> String?
 
-    # 鳴らす先の口 <<en>> The device the song goes to
+    # 鳴らす先のデバイス <<en>> The device the song goes to
     #
     # ```ruby
     # dev = @smf.device
     # ```
     def device: () -> MIDI::Device
 
-    # 鳴らす先の口を切り替える <<en>> Switch the device the song goes to
+    # 鳴らす先のデバイスを切り替える <<en>> Switch the device the song goes to
     #
-    # **鳴らしている最中でも変えられる**。古い口で鳴っていた音は止まり、
+    # **鳴らしている最中でも変えられる**。古いデバイスで鳴っていた音は止まり、
     # 待ち行列に入れてあった分 (最大 0.3 秒) は捨てられる。内蔵音源と外の
     # 音源 (`FmrbMidi.sam2695_device`) の切り替えに使う。
     # ```ruby
@@ -514,8 +514,8 @@ module FmrbMidi
 
     # 先に待ち行列へ入れる長さ (µs) <<en>> How far ahead the queue is filled, in µs
     #
-    # 内蔵音源やシリアルの口では既定で 300000 (`LOOKAHEAD_US`)。
-    # 時間つきで受けられない口では 0。
+    # 内蔵音源やシリアルのデバイスでは既定で 300000 (`LOOKAHEAD_US`)。
+    # 時間つきで受けられないデバイスでは 0。
     # ```ruby
     # n = @smf.lookahead_us
     # ```
@@ -530,7 +530,7 @@ module FmrbMidi
     # 先に待ち行列へ入れる長さを変える <<en>> Change how far ahead the queue is filled
     #
     # 単位は µs。**0 にすると送るのをアプリのタスクに戻す** (描画などで遅れた
-    # ぶんだけ音がずれる。比べるときに使う)。0 より大きくしても、口が
+    # ぶんだけ音がずれる。比べるときに使う)。0 より大きくしても、デバイスが
     # 時間つきで受けられない (スケジューラが無い) ときは 0 のまま。
     # **変えると待ち行列を捨てる**ので、鳴らす前に変える。
     # ```ruby
@@ -808,8 +808,8 @@ module FmrbMidi
     # 注釈。`bpm 120`・`loop on`・`velocity 80`・`voice triangle`・`duty 1`・
     # `volume 100`・`program 24` は設定で、それ以降のパートに効く。それ以外
     # の行は MML のパートで、順に channel 0, 1, ... に載る。
-    # `voice` `duty` `volume` `program` は**読み込むときに口へ送られる**ので、
-    # `device=` で先に口を決めておく。
+    # `voice` `duty` `volume` `program` は**読み込むときにデバイスへ送られる**ので、
+    # `device=` で先にデバイスを決めておく。
     # ```ruby
     # @mml.device = @midi
     # @mml.load_file("/home/a.mml")
@@ -1055,16 +1055,16 @@ module FmrbMidi
     # ```
     def loop=: (bool value) -> void
 
-    # 鳴らす先の口 <<en>> The device the tune goes to
+    # 鳴らす先のデバイス <<en>> The device the tune goes to
     #
     # ```ruby
     # dev = @mml.device
     # ```
     def device: () -> MIDI::Device
 
-    # 鳴らす先の口を切り替える <<en>> Switch the device the tune goes to
+    # 鳴らす先のデバイスを切り替える <<en>> Switch the device the tune goes to
     #
-    # 鳴らしている最中でも変えられる。古い口の音は止まり、待ち行列に
+    # 鳴らしている最中でも変えられる。古いデバイスの音は止まり、待ち行列に
     # あった分は捨てられる。
     # ```ruby
     # @mml.device = @serial
@@ -1131,7 +1131,7 @@ module FmrbMidi
     def error: () -> String?
   end
 
-  # 内蔵音源 (APU) へ MIDI を送る口 <<en>> Sends MIDI to the built-in sound chip (APU)
+  # 内蔵音源 (APU) へ MIDI を送るトランスポート <<en>> Sends MIDI to the built-in sound chip (APU)
   #
   # `FmrbMidi.device(self)` が作る。
   #
@@ -1151,7 +1151,7 @@ module FmrbMidi
   # the APU on the SUB side, so they clash with the SUB sound effects of
   # `play_slot`.
   class ApuTransport
-    # 内蔵音源の口を作る <<en>> Make a sender to the built-in sound
+    # 内蔵音源のトランスポートを作る <<en>> Make a sender to the built-in sound
     #
     # owner はアプリ (`self`) か `FmrbAudio`。作ると自分を `FmrbMidi.register`
     # する。ふつうは `FmrbMidi.device(self)` が作るので、直接は作らない。
@@ -1292,21 +1292,21 @@ module FmrbMidi
   end
 end
 
-# MIDI の名前空間。音を出す口は MIDI::Device <<en>> The MIDI namespace; the sender is MIDI::Device
+# MIDI の名前空間。音を出すデバイスは MIDI::Device <<en>> The MIDI namespace; the sender is MIDI::Device
 #
 # 中身は `MIDI::Device` だけ。アプリは直接作らず、`FmrbMidi.device(self)` から受け取る。
 # <<en>>
 # It holds `MIDI::Device` only. An app does not make one itself; it gets it
 # from `FmrbMidi.device(self)`.
 module MIDI
-  # 音を出す口。音符や音色をここへ送る <<en>> A sender for sound; send notes and tones to it
+  # 音を出すデバイス。音符や音色をここへ送る <<en>> A sender for sound; send notes and tones to it
   class Device
-    # 音を出す口を作る <<en>> Make a device on a transport
+    # 音を出すデバイスを作る <<en>> Make a device on a transport
     #
     # transport は MIDI を送る相手で、`send_packet(cable, cin, b1, b2, b3)`・
     # `read_available`・`bytes_available`・`connected?` を持つ (`info` には
     # `device_info`、`trigger` には `transport_id` も使う)。内蔵音源と外の
-    # 音源の口は `FmrbMidi.device` と `FmrbMidi.sam2695_device` が作る。
+    # 音源のデバイスは `FmrbMidi.device` と `FmrbMidi.sam2695_device` が作る。
     # 自分の送り先で `trigger` を使うなら、`FmrbMidi.register` で登録し、
     # `@pending = []` と `note_on(channel, note, velocity)`・
     # `note_off(channel, note)` を用意して `FmrbMidi::NoteScheduler` を
@@ -1330,7 +1330,7 @@ module MIDI
 
     # 送り先 (transport) <<en>> The transport behind the device
     #
-    # 内蔵音源の口なら `FmrbMidi::ApuTransport`。`all_off`・`auto_map`・
+    # 内蔵音源のデバイスなら `FmrbMidi::ApuTransport`。`all_off`・`auto_map`・
     # `map_channel` はここから呼ぶ。
     # ```ruby
     # @device.transport.all_off
@@ -1457,7 +1457,7 @@ module MIDI
 
     # 音の強さの変化 <<en>> Shape the loudness within a piece
     #
-    # `volume` とは別の口 (CC 11)。曲中の強弱はこちらで付ける。
+    # `volume` とは別の調節 (CC 11)。曲中の強弱はこちらで付ける。
     # ```ruby
     # dev.expression(100)
     # ```
