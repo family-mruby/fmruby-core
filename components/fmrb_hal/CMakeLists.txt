@@ -6,6 +6,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/../fmrb_common/fmrb_hw_defines.cmake)
 set(COMMON_SRCS
     "fmrb_hal.c"
     "fmrb_hal_time.c"
+    "fmrb_hal_file_cwd.c"
 )
 
 # Set platform-specific sources and requirements
@@ -34,6 +35,7 @@ else()
         "platform/esp32/fmrb_hal_pin_manager_esp32.c"
         "platform/esp32/fmrb_hal_spi_esp32.c"
         "platform/esp32/fmrb_hal_file_esp32.c"
+        "platform/esp32/fmrb_hal_file_path_esp32.c"
         "platform/esp32/fmrb_tmpfs_esp32.c"
         "platform/esp32/fmrb_hal_uart_esp32.c"
     )

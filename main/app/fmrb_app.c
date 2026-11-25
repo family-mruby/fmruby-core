@@ -1540,6 +1540,8 @@ static void close_owned_files(fmrb_app_task_context_t* ctx, fmrb_task_handle_t t
     fmrb_hal_file_lock(UINT32_MAX);
     const size_t closed = fmrb_hal_file_close_owned_locked(task);
     fmrb_hal_file_unlock();
+    // The next app in this slot starts at "/" (doc/api_fixes F7).
+    fmrb_hal_file_cwd_forget(ctx->app_id);
     if (closed) {
         FMRB_LOGW(TAG, "[%s gen=%u] Closed %u file(s) left open",
                   ctx->app_name, ctx->gen, (unsigned)closed);
@@ -1888,6 +1890,19 @@ static void app_task_test(void* arg) {
 // the boot-time ABI guard below.
 extern size_t picorb_abi_mrb_state_size(void);
 
+/*
+ * The calling task's slot for the file HAL's working directory
+ * (fmrb_hal_file_set_cwd_slot): an app's id, or -1 for the kernel, the host
+ * and any task that is not an app, which stay at "/".
+ */
+static int cwd_slot_of_current(void) {
+    fmrb_app_task_context_t* ctx = fmrb_current();
+    if (ctx == NULL || ctx->app_id == PROC_ID_KERNEL || ctx->app_id == PROC_ID_HOST) {
+        return -1;
+    }
+    return (int)ctx->app_id;
+}
+
 bool fmrb_app_init(void) {
     if (g_ctx_lock != NULL) {
         FMRB_LOGW(TAG, "App context already initialized");
@@ -1915,6 +1930,9 @@ bool fmrb_app_init(void) {
         FMRB_LOGE(TAG, "Failed to create mutex");
         return false;
     }
+
+    // The file HAL's per-app working directory asks which app is calling.
+    fmrb_hal_file_set_cwd_slot(cwd_slot_of_current);
 
     // Initialize context pool
     for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
@@ -2402,6 +2420,9 @@ static void notify_kernel_app_exited(fmrb_proc_id_t app_id) {
 static void force_release_resources(fmrb_app_task_context_t* ctx,
                                     fmrb_task_handle_t task) {
     destroy_vm(ctx, true);
+
+    // Its working directory: the next app in this slot starts at "/".
+    fmrb_hal_file_cwd_forget(ctx->app_id);
 
     // The VM was dropped without mrb_close, so no gem's final hook ran: a
     // Spinel gem instance the app owned is still claimed and holds its pool.

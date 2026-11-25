@@ -203,17 +203,19 @@ class Dir
 
   # 作業ディレクトリ <<en>> The working directory
   #
-  # `pwd` は同じ働きの別名。
-  # **ファイルの操作 (File.open・Dir.open ...) の相対パスはこれでなく、ルート (ESP32 は flash のルート) から解くので、パスは "/" から書く**。
+  # `pwd` は同じ働きの別名。**アプリごと**の場所で、起動したときは "/"。`Dir.chdir` で変わり、
+  # ファイルの操作 (File.open・Dir.open ...) と `File.expand_path` の相対パスはここから解く。
+  # ほかのアプリの場所とは別で、シェルの `cd` とも別 (シェルから起動したアプリも "/" から)。
   # ```ruby
-  # Dir.getwd
+  # Dir.getwd   #=> "/"
   # ```
   # <<en>>
-  # `pwd` is the same method.
-  # **Relative paths given to File.open, Dir.open and the like are resolved from the root**
-  # **(an ESP32's flash root), not from this, so write paths from "/".**
+  # `pwd` is the same method. **Each app has its own**, "/" when it starts. `Dir.chdir`
+  # changes it, and relative paths in file operations (File.open, Dir.open, ...) and in
+  # `File.expand_path` are taken from it. It is apart from other apps' and from the
+  # shell's `cd` (an app started from the shell starts at "/" too).
   # ```ruby
-  # Dir.getwd
+  # Dir.getwd   #=> "/"
   # ```
   def self.getwd: () -> String
 
@@ -226,19 +228,25 @@ class Dir
 
   # 作業ディレクトリを変える <<en>> Change the working directory
   #
-  # 成功すると 0。ブロックを渡すと、その間だけ変えて元に戻し、ブロックの値を返す。無いと
-  # RuntimeError。**変えても、ファイル操作の相対パスの基準は変わらない** (`Dir.getwd` 参照)。
-  # アプリは絶対パスを使う。
+  # 成功すると 0。変わるのはこのアプリの場所だけ (`Dir.getwd` 参照)。相対パスは今の場所から、
+  # "." と ".." をまとめ、"/" より上には出ない。無い・フォルダでない・長すぎる (127 バイトまで)
+  # と RuntimeError で、場所は変わらない。ブロックを渡すと、その間だけ変えて元に戻し
+  # (例外でも戻る)、ブロックの値を返す。アプリが終わると消える。
   # ```ruby
-  # Dir.chdir("/home")
+  # Dir.chdir("/tmp")
+  # File.open("a.txt", "w") { |f| f.write("x") }   # /tmp/a.txt
+  # Dir.chdir("/home") { Dir.getwd }               #=> "/home"
   # ```
   # <<en>>
-  # Returns 0. With a block it changes only for the block, restores, and returns the
-  # block's value. RuntimeError when it is missing.
-  # **It does not change what relative paths in file operations are based on**
-  # (see `Dir.getwd`); apps use absolute paths.
+  # Returns 0. Only this app's place changes (see `Dir.getwd`). A relative path is taken
+  # from the current place; "." and ".." are folded and it never goes above "/". Missing,
+  # not a directory or too long (127 bytes at most) raises RuntimeError and leaves the
+  # place as it was. With a block it changes only for the block, restores (also on an
+  # exception), and returns the block's value. It is gone when the app ends.
   # ```ruby
-  # Dir.chdir("/home")
+  # Dir.chdir("/tmp")
+  # File.open("a.txt", "w") { |f| f.write("x") }   # /tmp/a.txt
+  # Dir.chdir("/home") { Dir.getwd }               #=> "/home"
   # ```
   def self.chdir: (String path) -> Integer
                 | (String path) { (String path) -> untyped } -> untyped

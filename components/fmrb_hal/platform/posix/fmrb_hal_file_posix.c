@@ -4,6 +4,7 @@
 #endif
 #include "fmrb_hal.h"
 #include "fmrb_hal_file.h"
+#include "fmrb_hal_file_cwd.h"
 #include "fmrb_rtos.h"
 #include "fmrb_mem.h"
 #include "fmrb_log.h"
@@ -224,41 +225,13 @@ fmrb_err_t fmrb_hal_file_set_layout(const fmrb_hal_file_layout_t *layout) {
     return FMRB_OK;
 }
 
-// Collapse "//", "." and ".." in a virtual path, making it absolute. ".."
-// stops at the root, so no virtual path can name a host path above the root
-// it resolves under. Only the layered table normalizes: the flat one keeps
-// passing paths through exactly as it always has.
+// Fold "//", "." and ".." in a virtual path, making it absolute (a relative
+// one is put under the calling app's working directory first). ".." stops at
+// the root, so no virtual path can name a host path above the root it
+// resolves under. Only the layered table normalizes: the flat one keeps
+// passing absolute paths through exactly as it always has.
 static bool normalize_virtual(const char *in, char *out, size_t out_len) {
-    if (out_len < 2) {
-        return false;
-    }
-    size_t o = 0;
-    out[o++] = '/';
-    const char *p = in;
-    while (*p) {
-        while (*p == '/') p++;
-        if (*p == '\0') break;
-        const char *seg = p;
-        while (*p && *p != '/') p++;
-        size_t len = (size_t)(p - seg);
-        if (len == 1 && seg[0] == '.') {
-            continue;
-        }
-        if (len == 2 && seg[0] == '.' && seg[1] == '.') {
-            while (o > 1 && out[o - 1] != '/') o--;   // drop the last segment
-            if (o > 1) o--;                           // and its slash
-            continue;
-        }
-        if (o > 1) {
-            if (o + 1 >= out_len) return false;
-            out[o++] = '/';
-        }
-        if (o + len >= out_len) return false;
-        memcpy(out + o, seg, len);
-        o += len;
-    }
-    out[o] = '\0';
-    return true;
+    return fmrb_hal_file_normalize(in, out, out_len);
 }
 
 static bool top_matches(const char *path, const char *top) {
@@ -300,7 +273,8 @@ static fmrb_err_t layered_host_path(const fs_mount_t *m, const char *norm,
 }
 
 // Resolve a virtual path to the host path. The flat table keeps the shape the
-// simulation has always had ("flash" + path, relative paths under flash/);
+// simulation has always had ("flash" + path; a relative path is taken from
+// the app's working directory);
 // the layered one normalizes first and then picks the root from the table.
 // Under a host place, a path naming something other than a regular file or a
 // directory (a device, a FIFO, a socket) does not resolve: opening one can
@@ -311,13 +285,14 @@ fmrb_err_t fmrb_hal_file_resolve_path(const char *virtual_path,
         return FMRB_ERR_INVALID_PARAM;
     }
     if (!s_layered) {
-        const char *base = s_roots[ROOT_SYSTEM];
-        int n;
-        if (virtual_path[0] == '/') {
-            n = snprintf(out, out_len, "%s%s", base, virtual_path);
-        } else {
-            n = snprintf(out, out_len, "%s/%s", base, virtual_path);
+        // A relative path is put under the app's working directory and
+        // folded first; an absolute one goes through as it is.
+        char abs[512];
+        const char *path = fmrb_hal_file_cwd_apply(virtual_path, abs, sizeof(abs));
+        if (path == NULL) {
+            return FMRB_ERR_INVALID_PARAM;
         }
+        int n = snprintf(out, out_len, "%s%s", s_roots[ROOT_SYSTEM], path);
         if (n < 0 || (size_t)n >= out_len) {
             return FMRB_ERR_INVALID_PARAM;
         }
@@ -1653,32 +1628,8 @@ fmrb_err_t fmrb_hal_file_size(fmrb_file_t handle, uint32_t *size) {
     return FMRB_OK;
 }
 
-// Change current working directory
-fmrb_err_t fmrb_hal_file_chdir(const char *path) {
-    if (path == NULL) {
-        return FMRB_ERR_INVALID_PARAM;
-    }
-
-    char full_path[512];
-    build_path(path, full_path, sizeof(full_path));
-
-    LOCK();
-    int ret = chdir(full_path);
-    UNLOCK();
-    return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
-}
-
-// Get current working directory
-fmrb_err_t fmrb_hal_file_getcwd(char *buffer, size_t size) {
-    if (buffer == NULL || size == 0) {
-        return FMRB_ERR_INVALID_PARAM;
-    }
-
-    LOCK();
-    char *ret = getcwd(buffer, size);
-    UNLOCK();
-    return (ret != NULL) ? FMRB_OK : FMRB_ERR_FAILED;
-}
+// fmrb_hal_file_chdir / fmrb_hal_file_getcwd: fmrb_hal_file_cwd.c (per app;
+// the process's working directory is never moved).
 
 // Change file modification time
 fmrb_err_t fmrb_hal_file_utime(const char *path, uint32_t mtime) {

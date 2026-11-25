@@ -26,6 +26,10 @@
 #     fmrb_midi_sched.c does)
 #   - A player's playing? ends with its own queued commands, not with the
 #     whole queue (doc/api_fixes F4, C3)
+#   - File.expand_path is based on the app's working directory (F7)
+#   - The per-app working directory in the file HAL, POSIX and ESP32: absolute
+#     paths resolve as before, relative ones from the app's place (C, compiled
+#     here with gcc: test/api_fixes/cwd)
 #   - The pin table's GPIO rule on every board: the buttons are input only,
 #     the other system pins and another app's pins refuse GPIO (C, compiled
 #     here with gcc: test/api_fixes/pin_ledger)
@@ -63,6 +67,22 @@ check("File.path(String)", FileGem::File.path("x"), "x")
 check("File.path(nil)", raised { FileGem::File.path(nil) }, ["ArgumentError", "missing filename"])
 check("File.path(Integer)", raised { FileGem::File.path(1) },
       ["TypeError", "no implicit conversion of Integer into String"])
+
+# File.expand_path puts a relative path on the app's working directory
+# (File._getwd, the C side of Dir.getwd; doc/api_fixes F7), not on ENV["PWD"].
+$fake_cwd = "/"
+FileGem::File.define_singleton_method(:_getwd) { $fake_cwd }
+check("expand_path at /", FileGem::File.expand_path("a.txt"), "/a.txt")
+$fake_cwd = "/tmp"
+check("expand_path at /tmp", FileGem::File.expand_path("a.txt"), "/tmp/a.txt")
+check("expand_path ../x at /tmp", FileGem::File.expand_path("../x"), "/x")
+check("expand_path ../../x at /tmp", FileGem::File.expand_path("../../x"), "/x")
+check("expand_path . at /tmp", FileGem::File.expand_path("."), "/tmp")
+check("expand_path absolute at /tmp", FileGem::File.expand_path("/home/../a"), "/a")
+check("expand_path with a relative default_dir", FileGem::File.expand_path("a", "sub"), "/tmp/sub/a")
+check("expand_path with an absolute default_dir", FileGem::File.expand_path("a", "/home"), "/home/a")
+ENV["PWD"] = "/elsewhere"
+check("expand_path ignores PWD", FileGem::File.expand_path("a"), "/tmp/a")
 
 # ---- JSON --------------------------------------------------------------------
 
@@ -573,6 +593,34 @@ Dir.mktmpdir("pin_ledger") do |tmp|
     check("pin ledger #{board}: buttons and app pins out of the table", left & reserved, [])
     check("pin ledger #{board}: a free reserved pin was tried with I2C",
           nums.call("reserved_free").first.to_i >= 0, true)
+  end
+end
+
+# ---- The per-app working directory (doc/api_fixes F7) -----------------------
+#
+# test/api_fixes/cwd/cwd_test.c over the POSIX file HAL (flat and layered) and
+# over the ESP32 namespace: absolute paths resolve exactly as before, relative
+# ones from the app's own place, and the read-only answers hold for them.
+
+cw = File.join(ROOT, "test/api_fixes/cwd")
+hal = File.join(ROOT, "components/fmrb_hal")
+Dir.mktmpdir("cwd") do |tmp|
+  {
+    "posix" => [[], ["#{hal}/platform/posix/fmrb_hal_file_posix.c", "#{hal}/platform/posix/fmrb_tmpfs_posix.c"]],
+    "esp32" => [["-DCWD_TEST_ESP32"], ["#{hal}/platform/esp32/fmrb_hal_file_path_esp32.c"]],
+  }.each do |name, (defs, srcs)|
+    exe = File.join(tmp, name)
+    cmd = ["gcc", "-std=gnu11", "-Wall", "-Wextra", "-Werror", "-DCONFIG_IDF_TARGET_LINUX", *defs,
+           "-I#{ROOT}/test/native/stub", "-I#{hal}", "-I#{hal}/platform/posix",
+           "-I#{ROOT}/components/fmrb_common/include", "-o", exe, "#{cw}/cwd_test.c",
+           "#{hal}/fmrb_hal_file_cwd.c", *srcs]
+    out, st = Open3.capture2e(*cmd)
+    check("cwd #{name}: builds", [st.success?, out], [true, ""])
+    next unless st.success?
+
+    out, st = Open3.capture2e(exe)
+    check("cwd #{name}: checks", [st.success?, out.lines.grep(/^FAIL/)], [true, []])
+    check("cwd #{name}: ran", out[/^cwd #{name}: (\d+) checks/, 1].to_i > 100, true)
   end
 end
 

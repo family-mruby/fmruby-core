@@ -43,6 +43,22 @@ mrb_file_s_file_p(mrb_state *mrb, mrb_value self)
 }
 
 /*
+ * File._getwd -> String: the app's working directory (fmrb_hal_file_getcwd),
+ * the base File.expand_path puts a relative path on. Here rather than
+ * Dir.getwd so that File does not depend on mruby-dir.
+ */
+static mrb_value
+mrb_file_s_getwd(mrb_state *mrb, mrb_value self)
+{
+  (void)self;
+  char cwd[FMRB_HAL_FILE_CWD_MAX];
+  if (fmrb_hal_file_getcwd(cwd, sizeof(cwd)) != FMRB_OK) {
+    return mrb_str_new_lit(mrb, "/");
+  }
+  return mrb_str_new_cstr(mrb, cwd);
+}
+
+/*
  * call-seq:
  *   File.exist?(path) -> true or false
  *   File.exists?(path) -> true or false
@@ -242,6 +258,7 @@ mrb_picoruby_fmrb_filesystem_init_impl(mrb_state *mrb)
   mrb_define_class_method(mrb, file_class, "delete", mrb_file_s_unlink, MRB_ARGS_REQ(1));
   mrb_define_class_method(mrb, file_class, "unlink", mrb_file_s_unlink, MRB_ARGS_REQ(1));
   mrb_define_class_method(mrb, file_class, "rename", mrb_file_s_rename, MRB_ARGS_REQ(2));
+  mrb_define_class_method(mrb, file_class, "_getwd", mrb_file_s_getwd, MRB_ARGS_NONE());
 
   // Instance methods (File-specific methods only)
   // _new/write/close/closed?/_flush are inherited from IO; File.new (Ruby)

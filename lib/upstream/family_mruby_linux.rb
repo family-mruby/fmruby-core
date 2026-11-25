@@ -91,7 +91,17 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   # mruby-dir is still an explicit dep (it is not pulled in transitively).
   # NOTE: hal-posix-io is NOT loaded (it depends on mruby-io which conflicts with fmrb-io)
   dir = "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems"
-  conf.gem gemdir: "#{dir}/mruby-dir"
+  # Its posix port (lib/upstream/patch/.../mruby-dir/ports/posix/dir_hal.c)
+  # resolves paths and keeps the working directory through the file HAL
+  # (doc/api_fixes F7), so it reads the HAL's header.
+  # This file is read from lib/upstream/ or from its copy in picoruby's
+  # build_config/, so the repository is found by walking up.
+  core = File.expand_path(__dir__)
+  core = File.dirname(core) until File.directory?("#{core}/components/fmrb_hal") || core == "/"
+  conf.gem gemdir: "#{dir}/mruby-dir" do |spec|
+    spec.cc.include_paths << "#{core}/components/fmrb_hal"
+    spec.cc.include_paths << "#{core}/components/fmrb_common/include"
+  end
 
   # mruby extension gems
   conf.gem gemdir: "#{dir}/mruby-kernel-ext"

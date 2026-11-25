@@ -1,4 +1,5 @@
 #include "fmrb_hal_file.h"
+#include "fmrb_hal_file_cwd.h"
 #include "fmrb_tmpfs.h"
 #include "fmrb_pin_assign.h"
 #include <string.h>
@@ -95,9 +96,8 @@ static SemaphoreHandle_t s_file_mutex = NULL;
 #define LOCK() xSemaphoreTake(s_file_mutex, portMAX_DELAY)
 #define UNLOCK() xSemaphoreGive(s_file_mutex)
 
-// Mount points
-#define LITTLEFS_PATH "/flash"
-#define SDCARD_PATH "/sd"
+// Mount points (LITTLEFS_PATH, SDCARD_PATH)
+#include "fmrb_hal_file_esp32_paths.h"
 
 // SD card wiring. Two shapes exist:
 //   - Retro: the slot hangs off a SPI bus (SDSPI), with a card-detect line.
@@ -124,107 +124,18 @@ static sd_pwr_ctrl_handle_t s_sd_pwr_ctrl = NULL;
 static bool s_spi_initialized = false;
 #endif
 
-// Path-prefix alias table. Each entry maps a user-visible prefix to the
-// underlying VFS mount point. An entry whose `mount` equals its `prefix` is
-// the canonical name; other entries are aliases (the prefix is rewritten to
-// `mount` before reaching the VFS). To add a new alias, add one row here -
-// no other code needs to change.
-typedef struct {
-    const char *prefix;  // user-visible prefix, no trailing slash
-    const char *mount;   // actual VFS mount point, no trailing slash
-} path_alias_t;
+// The namespace (alias table, virtual mount-point directories, the resolver,
+// fmrb_hal_file_virtual_children and the read-only answers) is
+// fmrb_hal_file_path_esp32.c, which needs nothing from ESP-IDF and is also
+// built by the host tests.
 
-static const path_alias_t s_path_aliases[] = {
-    { "/flash",  LITTLEFS_PATH },     // canonical flash mount
-    { "/sd",     SDCARD_PATH },       // canonical SD mount
-    { "/mnt/sd", SDCARD_PATH },       // Unix-style alias for SD
-    // RAM filesystem, registered as its own VFS (fmrb_tmpfs_esp32.c). Listed
-    // here so it is left alone instead of being folded under the flash mount.
-    { FMRB_TMPFS_MOUNT, FMRB_TMPFS_MOUNT },
-};
-
-#define PATH_ALIAS_COUNT (sizeof(s_path_aliases) / sizeof(s_path_aliases[0]))
-
-// Virtual mount-point directories that the underlying VFS does not own. They
-// only exist as "containers" so the real mounts (/mnt/sd) are reachable via a
-// Unix-style namespace. opendir/readdir on these returns the synthetic child
-// list; stat reports them as directories.
-typedef struct {
-    const char *path;            // virtual directory path, no trailing slash
-    const char *const *children; // null-terminated? no - count is explicit
-    size_t count;
-} path_virtual_t;
-
-static const char *const s_root_extra[]    = { "mnt", "tmp" };
-static const char *const s_mnt_children[]  = { "sd" };
-
-static const path_virtual_t s_virtual_dirs[] = {
-    { "/",    s_root_extra,   2 },  // "mnt" and "tmp" appear in addition to flash entries
-    { "/mnt", s_mnt_children, 1 },  // purely virtual: only contains "sd"
-};
-
-#define PATH_VIRTUAL_COUNT (sizeof(s_virtual_dirs) / sizeof(s_virtual_dirs[0]))
-
-// Resolve a virtual path to the underlying VFS path.
-// Order of resolution:
-//   1. Match against the alias table (prefix must terminate at '/' or '\0').
-//   2. Otherwise, treat as living under the flash mount (legacy behavior:
-//      both absolute and relative bare paths land under LITTLEFS_PATH).
-fmrb_err_t fmrb_hal_file_resolve_path(const char *virtual_path,
-                                      char *out, size_t out_len) {
-    if (virtual_path == NULL || out == NULL || out_len == 0) {
-        return FMRB_ERR_INVALID_PARAM;
-    }
-    for (size_t i = 0; i < PATH_ALIAS_COUNT; i++) {
-        const char *prefix = s_path_aliases[i].prefix;
-        size_t plen = strlen(prefix);
-        if (strncmp(virtual_path, prefix, plen) == 0 &&
-            (virtual_path[plen] == '\0' || virtual_path[plen] == '/')) {
-            snprintf(out, out_len, "%s%s",
-                     s_path_aliases[i].mount, virtual_path + plen);
-            return FMRB_OK;
-        }
-    }
-    if (virtual_path[0] == '/') {
-        snprintf(out, out_len, "%s%s", LITTLEFS_PATH, virtual_path);
-    } else {
-        snprintf(out, out_len, "%s/%s", LITTLEFS_PATH, virtual_path);
-    }
-    return FMRB_OK;
-}
-
-// Internal alias for legacy callsites in this file.
+// Internal alias for legacy callsites in this file. A path that does not
+// resolve (a relative one too long under the working directory) leaves an
+// empty string, which no open, stat or change finds.
 static inline void build_path(const char *path, char *full_path, size_t max_len) {
-    fmrb_hal_file_resolve_path(path, full_path, max_len);
-}
-
-// Look up the synthetic children for a virtual mount-point directory.
-// Returns NULL if `virtual_path` is not a known virtual directory.
-const char *const *fmrb_hal_file_virtual_children(const char *virtual_path,
-                                                  size_t *out_count) {
-    if (virtual_path == NULL) {
-        if (out_count) *out_count = 0;
-        return NULL;
+    if (fmrb_hal_file_resolve_path(path, full_path, max_len) != FMRB_OK && max_len > 0) {
+        full_path[0] = '\0';
     }
-    for (size_t i = 0; i < PATH_VIRTUAL_COUNT; i++) {
-        if (strcmp(virtual_path, s_virtual_dirs[i].path) == 0) {
-            if (out_count) *out_count = s_virtual_dirs[i].count;
-            return s_virtual_dirs[i].children;
-        }
-    }
-    if (out_count) *out_count = 0;
-    return NULL;
-}
-
-// The device's storage is one writable volume (fmrb_hal_file.h).
-bool fmrb_hal_file_path_is_read_only(const char *virtual_path) {
-    (void)virtual_path;
-    return false;
-}
-
-bool fmrb_hal_file_entry_is_read_only(const char *virtual_path) {
-    (void)virtual_path;
-    return false;
 }
 
 // Convert flags to POSIX mode string
@@ -576,12 +487,33 @@ void fmrb_hal_file_deinit(void) {
     }
 }
 
+// A relative path made absolute under the caller's working directory, then
+// handled as that absolute path. Out of line so that the buffer is only on
+// the stack when a relative path is given (never on hw_proxy's).
+static __attribute__((noinline)) fmrb_err_t open_relative(const char *path, uint32_t flags,
+                                                          fmrb_file_t *out_handle) {
+    char abs_path[MAX_PATH_LEN];
+    const char *p = fmrb_hal_file_cwd_apply(path, abs_path, sizeof(abs_path));
+    return p != NULL ? fmrb_hal_file_open(p, flags, out_handle) : FMRB_ERR_INVALID_PARAM;
+}
+
+static __attribute__((noinline)) fmrb_err_t stat_relative(const char *path, fmrb_file_info_t *info) {
+    char abs_path[MAX_PATH_LEN];
+    const char *p = fmrb_hal_file_cwd_apply(path, abs_path, sizeof(abs_path));
+    return p != NULL ? fmrb_hal_file_stat(p, info) : FMRB_ERR_INVALID_PARAM;
+}
+
 // Open a file
 // PSRAM stack tasks are routed through hw_proxy (internal RAM stack) to avoid
 // SPI flash DMA crashes. Internal RAM stack tasks call the impl directly.
 fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out_handle) {
     if (path == NULL || out_handle == NULL) {
         return FMRB_ERR_INVALID_PARAM;
+    }
+    // The working directory is the caller's: a relative path is made
+    // absolute here, before hw_proxy's task (which is not the app) sees it.
+    if (path[0] != '/') {
+        return open_relative(path, flags, out_handle);
     }
     if (hw_proxy_needs_proxy()) {
         hw_proxy_file_open_params_t p = { .path = path, .flags = flags, .out_handle = out_handle };
@@ -908,6 +840,10 @@ fmrb_err_t fmrb_hal_file_stat(const char *path, fmrb_file_info_t *info) {
     if (path == NULL || info == NULL) {
         return FMRB_ERR_INVALID_PARAM;
     }
+    // Made absolute in the caller's task, as in fmrb_hal_file_open.
+    if (path[0] != '/') {
+        return stat_relative(path, info);
+    }
 
     // Virtual mount-point parents have no on-disk entry. Report them as
     // directories so File.exist? / File.directory? answer consistently with
@@ -1156,32 +1092,8 @@ fmrb_err_t fmrb_hal_file_size(fmrb_file_t handle, uint32_t *size) {
     return FMRB_OK;
 }
 
-// Change current working directory
-fmrb_err_t fmrb_hal_file_chdir(const char *path) {
-    if (path == NULL) {
-        return FMRB_ERR_INVALID_PARAM;
-    }
-
-    char full_path[MAX_PATH_LEN];
-    build_path(path, full_path, sizeof(full_path));
-
-    LOCK();
-    int ret = chdir(full_path);
-    UNLOCK();
-    return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
-}
-
-// Get current working directory
-fmrb_err_t fmrb_hal_file_getcwd(char *buffer, size_t size) {
-    if (buffer == NULL || size == 0) {
-        return FMRB_ERR_INVALID_PARAM;
-    }
-
-    LOCK();
-    char *ret = getcwd(buffer, size);
-    UNLOCK();
-    return (ret != NULL) ? FMRB_OK : FMRB_ERR_FAILED;
-}
+// fmrb_hal_file_chdir / fmrb_hal_file_getcwd: fmrb_hal_file_cwd.c (per app;
+// ESP-IDF has no working directory of its own).
 
 // Change file modification time
 fmrb_err_t fmrb_hal_file_utime(const char *path, uint32_t mtime) {

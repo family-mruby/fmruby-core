@@ -198,7 +198,40 @@ StickS3 のボタン (KEY1) と step_sensor、NARYA v3 で step_sensor が IOErr
 - `rake regress`・`regress:size ALL=1` (5 端末のビルド) 通過。空きは STICKS3 522,496・ATOMS3R 537,312 バイト。
 未確認: Tab5・AtomS3R・StickS3・NARYA v3 の基板の配線 (ヘッダの値を正とした。回路図とは照らしていない) と実機、
 P4-Nano の 24・25 (文書に無く表に入れていない)、gpio_viewer の表示。
-**ユーザの判断待ち**: NARYA v3 のシリアルのログのピン (UART0 の 43・44) はヘッダに名前が無く、表に入っていない。
+NARYA v3 のシリアルのログのピン (UART0 の 43・44) は、ユーザ決定 (2026-11-25) で表に足した
+(`FMRB_PIN_CONSOLE_TX`・`_RX`。アプリ用には出していない)。
+
+### F7 の設計 (決定 21: アプリごとに「今いる場所」を持つ)
+
+- 今: `Dir.chdir` は HAL の `fmrb_hal_file_chdir` がプロセスの `chdir()` を呼ぶ。ESP32 では必ず失敗し (ESP-IDF の chdir は
+  ENOSYS)、`Dir.getwd` は "/" のまま。sim では成功してプロセス全体の場所が変わり、`fmrb_hal_file_resolve_path` の起点が
+  ずれて全アプリの全てのパスが外れる。
+- 直した後:
+  1. **今いる場所はアプリ (タスク) ごと**。最初は "/"。アプリが終わると消える。ほかのアプリには見えず、引き継がない。
+     アプリでないタスク (カーネル・ホストの C のタスク) は常に "/"。
+  2. `Dir.chdir(path)` は、在るフォルダなら成功 (どの端末でも同じ)。無い・フォルダでない・長すぎるは例外 (今の例外の
+     クラスに合わせる)。相対パスの chdir は今いる場所から。`..` と `.` をまとめる。ルートより上には出ない。
+     ブロックの形 (`Dir.chdir(path) { }`。終わったら元に戻る。例外でも戻る) を使えるようにする。
+  3. アプリが渡すパスを実際のパスに直す所 (`fmrb_hal_file_resolve_path`) で、相対パスに今いる場所を付ける。これで
+     `File.open`・`File.exist?`・`File.delete`・`Dir.entries`・`Dir.mkdir`・`File.rename` ほか HAL を通る全部がそろう。
+     絶対パスの動きは変えない。
+  4. `Dir.getwd` はその場所を返す。`File.expand_path` は `ENV["PWD"]` でなく `Dir.getwd` を基準にする。
+  5. posix (sim・ネイティブ版・ブラウザ版) はプロセスの `chdir()` を呼ばない (全アプリのパスが外れる不具合が消える)。
+  6. シェルの `cd` (自前で場所を持つ) は変えない。シェルから起動したアプリに場所を渡すこともしない (今までと同じ)。
+- メモリ: 場所の文字列をアプリの枠の数だけ持つ。内蔵 RAM でなく PSRAM (か、最初の chdir のときに確保)。増分を測る。
+
+### F7 の結果 (2026-11-25、report/f7.md)
+
+設計の 1〜6 のとおり。場所はファイルの HAL の中の表 (`fmrb_hal_file_cwd.c`。アプリの枠 × 128 バイト、ESP32 では PSRAM、
+1,156 バイト)。アプリの層が起動時に「今のタスクの枠の番号」を返す関数を HAL に入れる。アプリの終わりと kill で消す。
+ESP32 の名前の解決は `fmrb_hal_file_path_esp32.c` に移った (ホストの試験で組める)。絶対パスの解決は直す前と同じ
+(41 通りの表で照合)。ホストの試験は posix 570・ESP32 217。同梱のコードに相対パスを使う所は無い。
+親の検収: ESP32 のビルドが checkpoint の表の段で落ちたのを直した (`0cf10941`。サブがネイティブ版で直したのと同じ原因)。
+P4-Nano に焼いて (`0cf10941`) 確認用のアプリで 18 項目 (getwd・chdir・相対パスの読み書き・expand_path・ブロックの形・
+無い場所・`..`・ルートより上・chdir の後の絶対パス) が期待どおり、ファイルマネージャと麻雀が普通に動く、crash 0、
+内蔵 RAM の空きは前と同じ水準。回帰: `rake regress`・`regress:size ALL=1` (DIRAM は 5 端末とも前と同じ)・`regress:run`・
+`regress:live` 17/17・`regress:screens` 28/28 が通過。
+未確認: SD への chdir (P4-Nano にカードが無い)、Spinel のアプリからの `Dir.chdir`、S3 の実機。
 
 ## 3. スコープ
 

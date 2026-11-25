@@ -86,7 +86,12 @@ MRuby::CrossBuild.new('family-mruby-native') do |conf|
   conf.gem core: 'hal-dir-fmrb'
 
   dir = "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems"
-  conf.gem gemdir: "#{dir}/mruby-dir"
+  # The presym scan still preprocesses the dropped posix port, which reads
+  # the file HAL's header (doc/api_fixes F7).
+  conf.gem gemdir: "#{dir}/mruby-dir" do |spec|
+    spec.cc.include_paths << File.expand_path('../../components/fmrb_hal', __dir__)
+    spec.cc.include_paths << File.expand_path('../../components/fmrb_common/include', __dir__)
+  end
 
   # mruby extension gems
   conf.gem gemdir: "#{dir}/mruby-kernel-ext"

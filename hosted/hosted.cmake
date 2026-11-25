@@ -215,6 +215,7 @@ set(FMRB_HOSTED_CORE_SRCS
   # the posix (shared-memory) link -- the Modern in-process display path.
   ${FMRB_ROOT}/components/fmrb_hal/fmrb_hal.c
   ${FMRB_ROOT}/components/fmrb_hal/fmrb_hal_time.c
+  ${FMRB_ROOT}/components/fmrb_hal/fmrb_hal_file_cwd.c
   ${FMRB_ROOT}/components/fmrb_hal/platform/posix/fmrb_hal_time_posix.c
   ${FMRB_ROOT}/components/fmrb_hal/platform/posix/fmrb_hal_gpio_posix.c
   ${FMRB_ROOT}/components/fmrb_hal/platform/posix/fmrb_hal_i2c_posix.c

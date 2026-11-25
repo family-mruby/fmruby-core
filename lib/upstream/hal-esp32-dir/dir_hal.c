@@ -7,7 +7,9 @@
 ** name-only gem hal-dir-fmrb.
 **
 ** ESP-IDF VFS provides POSIX directory APIs (opendir/readdir/closedir/mkdir/
-** rmdir/chdir/getcwd/stat) but lacks chroot(), seekdir(), and telldir().
+** rmdir/stat) but lacks chroot(), seekdir(), and telldir(). chdir/getcwd are
+** the file HAL's per-app working directory, which the resolver also applies
+** to every relative path given here.
 **
 ** Path translation (alias rewriting and virtual mount-point synthesis) is
 ** owned by fmrb_hal_file: open/read here defer to the resolver and the
@@ -275,25 +277,47 @@ mrb_hal_dir_rmdir(mrb_state *mrb, const char *path)
   return ret;
 }
 
+// The working directory is the app's own, kept by the file HAL
+// (fmrb_hal_file_chdir); the process's is never moved.
+static int
+cwd_errno(fmrb_err_t err)
+{
+  switch (err) {
+  case FMRB_ERR_NOT_FOUND:     return ENOENT;
+  case FMRB_ERR_INVALID_STATE: return ENOTDIR;
+  case FMRB_ERR_INVALID_PARAM: return ENAMETOOLONG;
+  default:                     return ENOSYS;
+  }
+}
+
 int
 mrb_hal_dir_chdir(mrb_state *mrb, const char *path)
 {
   (void)mrb;
-  char resolved[DIR_HAL_PATH_MAX];
-  if (fmrb_hal_file_resolve_path(path, resolved, sizeof(resolved)) != FMRB_OK) {
+  fmrb_err_t err = fmrb_hal_file_chdir(path);
+  if (err != FMRB_OK) {
+    errno = cwd_errno(err);
     return -1;
   }
-  fmrb_hal_file_lock(UINT32_MAX);
-  int ret = chdir(resolved);
-  fmrb_hal_file_unlock();
-  return ret;
+  return 0;
 }
 
 int
 mrb_hal_dir_getcwd(mrb_state *mrb, char *buf, size_t size)
 {
   (void)mrb;
-  return getcwd(buf, size) ? 0 : -1;
+  char cwd[FMRB_HAL_FILE_CWD_MAX];
+  if (fmrb_hal_file_getcwd(cwd, sizeof(cwd)) != FMRB_OK) {
+    errno = EIO;
+    return -1;
+  }
+  size_t n = strlen(cwd);
+  if (n + 1 > size) {
+    errno = ERANGE;   // mruby-dir's Dir.getwd grows the buffer and asks again
+    return -1;
+  }
+  memcpy(buf, cwd, n + 1);
+  return 0;
 }
 
 int

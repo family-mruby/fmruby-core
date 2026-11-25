@@ -2,17 +2,19 @@
 ** dir_hal.c - POSIX HAL for mruby-dir (family-mruby patch)
 **
 ** Upstream passes paths straight to opendir/mkdir/stat/etc., so a virtual
-** path like "/app" would hit the real host filesystem. The Linux dev
-** environment serves the on-device "/" namespace from a local "flash/"
-** directory (see components/fmrb_hal/platform/posix/fmrb_hal_file_posix.c),
-** so this patch applies the same "flash" prefix before delegating to the
-** POSIX API, mirroring fmrb_hal_file_resolve_path(). getcwd does the reverse
-** (strips the prefix) so Ruby sees virtual paths. The dev build has no SD
-** card / virtual mount points, so no children synthesis.
+** path like "/app" would hit the real host filesystem. The Linux simulation
+** and the browser build serve the on-device "/" namespace from a local
+** "flash/" directory, so every path goes through the file HAL's resolver
+** (components/fmrb_hal/platform/posix/fmrb_hal_file_posix.c) before the POSIX
+** API. chdir/getcwd are the file HAL's per-app working directory
+** (doc/api_fixes F7): the process's own is never moved, which would shift
+** every app's paths at once. The flat namespace has no SD card / virtual
+** mount points, so no children synthesis.
 */
 
 #include <mruby.h>
 #include "dir_hal.h"
+#include "fmrb_hal_file.h"
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -31,19 +33,18 @@ struct mrb_dir_handle {
   DIR *dir;
 };
 
-#define POSIX_BASE_PATH "flash"
 #define POSIX_PATH_MAX  512
 
-/* Map a virtual path ("/app", "app") to the host path under "flash/". */
+/* Map a virtual path ("/app", or "app" under the working directory) to the
+ * host path under "flash/". A path that does not resolve leaves "", which no
+ * call below finds. */
 static void
 resolve_path(const char *virtual_path, char *out, size_t out_len)
 {
   if (out == NULL || out_len == 0) return;
-  if (virtual_path == NULL) { out[0] = '\0'; return; }
-  if (virtual_path[0] == '/') {
-    snprintf(out, out_len, "%s%s", POSIX_BASE_PATH, virtual_path);
-  } else {
-    snprintf(out, out_len, "%s/%s", POSIX_BASE_PATH, virtual_path);
+  if (virtual_path == NULL ||
+      fmrb_hal_file_resolve_path(virtual_path, out, out_len) != FMRB_OK) {
+    out[0] = '\0';
   }
 }
 
@@ -144,31 +145,44 @@ mrb_hal_dir_rmdir(mrb_state *mrb, const char *path)
   return rmdir(resolved);
 }
 
+static int
+cwd_errno(fmrb_err_t err)
+{
+  switch (err) {
+  case FMRB_ERR_NOT_FOUND:     return ENOENT;
+  case FMRB_ERR_INVALID_STATE: return ENOTDIR;
+  case FMRB_ERR_INVALID_PARAM: return ENAMETOOLONG;
+  default:                     return ENOSYS;
+  }
+}
+
 int
 mrb_hal_dir_chdir(mrb_state *mrb, const char *path)
 {
   (void)mrb;
-  char resolved[POSIX_PATH_MAX];
-  resolve_path(path, resolved, sizeof(resolved));
-  return chdir(resolved);
+  fmrb_err_t err = fmrb_hal_file_chdir(path);
+  if (err != FMRB_OK) {
+    errno = cwd_errno(err);
+    return -1;
+  }
+  return 0;
 }
 
 int
 mrb_hal_dir_getcwd(mrb_state *mrb, char *buf, size_t size)
 {
   (void)mrb;
-  char host[POSIX_PATH_MAX];
-  if (getcwd(host, sizeof(host)) == NULL) return -1;
-  /* Reverse resolve_path: strip the "flash" prefix so Ruby sees virtual paths. */
-  size_t base_len = strlen(POSIX_BASE_PATH);
-  const char *virt = host;
-  if (strncmp(host, POSIX_BASE_PATH, base_len) == 0 &&
-      (host[base_len] == '/' || host[base_len] == '\0')) {
-    virt = host + base_len;
-    if (virt[0] == '\0') virt = "/";
+  char cwd[FMRB_HAL_FILE_CWD_MAX];
+  if (fmrb_hal_file_getcwd(cwd, sizeof(cwd)) != FMRB_OK) {
+    errno = EIO;
+    return -1;
   }
-  if (strlen(virt) + 1 > size) { errno = ERANGE; return -1; }
-  strcpy(buf, virt);
+  size_t n = strlen(cwd);
+  if (n + 1 > size) {
+    errno = ERANGE;   /* Dir.getwd grows the buffer and asks again */
+    return -1;
+  }
+  memcpy(buf, cwd, n + 1);
   return 0;
 }
 
