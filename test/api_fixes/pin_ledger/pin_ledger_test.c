@@ -132,6 +132,30 @@ int main(void)
            FMRB_PIN_GPIO_NO_IN_USE);
     fmrb_pin_manager_release_by_owner(app_a);
 
+    /* An interrupt line a chip on the board drives: an input for an app,
+       never an output; reading and releasing work as for any pin. */
+#if defined(FMRB_PIN_IMU_INT) || defined(FMRB_PIN_PM1_IRQ)
+    {
+#ifdef FMRB_PIN_IMU_INT
+        int line = FMRB_PIN_IMU_INT;
+#else
+        int line = FMRB_PIN_PM1_IRQ;
+#endif
+        expect("irq line is not reserved", line, fmrb_pin_manager_is_gpio_reserved(line), 0);
+        expect("irq line output (free)", line, fmrb_pin_manager_claim_gpio(line, FMRB_PIN_GPIO_OUTPUT, app_a),
+               FMRB_PIN_GPIO_NO_INPUT_ONLY);
+        expect("irq line left free", line, fmrb_pin_manager_get_status(line).usage, FMRB_PIN_UNUSED);
+        expect("irq line read", line, fmrb_pin_manager_claim_gpio(line, FMRB_PIN_GPIO_READ, app_a),
+               FMRB_PIN_GPIO_OK_SHARED);
+        expect("irq line input", line, fmrb_pin_manager_claim_gpio(line, FMRB_PIN_GPIO_INPUT, app_a),
+               FMRB_PIN_GPIO_OK);
+        expect("irq line output (owner)", line, fmrb_pin_manager_claim_gpio(line, FMRB_PIN_GPIO_OUTPUT, app_a),
+               FMRB_PIN_GPIO_NO_INPUT_ONLY);
+        fmrb_pin_manager_release_by_owner(app_a);
+        expect("irq line released", line, fmrb_pin_manager_get_status(line).usage, FMRB_PIN_UNUSED);
+    }
+#endif
+
     expect("out of range", FMRB_PIN_MAX, fmrb_pin_manager_claim_gpio(FMRB_PIN_MAX, FMRB_PIN_GPIO_INPUT, app_a),
            FMRB_PIN_GPIO_NO_RANGE);
     expect("negative", -1, fmrb_pin_manager_claim_gpio(-1, FMRB_PIN_GPIO_READ, app_a), FMRB_PIN_GPIO_NO_RANGE);
