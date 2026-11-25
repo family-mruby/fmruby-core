@@ -33,6 +33,10 @@ conf.archiver.command = 'ar'
 conf.cc.flags = conf.cc.flags.flatten.reject { |f| f.to_s =~ /\A-m(longcalls|arch=|abi=)/ }
 conf.cc.defines.delete('MRB_32BIT')
 conf.ports :posix
+# mruby-dir's posix port reads the file HAL's header (the working directory
+# per app, doc/api_fixes F7); the HAL's functions are stand-ins here.
+conf.cc.include_paths << File.expand_path('../../components/fmrb_hal', __dir__)
+conf.cc.include_paths << File.expand_path('../../components/fmrb_common/include', __dir__)
 conf.cc.defines << 'PICORB_PLATFORM_POSIX'   # what the posix ports are compiled with
 # The device configurations carry the gem themselves (F6); one that does not
 # gets it here.
