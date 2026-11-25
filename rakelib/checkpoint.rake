@@ -44,7 +44,8 @@ namespace :checkpoint do
     build_dir = File.join(dir, "build")
     cmake_args = ["-S", File.join(ROOT_DIR, "tools/ckpt_table"), "-B", build_dir,
                   "-DCMAKE_BUILD_TYPE=Release", "-DFMRB_CKPT_OF=#{of}", "-DIDF_TARGET=#{ESP_CHIP}",
-                  "-DFMRB_HW_TARGET=#{board}", "-DFMRB_CKPT_OUT=#{out}"]
+                  "-DFMRB_HW_TARGET=#{board}", "-DFMRB_CKPT_OUT=#{out}",
+                  "-DFMRB_EDITOR=#{FMRB_EDITOR ? 1 : 0}"]
     args_file = File.join(build_dir, "fmrb_configure_args")
     unless File.exist?(File.join(build_dir, "CMakeCache.txt")) &&
            File.exist?(args_file) && File.read(args_file) == cmake_args.join("\n")

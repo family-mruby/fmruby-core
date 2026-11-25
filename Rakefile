@@ -51,7 +51,9 @@ end
 # still overrides one of them.
 #   ATOMS3R: its factory partition is 5.5M (doc/headless_s3/), so the editor is
 #   the mruby one, the Spinel FFT is left out and so are the Japanese fonts.
-#   It is a node of an Asterism network, so Asterism is in.
+#   It is a node of an Asterism network, so Asterism is in. It runs one app
+#   and has no keyboard, so the editor and its type engine are out
+#   (FMRB_EDITOR=0, doc/api_fixes/report/f8.md).
 #   STICKS3: the same chip, partitions and role as the AtomS3R, so the same
 #   defaults, plus its six-axis sensor (the BMI270 driver, FMRB_IMU).
 #   NARYAv3: Asterism is in, so a Retro board can send and receive a movable
@@ -65,6 +67,7 @@ MINI_BUILD_DEFAULTS = {
   "FMRB_FFT_SPINEL" => "0",
   "FMRB_FONT_JA" => "0",
   "FMRB_ASTERISM" => "1",
+  "FMRB_EDITOR" => "0",
 }.freeze
 BOARD_BUILD_DEFAULTS = {
   "ATOMS3R" => MINI_BUILD_DEFAULTS,
@@ -377,6 +380,22 @@ FMRB_ASTERISM = ENV["FMRB_ASTERISM"] == "1"
 # the container by lib/upstream/family_mruby_esp32.rb. Changing it means
 # `rake clean` (libmruby).
 FMRB_IMU = ENV["FMRB_IMU"] == "1"
+# The editor (default/editor, default/editor_fs) and what only it uses: its
+# document model in C (picoruby-fmrb-editor-core), the type inference engine
+# and its database (picoruby-ti, generated from sig/) and the on-device
+# debugger API (picoruby-fmrb-debug, FMRB::Debug). Default 1; the AtomS3R and
+# the StickS3 default to 0 (BOARD_BUILD_DEFAULTS above), and asking such a
+# build for the editor is refused with FMRB_ERR_NOT_SUPPORTED. The ESP32
+# firmware only (the Linux simulation, the native program and the browser
+# build always have the editor), read on both sides of the rake/CMake
+# boundary from this one variable: lib/upstream/family_mruby.gembox (the
+# gems), components/picoruby-esp32/CMakeLists.txt (their ports),
+# main/CMakeLists.txt (the editor's bytecode, FMRB_NO_EDITOR) and the
+# checkpoint table maker (tools/ckpt_table/CMakeLists.txt). CMake reads it
+# when it configures, which a change to it does not cause, so build:esp32
+# refuses to build a build/ configured with the other value: `rake
+# clean_all` first (rakelib/build.rake).
+FMRB_EDITOR = (ENV["FMRB_EDITOR"] || "1") != "0"
 
 ESP_IDF_VERSION = ENV.fetch("ESP_IDF_VERSION", "v5.5.4")
 # Pin the build container to the IDF version tag above -- never :latest. Two
@@ -417,6 +436,7 @@ ENGINE_ENV_OPTS = [
   "-e FMRB_FONT_JA=#{FMRB_FONT_JA ? 1 : 0}",
   "-e FMRB_ASTERISM=#{FMRB_ASTERISM ? 1 : 0}",
   "-e FMRB_IMU=#{FMRB_IMU ? 1 : 0}",
+  "-e FMRB_EDITOR=#{FMRB_EDITOR ? 1 : 0}",
   # Measurement build: MRB_GC_PROFILE adds the GC pause histograms to GC.stat
   # (doc/midi/report/p6.md). It grows mrb_gc, hence mrb_state, so the rake side
   # (lib/upstream/family_mruby_*.rb) and the CMake side

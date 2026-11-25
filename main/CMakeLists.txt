@@ -117,6 +117,20 @@ if(NOT FMRB_BUILD_IS_MODERN)
          ${CMAKE_CURRENT_LIST_DIR}/ruby/default_app/services.app.rb)
 endif()
 
+# The editor (default/editor, default/editor_fs) is not in an ESP32 firmware
+# built with FMRB_EDITOR=0 (the AtomS3R's and StickS3's default; the
+# Rakefile): no bytecode here, no Spinel editor below, and FMRB_NO_EDITOR
+# takes its entries out of the spawner's table, which then refuses the two
+# names (fmrb_app_spawner.c). Its gems and their ports go by the same
+# variable (lib/upstream/family_mruby.gembox, components/picoruby-esp32). The
+# Linux simulation always has the editor.
+set(FMRB_NO_EDITOR OFF)
+if(NOT IDF_TARGET STREQUAL "linux" AND "$ENV{FMRB_EDITOR}" STREQUAL "0")
+    set(FMRB_NO_EDITOR ON)
+    list(REMOVE_ITEM DEFAULT_APP_RUBY_FILES
+         ${CMAKE_CURRENT_LIST_DIR}/ruby/default_app/editor.app.rb)
+endif()
+
 # The keyboard-only desktop (doc/linux_native, L4) runs on the native
 # program only, which builds its bytecode itself (rakelib/hosted.rake): no
 # device or simulation firmware carries it.
@@ -156,6 +170,13 @@ endif()
 set(FMRB_APP_ENGINE_EDITOR "$ENV{FMRB_APP_ENGINE_EDITOR}")
 if(NOT FMRB_APP_ENGINE_EDITOR)
     set(FMRB_APP_ENGINE_EDITOR "mruby")
+endif()
+if(FMRB_NO_EDITOR)
+    if(FMRB_APP_ENGINE_EDITOR STREQUAL "spinel")
+        message(STATUS "FMRB_EDITOR=0: no editor in this build, FMRB_APP_ENGINE_EDITOR=spinel has nothing to compile")
+    endif()
+    set(FMRB_APP_ENGINE_EDITOR "none")
+    message(STATUS "FMRB_EDITOR=0: the editor and its type engine are not in this build")
 endif()
 # The host-generated Spinel programs (rake spinel:gen): one directory per
 # build, so the sim (build-linux/) and the ESP32 firmware (build/) never
@@ -776,6 +797,10 @@ if(FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel")
     set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/system_desktop_combined.c
         PROPERTIES COMPILE_OPTIONS
         "${SPINEL_GEN_TU_FLAGS}")
+endif()
+
+if(FMRB_NO_EDITOR)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_NO_EDITOR)
 endif()
 
 # Editor app engine: the same wiring again for the Spinel-compiled editor

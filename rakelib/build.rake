@@ -248,6 +248,21 @@ namespace :build do
       Rake::Task['font_ja:image'].invoke
     end
 
+    # FMRB_EDITOR (the Rakefile) decides what CMake and libmruby are made of,
+    # but CMake reads it only when it configures, and changing it does not
+    # make it configure again: a build/ made with the other value would link
+    # the editor's gems without their ports, or the other way round. Refused
+    # here instead (a build/ from before the option was recorded had it on).
+    editor_opt = 'build/fmrb_editor_option'
+    editor_now = FMRB_EDITOR ? '1' : '0'
+    if File.exist?('build/CMakeCache.txt')
+      editor_was = File.exist?(editor_opt) ? File.read(editor_opt).strip : '1'
+      unless editor_was == editor_now
+        abort "build:esp32: build/ was configured with FMRB_EDITOR=#{editor_was} and this build " \
+              "asks for FMRB_EDITOR=#{editor_now}; run `rake clean_all` first"
+      end
+    end
+
     # set-target must also receive SDKCONFIG_DEFAULTS so sdkconfig is generated
     # correctly (it runs the first cmake configure).
     unless File.exist?('build/CMakeCache.txt')
@@ -300,6 +315,7 @@ namespace :build do
     release = ENV["FMRB_RELEASE"] == "1"
     cmake_opts += " -DFMRB_DEV_REMOTE_CTL=#{release ? 'OFF' : 'ON'}"
     cmake_opts += " #{ENV['CMAKE_OPTS']}" if ENV['CMAKE_OPTS']
+    File.write(editor_opt, "#{editor_now}\n")
     sh "#{DOCKER_CMD} idf.py #{cmake_opts.strip} build"
   end
 end
