@@ -691,6 +691,112 @@ static mrb_value mrb_kernel_sync_time_to_host(mrb_state *mrb, mrb_value self)
     return (ret == FMRB_OK) ? mrb_true_value() : mrb_false_value();
 }
 
+// ---- Kernel.send_message / receive_message / broadcast_message -------------
+// The task-queue messages on the Kernel module. They live here, beside the
+// other message code, so they use the body's fmrb_msg_t (fmrb_msg.h): the
+// queue item is that struct, and a smaller private copy of it made a receive
+// write past its local and shifted a sender's size and data by the src_pid
+// field. The data stays limited to 64 bytes as these methods always said.
+#define KERNEL_MSG_DATA_MAX 64
+// Task id range these methods accept (doc: 0-15). The body's ceiling is
+// PROC_ID_MAX; an id between the two is refused by the queue registry.
+#define KERNEL_MSG_TASK_ID_LIMIT 16
+
+static void kernel_msg_check_task_id(mrb_state *mrb, mrb_int task_id)
+{
+    if (task_id < 0 || task_id >= KERNEL_MSG_TASK_ID_LIMIT) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid task ID (must be 0-15)");
+    }
+}
+
+// Fill a message from Ruby arguments; the sender is the calling app.
+static void kernel_msg_fill(mrb_state *mrb, fmrb_msg_t *msg, mrb_int msg_type,
+                            const char *data, mrb_int data_len)
+{
+    if (data_len > KERNEL_MSG_DATA_MAX) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Message data too large (max 64 bytes)");
+    }
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    memset(msg, 0, sizeof(*msg));
+    msg->type = (fmrb_msg_type_t)msg_type;
+    msg->src_pid = ctx ? ctx->app_id : PROC_ID_KERNEL;
+    msg->size = (uint32_t)data_len;
+    memcpy(msg->data, data, (size_t)data_len);
+}
+
+// Kernel.send_message(task_id, type, data, timeout_ms = 100) -> bool
+static mrb_value mrb_kernel_mod_send_message(mrb_state *mrb, mrb_value self)
+{
+    mrb_int task_id, msg_type;
+    char *data;
+    mrb_int data_len;
+    mrb_int timeout_ms = 100;
+    mrb_get_args(mrb, "iis|i", &task_id, &msg_type, &data, &data_len, &timeout_ms);
+    kernel_msg_check_task_id(mrb, task_id);
+
+    fmrb_msg_t msg;
+    kernel_msg_fill(mrb, &msg, msg_type, data, data_len);
+    fmrb_err_t ret = fmrb_msg_send((fmrb_proc_id_t)task_id, &msg, (uint32_t)timeout_ms);
+    return mrb_bool_value(ret == FMRB_OK);
+}
+
+// Kernel.receive_message(task_id, timeout_ms = 1000) -> [type, data] or nil
+static mrb_value mrb_kernel_mod_receive_message(mrb_state *mrb, mrb_value self)
+{
+    mrb_int task_id;
+    mrb_int timeout_ms = 1000;
+    mrb_get_args(mrb, "i|i", &task_id, &timeout_ms);
+    kernel_msg_check_task_id(mrb, task_id);
+
+    fmrb_msg_t msg;
+    fmrb_err_t ret = fmrb_msg_receive((fmrb_proc_id_t)task_id, &msg, (uint32_t)timeout_ms);
+    if (ret == FMRB_ERR_TIMEOUT) {
+        return mrb_nil_value();
+    } else if (ret != FMRB_OK) {
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "Failed to receive message: %d", (int)ret);
+    }
+    uint32_t size = msg.size;
+    if (size > FMRB_MAX_MSG_PAYLOAD_SIZE) size = FMRB_MAX_MSG_PAYLOAD_SIZE;
+
+    mrb_value ary = mrb_ary_new_capa(mrb, 2);
+    mrb_ary_push(mrb, ary, mrb_fixnum_value((mrb_int)msg.type));
+    mrb_ary_push(mrb, ary, mrb_str_new(mrb, (const char *)msg.data, size));
+    return ary;
+}
+
+// Kernel.broadcast_message(type, data, timeout_ms = 10) -> Integer
+static mrb_value mrb_kernel_mod_broadcast_message(mrb_state *mrb, mrb_value self)
+{
+    mrb_int msg_type;
+    char *data;
+    mrb_int data_len;
+    mrb_int timeout_ms = 10;
+    mrb_get_args(mrb, "is|i", &msg_type, &data, &data_len, &timeout_ms);
+
+    fmrb_msg_t msg;
+    kernel_msg_fill(mrb, &msg, msg_type, data, data_len);
+    return mrb_fixnum_value(fmrb_msg_broadcast(&msg, (uint32_t)timeout_ms));
+}
+
+// Kernel.message_queue_exists?(task_id) -> bool
+static mrb_value mrb_kernel_mod_message_queue_exists(mrb_state *mrb, mrb_value self)
+{
+    mrb_int task_id;
+    mrb_get_args(mrb, "i", &task_id);
+    kernel_msg_check_task_id(mrb, task_id);
+    return mrb_bool_value(fmrb_msg_queue_exists((fmrb_proc_id_t)task_id));
+}
+
+// Called from the gem's init (src/picoruby_fmrb_kernel.c).
+void mrb_fmrb_kernel_msg_init(mrb_state *mrb)
+{
+    struct RClass *kernel_module = mrb->kernel_module;
+    mrb_define_module_function(mrb, kernel_module, "send_message", mrb_kernel_mod_send_message, MRB_ARGS_ARG(3, 1));
+    mrb_define_module_function(mrb, kernel_module, "receive_message", mrb_kernel_mod_receive_message, MRB_ARGS_ARG(1, 1));
+    mrb_define_module_function(mrb, kernel_module, "broadcast_message", mrb_kernel_mod_broadcast_message, MRB_ARGS_ARG(2, 1));
+    mrb_define_module_function(mrb, kernel_module, "message_queue_exists?", mrb_kernel_mod_message_queue_exists, MRB_ARGS_REQ(1));
+}
+
 void mrb_fmrb_kernel_init(mrb_state *mrb)
 {
     // Define FmrbKernel class
