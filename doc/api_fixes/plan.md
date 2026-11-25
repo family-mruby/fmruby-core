@@ -233,6 +233,15 @@ P4-Nano に焼いて (`0cf10941`) 確認用のアプリで 18 項目 (getwd・ch
 `regress:live` 17/17・`regress:screens` 28/28 が通過。
 未確認: SD への chdir (P4-Nano にカードが無い)、Spinel のアプリからの `Dir.chdir`、S3 の実機。
 
+### F5 の結果 (2026-11-25)
+
+Asterism の gem (ruby-asterism/asterism) を 0.14.1 にした (`a1019df`、タグ v0.14.1、push 済み、CI 成功):
+`ROS::Subscription#handler=` が自分の node に登録し、`node.subscription` で作った物に後から付けても `node.poll` が呼ぶ。
+nil で止まる。試験 (後から付ける・nil・2 回付けても 2 重に届かない) を足し、直しを外すと落ちることを確かめた。
+fmruby-core は `ASTERISM_PIN` を上げ、sig の `handler=` の説明を直した。`rake regress`・`regress:live` 17/17 通過。
+未確認: mruby の上での動き (直したファイルは CRuby と同じ `mrblib/ros.rb`。CRuby の試験で確かめた)。
+rubygems.org への公開はしていない (ユーザ判断)。
+
 ## 3. スコープ
 
 - F1: A の 12 個。

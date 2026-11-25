@@ -587,7 +587,7 @@ module Asterism
       # ```
       def errors: () -> Integer
 
-      # node.subscribe のブロック <<en>> The block of node.subscribe (nil for node.subscription)
+      # Node#poll が渡す先のブロック (無ければ nil) <<en>> The block Node#poll hands messages to (or nil)
       #
       # ```ruby
       # b = sub.handler
@@ -596,15 +596,18 @@ module Asterism
 
       # ブロックを付け替える <<en>> Set the block that gets the messages
       #
-      # Node#poll が渡す先を変える。**node.subscribe で作ったものだけ**
-      # Node#poll が渡す (node.subscription の物は each_pending で取る)。
+      # Node#poll が、届いたメッセージとその Attachment をこのブロックに渡すように
+      # なる。node.subscription で作ったものに後から付けてもよい。nil を入れると
+      # 止まり、メッセージは each_pending で取る形に戻る。ブロックは update の
+      # 流れの中で呼ばれるので、中で待たない (サービスの呼び出しをしない)。
       # ```ruby
       # sub.handler = proc { |m, i| got(m) }
       # ```
       # <<en>>
-      # Changes where Node#poll hands the messages.
-      # **Only a subscription made by node.subscribe** is served by Node#poll (take from one made by
-      # node.subscription with each_pending).
+      # Node#poll hands each message and its Attachment to this block from then
+      # on, also for a subscription made with node.subscription. nil stops it,
+      # and the messages wait for each_pending again. The block runs on the
+      # update loop: do not wait in it (no service call).
       # ```ruby
       # sub.handler = proc { |m, i| got(m) }
       # ```
