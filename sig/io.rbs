@@ -30,8 +30,9 @@ class IO
   #
   # length バイトまでを読んで文字列で返す。**length を省くと 1024 バイト**
   # (標準入力などのストリーム用。ファイルは File#read で、省くと全部読む)。
-  # length が 0 以下なら "" を返す。**書くだけで開いたもの (`"w"`・`"a"`、標準出力) は
-  # IOError ("not opened for reading")**。読めなかったときは RuntimeError
+  # length が 0 以下なら "" を返す。
+  # **書くだけで開いたもの (`"w"`・`"a"`、標準出力) は IOError ("not opened for reading")**。
+  # 読めなかったときは RuntimeError
   # ("failed to read from stream")、閉じたストリームなら RuntimeError ("closed stream")。
   # ```ruby
   # s = $stdin.read(16)
@@ -39,9 +40,9 @@ class IO
   # <<en>>
   # Reads up to length bytes and returns them. **length defaults to 1024** (for
   # streams such as stdin; a file goes through File#read, which reads everything
-  # when it is left out). length of 0 or less returns "". **A stream opened
-  # for writing only (`"w"`, `"a"`, stdout) raises IOError ("not opened for
-  # reading")**. RuntimeError when the read fails ("failed to read from stream")
+  # when it is left out). length of 0 or less returns "".
+  # **A stream opened for writing only (`"w"`, `"a"`, stdout) raises IOError ("not opened for reading")**.
+  # RuntimeError when the read fails ("failed to read from stream")
   # or the stream is closed ("closed stream").
   # ```ruby
   # s = $stdin.read(16)
@@ -51,17 +52,17 @@ class IO
   # 書き込む <<en>> Write a string
   #
   # str を書き、**書いたバイト数**を返す。str は String だけ (数値などは TypeError。
-  # `puts`・`print` は to_s してから渡す)。**読むだけで開いたもの (`"r"`、標準入力) は
-  # IOError ("not opened for writing")** (`puts`・`print` も)。書けなかったときは RuntimeError
-  # ("write failed")、閉じたストリームなら RuntimeError ("closed stream")。
+  # `puts`・`print` は to_s してから渡す)。
+  # **読むだけで開いたもの (`"r"`、標準入力) は IOError ("not opened for writing")** (`puts`・`print` も)。
+  # 書けなかったときは RuntimeError ("write failed")、閉じたストリームなら RuntimeError ("closed stream")。
   # ```ruby
   # n = f.write("hello\n")   #=> 6
   # ```
   # <<en>>
   # Writes str and returns **the number of bytes written**. Only a String is
   # accepted (a number raises TypeError; `puts` and `print` call to_s first).
-  # **A stream opened for reading only (`"r"`, stdin) raises IOError ("not opened
-  # for writing")**, through `puts` and `print` too. RuntimeError when the write
+  # **A stream opened for reading only (`"r"`, stdin) raises IOError ("not opened for writing")**,
+  # through `puts` and `print` too. RuntimeError when the write
   # fails ("write failed") or the stream is closed ("closed stream").
   # ```ruby
   # n = f.write("hello\n")   #=> 6

@@ -55,10 +55,10 @@ class I2C
   # when left out; the default wait of later `read` and `write`, in ms).
   #
   # **A bus that cannot be opened raises IOError, with a message for each cause** (the unit is
-  # the name you passed): an unknown unit is "Invalid I2C unit: name", **a bus another app
-  # already holds** is "I2C unit name is in use by another app", **a different pin for I2C1 on a
-  # board with a screen** is "I2C unit name is fixed to other pins on this board (not SDA n /
-  # SCL n)", a screen not ready yet is "I2C unit name is not ready yet", and a bus that would
+  # the name you passed): an unknown unit is "Invalid I2C unit: name",
+  # **a bus another app already holds** is "I2C unit name is in use by another app",
+  # **a different pin for I2C1 on a board with a screen** is "I2C unit name is fixed to other
+  # pins on this board (not SDA n / SCL n)", a screen not ready yet is "I2C unit name is not ready yet", and a bus that would
   # not start on those pins is "I2C unit name did not start on SDA n / SCL n". On the boards with
   # a screen (Tab5, NARYA v4, AtomS3R) I2C1 is fixed to the board's wiring, and anything but
   # `FmrbHw::PIN_I2C1_SDA` and `PIN_I2C1_SCL` is refused. `frequency:` is not checked when
