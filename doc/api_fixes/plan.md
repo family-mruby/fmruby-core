@@ -91,6 +91,19 @@ P4-Nano で測った (計測アプリを WiFi で送って起動): `delay_ms(300
 8. **定数は `TRANSPARENT_COLOR` と `FmrbGfx::FONT_METRICS` だけ sig に載せる**。`CLOSE_BTN_CX_OFFSET`・`CLOSE_BTN_CY`・
    `CLOSE_BTN_HIT_R` は載せない一覧へ (見本がそれを読んでいる点は課題に残す)。
 
+### F3 の結果 (2026-11-25、report/f3.md)
+
+4 つとも直した。B5: 定数は本体の `PROC_ID_*` から (KERNEL 0・HOST 1・SYSTEM 2)、番号の上限は `PROC_ID_MAX`。
+B6: 共有だったのは「1 つのアプリの中の 2 つのプレーヤー」(アプリの間は前から分かれていた)。sim で再現し、予約に
+持ち主の番号を付けて自分の分だけ消す形に。予約 1 件は 16 バイトのまま (増分 0)。B7: 型エンジン (fork `5c5a04c`、
+未 push) が `rescue Foo => e`・`rescue A, B => e` (union)・`rescue => e` (StandardError) を解く。メソッドの本体の
+rescue が評価されず戻り値が nil になっていた前からの不具合も直った。probe のメモリは前後同じ、コード +978 B。
+B8: `TRANSPARENT_COLOR`・`FmrbGfx::FONT_METRICS` を sig に、`CLOSE_BTN_*` は載せない一覧へ。
+親の検収: 差分 (MIDI の待ち行列の C を含む) を読み、sim のエディタで `rescue JSON::ParserError => e` の後の
+`e.message(1)` と `rescue => f` の後の `f.backtrace(2)` が指摘されるのを再現。
+見つかった別の物 (直していない): MIDI の `_depth`・`_free` が待ち行列の全体を数えるので、ほかのプレーヤーやアプリが
+鳴らしている間 `playing?` が true のまま残る見込み (読みだけ)。
+
 ## 3. スコープ
 
 - F1: A の 12 個。
