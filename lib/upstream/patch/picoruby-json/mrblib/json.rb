@@ -309,6 +309,12 @@ module JSON
       while char = @json[@index]
         case char
         when ']'
+          # Nothing between the last separator and the end: the wanted
+          # position is past the last element (an empty array, for one).
+          if array_pos && current_array_pos == array_pos &&
+             @json[@start_index, @index - @start_index].to_s.strip.empty?
+            raise JSON::DiggerError.new("Array index out of range")
+          end
           @index += 1
           break
         when ','
@@ -328,7 +334,7 @@ module JSON
         end
       end
       if array_pos && current_array_pos < array_pos
-        JSON::DiggerError.new("Array index out of range")
+        raise JSON::DiggerError.new("Array index out of range")
       end
     end
   end
@@ -542,6 +548,45 @@ module JSON
       replace_escape_sequence(result)
     end
 
+    # The four hex digits of a \uXXXX escape at str[pos], as an Integer.
+    def parse_hex4(str, pos)
+      hex = str[pos, 4]
+      unless hex && hex.length == 4
+        raise JSON::ParserError.new("Incomplete unicode escape sequence")
+      end
+      code = 0
+      hex.each_char do |h|
+        code <<= 4
+        case h
+        when '0'..'9'
+          code += h.ord - '0'.ord
+        when 'a'..'f'
+          code += h.ord - 'a'.ord + 10
+        when 'A'..'F'
+          code += h.ord - 'A'.ord + 10
+        else
+          raise JSON::ParserError.new("Invalid hex in unicode escape: #{h}")
+        end
+      end
+      code
+    end
+
+    # A code point as its UTF-8 bytes. Built from Integer#chr byte by byte so
+    # it needs neither Array#pack nor an encoding-aware chr.
+    def utf8_char(code)
+      if code < 0x80
+        code.chr
+      elsif code < 0x800
+        (0xC0 | (code >> 6)).chr + (0x80 | (code & 0x3F)).chr
+      elsif code < 0x10000
+        (0xE0 | (code >> 12)).chr + (0x80 | ((code >> 6) & 0x3F)).chr +
+          (0x80 | (code & 0x3F)).chr
+      else
+        (0xF0 | (code >> 18)).chr + (0x80 | ((code >> 12) & 0x3F)).chr +
+          (0x80 | ((code >> 6) & 0x3F)).chr + (0x80 | (code & 0x3F)).chr
+      end
+    end
+
     def replace_escape_sequence(str)
       result = ''
       i = 0
@@ -568,27 +613,18 @@ module JSON
           when 't'
             result += "\t"
           when 'u'
-            hex = str[i + 1, 4]
-            if hex && hex.length == 4
-              code = 0
-              hex.each_char do |h|
-                code <<= 4
-                case h
-                when '0'..'9'
-                  code += h.ord - '0'.ord
-                when 'a'..'f'
-                  code += h.ord - 'a'.ord + 10
-                when 'A'..'F'
-                  code += h.ord - 'A'.ord + 10
-                else
-                  raise JSON::ParserError.new("Invalid hex in unicode escape: #{h}")
-                end
+            code = parse_hex4(str, i + 1)
+            i += 4
+            # A high surrogate followed by an escaped low one is one character
+            # (a pair is how JSON writes a code point above U+FFFF).
+            if 0xD800 <= code && code <= 0xDBFF && str[i + 1] == '\\' && str[i + 2] == 'u'
+              low = parse_hex4(str, i + 3)
+              if 0xDC00 <= low && low <= 0xDFFF
+                code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00)
+                i += 6
               end
-              result += [code].pack('C*')
-              i += 4
-            else
-              raise JSON::ParserError.new("Incomplete unicode escape sequence")
             end
+            result += utf8_char(code)
           when nil
             raise JSON::ParserError.new("Unterminated escape sequence")
           else
