@@ -44,13 +44,16 @@ module Kernel
   # 改行をつけて出力する <<en>> Output object with newline
   #
   # **行はログに出る** (画面ではない)。sim なら `docker logs fmruby_core`、
-  # 実機ならシリアル。
+  # 実機ならシリアル。`$stdout.puts` を呼ぶので書き方は `IO#puts` と同じ
+  # (配列は 1 要素 1 行)。シェルで動かしたスクリプトではシェルの画面に出る。
   # ```ruby
   # puts "started"
   # ```
   # <<en>>
   # **The line goes to the log**, not the screen: `docker logs fmruby_core` in
-  # the simulation, the serial port on a device.
+  # the simulation, the serial port on a device. It calls `$stdout.puts`, so
+  # it writes as `IO#puts` does (an Array one line per element). A script run
+  # from the shell prints on the shell's screen.
   # ```ruby
   # puts "started"
   # ```
