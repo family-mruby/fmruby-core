@@ -2,8 +2,6 @@
 # Displays all GPIO pins with color-coded usage status.
 
 GRID_COLS = 13
-GRID_ROWS = 4 
-PIN_COUNT = 49  # GPIO 0-48
 
 # Usage type -> color (RGB332)
 USAGE_COLORS = {
@@ -32,13 +30,17 @@ class GpioViewerApp < FmrbApp
   def initialize
     super()
     @prev_status = nil
+    # How many GPIOs this chip has (49 on the S3, 55 on the P4), and the
+    # rows of the grid they take.
+    @pin_count = FmrbHw.pin_count
+    @grid_rows = (@pin_count + GRID_COLS - 1) / GRID_COLS
   end
 
   def on_create
     # Grid layout (reserve 24px at bottom for legend)
     @legend_h = 24
     @cell_w = (@user_area_width - 2) / GRID_COLS
-    @cell_h = (@user_area_height - 14 - @legend_h) / GRID_ROWS
+    @cell_h = (@user_area_height - 14 - @legend_h) / @grid_rows
     @grid_x = 1
     @grid_y = 14
 
@@ -67,7 +69,7 @@ class GpioViewerApp < FmrbApp
     status = @prev_status || FmrbHw.pin_status_all
 
     pin = 0
-    while pin < PIN_COUNT
+    while pin < @pin_count
       col = pin % GRID_COLS
       row = pin / GRID_COLS
 
@@ -94,7 +96,7 @@ class GpioViewerApp < FmrbApp
     end
 
     # Legend (2 rows)
-    ly1 = @grid_y + GRID_ROWS * @cell_h + 2
+    ly1 = @grid_y + @grid_rows * @cell_h + 2
     ly2 = ly1 + 10
     items = [
       [0x6D, "SYS"], [0x1C, "GPIO"], [0x03, "I2C"], [0xE3, "RMT"],
