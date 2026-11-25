@@ -818,7 +818,7 @@ module Asterism
     # ```
     def path: () -> String
 
-    # トピックを出す (値を流す口を作る) <<en>> Declare a topic to put values on
+    # トピックを出す (値を流せるように宣言する) <<en>> Declare a topic to put values on
     #
     # name は "said" や "game/score" (区切りは /)。ほかの端末からは
     # "<この端末>/<アプリ>/<name>" で受ける。返った Topic の put で
@@ -2287,6 +2287,9 @@ module Asterism
   #
   # publish の `type:` に渡す組み込みの型。番号か Symbol (:vector3) で書く。
   # 自分の型は文字列で、Connection#define_type で決める。
+  # <<en>>
+  # The built-in types given to publish's `type:`, written as a number or a Symbol
+  # (:vector3). A type of your own is a String, defined with Connection#define_type.
   module Types
     # 数 (Float か Integer) <<en>> A number (Float or Integer)
     NUMBER: Integer
@@ -2332,6 +2335,10 @@ module Asterism
   # 出しているトピックの宣言を ({"名前" => {"t", "e", "u", "d", "ts"}}) 送る
   # ときの決まりと、符号化の番号表。pubs_of や publishers_of の答えの形を知る
   # ときに読む。
+  # <<en>>
+  # The rules for sending the declarations of the topics being published
+  # ({"name" => {"t", "e", "u", "d", "ts"}}), and the table of encoding numbers.
+  # Read it for the shape of what pubs_of and publishers_of answer.
   module Pubs
     # 符号化の名前の番号 <<en>> The fixed number of a Zenoh encoding (nil when none)
     #
@@ -2453,6 +2460,11 @@ module Asterism
   # (lost) と送り手のやり直し (restarted) を数える。Subscription が 1 つずつ
   # 持っていて、SampleInfo の lost・restarted はこれが決める。自分で
   # 値を受けるときに使う (普通のアプリは subscribe だけでよい)。
+  # <<en>>
+  # Per sender and per path it remembers the last connection number and value
+  # number, and counts what was missed (lost) and the sender's restarts (restarted).
+  # Each Subscription holds one, and it decides SampleInfo's lost and restarted.
+  # For code that receives values itself (an ordinary app only needs subscribe).
   class Sequences
     # 作る <<en>> Make one remembering up to max lanes
     #
@@ -2528,6 +2540,10 @@ module Asterism
   #
   # Connection#status が扱う状態 (小さな Hash) の大きさの上限と、受けた状態を
   # 整える関数。status_of の答えの形を知るときに読む。
+  # <<en>>
+  # The size limits of the status (a small Hash) that Connection#status handles, and
+  # the function that tidies a received one. Read it for the shape of what status_of
+  # answers.
   module Status
     # 状態を詰めた大きさの上限 (バイト) <<en>> The most bytes the packed status may take
     MAX_BYTES: Integer
@@ -2570,6 +2586,10 @@ module Asterism
   #
   # 端末が自分で言う種類・名前・場所・アイコンの決まりと、PNG のアイコンを
   # 調べる関数。名乗りを変えるのは Connection#profile と Asterism.profile_defaults。
+  # <<en>>
+  # The rules for the kind, name, place and icon a node tells about itself, and the
+  # functions that inspect a PNG icon. Change the profile with Connection#profile and
+  # Asterism.profile_defaults.
   module Profile
     # PNG のアイコンを調べる <<en>> Check a PNG icon: [width, height, icon_hash] (nil if not acceptable)
     #
@@ -2612,6 +2632,9 @@ module Asterism
   #
   # connection.session に付いて、接続以外からの close を無視させる。
   # アプリが直接使うことはない。
+  # <<en>>
+  # Attached to connection.session so that a close from anything but the connection
+  # is ignored. Apps do not use it directly.
   module SharedSession
     # 接続以外からの close は何もしない <<en>> A close from anyone but the connection does nothing
     #

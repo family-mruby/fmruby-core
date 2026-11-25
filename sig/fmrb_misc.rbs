@@ -523,6 +523,12 @@ module FmrbToml
   # r = FmrbToml::Raw.new("black")
   # r.text   #=> "black"
   # ```
+  # <<en>>
+  # Usually made with `FmrbToml.raw`.
+  # ```ruby
+  # r = FmrbToml::Raw.new("black")
+  # r.text   #=> "black"
+  # ```
   class Raw
     # 字を入れて作る (to_s にして持つ) <<en>> Make one from text (kept as to_s)
     #

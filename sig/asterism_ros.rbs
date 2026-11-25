@@ -206,7 +206,7 @@ module Asterism
       # ```
       def poll: (?Integer steps) -> bool
 
-      # トピックを出す口を作る <<en>> Make a publisher for a topic
+      # トピックの Publisher を作る <<en>> Make a publisher for a topic
       #
       # topic はトピック名 ("/chatter"。相対ならノードの namespace の下)、
       # type は型そのものか ROS の名前 ("std_msgs/msg/String")。`qos:`
@@ -228,7 +228,7 @@ module Asterism
       # ```
       def publisher: (String topic, untyped type, ?qos: String) -> Asterism::ROS::Publisher
 
-      # トピックを受ける口を作る (自分で取り出す) <<en>> Make a subscription you take messages from
+      # Subscription を作る (自分で取り出す) <<en>> Make a subscription you take messages from
       #
       # 届いたメッセージは溜まり、`each_pending` で取り出す。`depth:` (省略すると
       # 16) は溜めておける数、`qos:` (省略すると DEFAULT_QOS)。ブロックで
@@ -301,10 +301,10 @@ module Asterism
       # ```
       def service: (String service, untyped type, ?qos: String, ?depth: Integer) { (untyped request) -> untyped } -> Asterism::ROS::Service
 
-      # サービスを呼ぶ口を作る <<en>> Make a client for a service
+      # サービスの Client を作る <<en>> Make a client for a service
       #
       # 呼ぶのは Client#call (待つ) か call_async (待たない)。`qos:` (省略すると
-      # DEFAULT_QOS)。1 回だけ呼ぶなら Node#call が口を作って覚える。
+      # DEFAULT_QOS)。1 回だけ呼ぶなら Node#call が Client を作って覚える。
       # ```ruby
       # cli = node.client("/add", add)
       # ```
@@ -321,7 +321,7 @@ module Asterism
       #
       # `node.call("/add", add, a: 2, b: 3)`。要求は欄をキーワードで渡すか、
       # Hash かメッセージを位置引数か `request:` で渡す。待ち時間は `timeout:`
-      # (秒) か `timeout_ms:` (省略すると 2 秒)。口はサービスの名前ごとに
+      # (秒) か `timeout_ms:` (省略すると 2 秒)。Client はサービスの名前ごとに
       # 1 つ作って覚える。**答えが来るまでアプリは止まる**が、その間もこのノードの
       # サービスには答える (subscribe と every のブロックは動かない)。
       # 時間内に答えが無ければ Asterism::ROS::TimeoutError、セッションが閉じていれば
@@ -378,7 +378,7 @@ module Asterism
 
       # ノードを閉じる <<en>> Withdraw the node and everything made on it
       #
-      # 出す口・受ける口・サービス・クライアント・タイマーも終わる。
+      # Publisher・Subscription・サービス・クライアント・タイマーも終わる。
       # 何度呼んでもよい。nil を返す。
       # ```ruby
       # node.close
@@ -454,10 +454,13 @@ module Asterism
       def cancel_timer: (Asterism::ROS::Timer timer) -> nil
     end
 
-    # トピックに出す口 (node.publisher の答え) <<en>> A topic's publisher (from node.publisher)
+    # トピックの Publisher (node.publisher の答え) <<en>> A topic's publisher (from node.publisher)
     #
     # 出すのは `publish` か `<<`。メッセージは型のメッセージか、欄の Hash
     # (書かなかった欄は既定の値)。
+    # <<en>>
+    # Send with `publish` or `<<`. A message is a message of the type, or a Hash of
+    # its fields (a field left out takes its default).
     class Publisher
       # メッセージを出す <<en>> Publish a message
       #
@@ -495,7 +498,7 @@ module Asterism
       # ```
       def close: () -> nil
 
-      # この口の GID <<en>> The publisher's GID (16 bytes)
+      # この Publisher の GID <<en>> The publisher's GID (16 bytes)
       #
       # ```ruby
       # g = pub.gid
@@ -524,10 +527,13 @@ module Asterism
       def token_key: () -> String
     end
 
-    # トピックを受ける口 (node.subscription・node.subscribe の答え) <<en>> A topic's subscription
+    # トピックの Subscription (node.subscription・node.subscribe の答え) <<en>> A topic's subscription
     #
     # 届いたメッセージは溜まり、each_pending で取り出す。node.subscribe で作ると、
     # 取り出しは Node#poll がブロックに渡す。
+    # <<en>>
+    # Messages that arrive are queued; take them with each_pending. When made with
+    # node.subscribe, Node#poll takes them out and hands them to the block.
     class Subscription
       # 溜まったメッセージを取り出す <<en>> Take the messages that have arrived
       #
@@ -639,10 +645,13 @@ module Asterism
       def token_key: () -> String
     end
 
-    # サービスを提供する口 (node.service の答え) <<en>> A served service (from node.service)
+    # 提供しているサービス (node.service の答え) <<en>> A served service (from node.service)
     #
     # 要求への答えは Node#poll が handle_pending を呼んで行う。node を使わずに
     # 自分で handle_pending を呼んでもよい。
+    # <<en>>
+    # Node#poll answers the requests by calling handle_pending. Without a node you
+    # may call handle_pending yourself.
     class Service
       # 届いている要求に答える <<en>> Answer the requests waiting now
       #
@@ -713,9 +722,11 @@ module Asterism
       def token_key: () -> String
     end
 
-    # サービスを呼ぶ口 (node.client の答え) <<en>> A service client (from node.client)
+    # サービスの Client (node.client の答え) <<en>> A service client (from node.client)
     #
     # 呼ぶのは call (答えを待つ) か call_async (すぐ Call が返る)。
+    # <<en>>
+    # Call with call (waits for the answer) or call_async (returns a Call at once).
     class Client
       # 要求を送ってすぐ戻る <<en>> Send a request and get a Call at once
       #
@@ -824,6 +835,8 @@ module Asterism
     # 出したサービスの呼び出し (client.call_async の答え) <<en>> A service call on its way
     #
     # done? は待たない (Node#poll が進める)。value は答えが来るまで待つ。
+    # <<en>>
+    # done? does not wait (Node#poll moves it on). value waits until the answer comes.
     class Call
       # 答えが来たか (待たない) <<en>> Whether the response came, the time ran out or nobody serves it
       #
@@ -881,6 +894,8 @@ module Asterism
     # 一定間隔のブロック (node.every の答え) <<en>> A repeating timer (from node.every)
     #
     # ブロックは Node#poll の中で呼ばれる。cancel で止める。
+    # <<en>>
+    # The block runs inside Node#poll. Stop it with cancel.
     class Timer
       # 止める <<en>> Stop the timer
       #
@@ -921,6 +936,9 @@ module Asterism
     #
     # rmw_zenoh の受け手はこれが無い値を捨てる。受け取ったメッセージの
     # info として subscribe のブロックに渡る。
+    # <<en>>
+    # A reader on rmw_zenoh drops a sample without one. For a received message it is
+    # handed to the subscribe block as info.
     class Attachment
       # 作る <<en>> Make an attachment
       #
@@ -993,6 +1011,10 @@ module Asterism
     # 型ごとに ROS_NAME・欄ごとの読み書きができる。欄は Hash か型の `new(欄: 値)` で
     # 渡せる (書かない欄は既定の値、知らない欄は ArgumentError)。パターンマッチでも
     # 読める (`case m in { x: }`)。
+    # <<en>>
+    # Each type has ROS_NAME and a reader and writer per field. Fields are given as a
+    # Hash or as `new(field: value)` (a field left out takes its default, an unknown
+    # one is an ArgumentError). Pattern matching reads it too (`case m in { x: }`).
     class Message
       # メッセージにする <<en>> A message from nil, a Hash of fields or a message
       #
