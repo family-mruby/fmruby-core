@@ -19,9 +19,13 @@
 #     the shell's stand-ins for $stdout (fmrb-io's io.rb, shell_io.rb)
 #   - FmrbUI#bg= moves the widgets that took the container's colour, and
 #     leaves one the app gave its own (fmrb-ui.rb)
+#   - Two MIDI players in one app: stopping one drops only its own queued
+#     commands (doc/api_fixes F3; fmrb-midi.rb, fmrb-mml.rb, fmrb-smf.rb over
+#     a stand-in for the C queue that keeps the owner the way
+#     fmrb_midi_sched.c does)
 #
 # The C halves (File.open modes, Kernel.send_message) are checked on the sim
-# (doc/api_fixes/report/f1.md).
+# (doc/api_fixes/report/f1.md, f3.md).
 #
 #   ruby test/api_fixes/run.rb        (or: rake api_fixes:test)
 
@@ -102,6 +106,7 @@ module FmrbMidi
   CH_TRIANGLE = 2
   CH_NOISE = 3
   def self.scheduler = nil
+  def self.next_owner = 1
 end
 
 load File.join(ROOT, "lib/gems/picoruby-midi/mrblib/midi_constants.rb")
@@ -317,6 +322,112 @@ c3 = FmrbUI.new(StubApp.new, bg: 0x10)
 l3 = c3.label(:l, 0, 0, 60, 10, "l")
 c3._checkpoint_ground
 check("bg: restore keeps a container's chosen colour", l3.bg, 0x10)
+
+# ---- Two MIDI players in one app (doc/api_fixes F3) --------------------------
+#
+# The whole of fmrb-midi.rb this time (ApuTransport), over stand-ins for the
+# audio object and for the C queue. The queue keeps what fmrb_midi_sched.c
+# keeps per command for this question: the player (owner) it was pushed
+# with. Everything here runs as one app, so the app id does not come in.
+
+class FmrbAudio
+  def initialize(_app = nil) = nil
+  def note_on(*_a) = 0
+  def note_off(*_a) = 0
+end
+
+class QueueStandIn
+  attr_reader :cmds
+  attr_accessor :now_us
+
+  def initialize
+    @cmds = []
+    @now_us = 0
+  end
+
+  def _push_apu_note(due, ch, _freq, _vol, _duty, _sweep, owner = 0) = push(due, :on, ch, owner)
+  def _push_apu_off(due, ch, owner = 0) = push(due, :off, ch, owner)
+  def _push_serial(due, _len, b1, _b2, _b3, owner = 0) = push(due, :serial, b1, owner)
+
+  def push(due, kind, ch, owner)
+    @cmds << [due, kind, ch, owner]
+    true
+  end
+
+  # No owner: the whole app (what an app's exit does). An owner: that
+  # player's only.
+  def _clear(owner = nil)
+    @cmds = owner.nil? ? [] : @cmds.reject { |c| c[3] == owner }
+    nil
+  end
+
+  def owners = @cmds.map { |c| c[3] }.uniq.sort
+  def _depth = @cmds.size
+  def _free = 127 - @cmds.size
+  def _now_us = @now_us
+  def _reset_stats = nil
+  def _stats = {}
+end
+
+saved_verbose = $VERBOSE
+$VERBOSE = nil # the constants defined at the top of this file come again
+load File.join(ROOT, "lib/gems/picoruby-fmrb-midi/mrblib/fmrb-midi.rb")
+$VERBOSE = saved_verbose
+
+q = QueueStandIn.new
+FmrbMidi.instance_variable_set(:@scheduler, q)
+FmrbMidi.instance_variable_set(:@scheduler_checked, true)
+
+def mml_player(tune, channel)
+  pl = FmrbMidi::MmlPlayer.new(FmrbMidi.device(nil))
+  pl.load_string(tune, channel: channel)
+  pl.start
+  pl
+end
+
+TUNE = "o4 l16 cdefgab>cdefgab>c"
+a = mml_player(TUNE, 0)
+b = mml_player(TUNE, 1)
+a.tick
+b.tick
+oa = a.instance_variable_get(:@owner)
+ob = b.instance_variable_get(:@owner)
+check("midi: two players, two owners", [oa.is_a?(Integer), oa != ob, q.owners], [true, true, [oa, ob].sort])
+a.stop
+check("midi: stopping one keeps the other's queue", [q.owners, b.playing?], [[ob], true])
+b.stop
+check("midi: stopping the other empties it", q.cmds, [])
+
+# One player alone: stopping it drops everything it queued, as before.
+solo = mml_player(TUNE, 0)
+solo.tick
+before = q._depth
+solo.pause
+check("midi: one player, pause drops all of it", [before > 0, q._depth], [true, 0])
+
+# The same between an SmfPlayer and an MmlPlayer, and through a device switch.
+smf_path = File.join(ROOT, "tools/midi/test/scale.mid")
+s1 = FmrbMidi::SmfPlayer.new(FmrbMidi.device(nil))
+check("midi: smf loads", s1.load(smf_path), true)
+s1.start
+s1.tick
+m1 = mml_player(TUNE, 1)
+m1.tick
+os = s1.instance_variable_get(:@owner)
+om = m1.instance_variable_get(:@owner)
+check("midi: smf and mml queued", q.owners, [os, om].sort)
+s1.device = FmrbMidi.device(nil)
+check("midi: smf device switch keeps the mml's", q.owners, [om])
+m1.stop
+check("midi: mml stop", q.cmds, [])
+# What an app's exit does in C (no owner): everything of the app.
+s1.tick
+mml_player(TUNE, 2).tick
+q._clear
+check("midi: clearing the app takes all", q.cmds, [])
+
+FmrbMidi.instance_variable_set(:@scheduler, nil)
+FmrbMidi.instance_variable_set(:@scheduler_checked, false)
 
 if $failures.zero?
   puts "api_fixes: #{$count} checks passed"

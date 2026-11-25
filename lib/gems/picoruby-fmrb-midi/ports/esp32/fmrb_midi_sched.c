@@ -25,6 +25,7 @@
 #include "fmrb_log.h"
 #include "fmrb_attr.h"
 #include "fmrb_rtos.h"
+#include "fmrb_limits.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -38,12 +39,20 @@
 
 static const char *TAG = "midi_sched";
 
+/* 16 bytes. The kind and the app share a byte so that the player that
+ * queued a command (owner) fits without making the entry bigger: two
+ * players in one app must be able to drop their own commands only. */
 typedef struct {
     uint64_t due_us;
-    uint8_t kind;
-    uint8_t src_pid;
+    uint8_t kind : 2;    /* fmrb_midi_cmd_kind_t */
+    uint8_t src_pid : 6; /* the app that queued it */
+    uint8_t owner;       /* the player in that app, 0 for none */
     uint8_t payload[FMRB_MIDI_SCHED_PAYLOAD];
 } fmrb_midi_cmd_t;
+
+_Static_assert(sizeof(fmrb_midi_cmd_t) == 16, "a queued MIDI command is 16 bytes");
+_Static_assert(FMRB_MIDI_CMD_SERIAL < 4, "the command kind fits in 2 bits");
+_Static_assert(FMRB_MAX_APPS <= 64, "an app id fits in 6 bits");
 
 /* PSRAM: the ring is filled by Ruby tasks and drained by the esp_timer task
    (ESP_TIMER_TASK dispatch, not an ISR); the sinks copy each command out, so
@@ -276,7 +285,7 @@ fmrb_err_t fmrb_midi_sched_start(void)
 /* --- producer --------------------------------------------------------- */
 
 bool fmrb_midi_sched_push(uint64_t due_us, uint8_t kind, uint8_t src_pid,
-                          const uint8_t *payload)
+                          uint8_t owner, const uint8_t *payload)
 {
     if (fmrb_midi_sched_start() != FMRB_OK) {
         return false;
@@ -293,6 +302,7 @@ bool fmrb_midi_sched_push(uint64_t due_us, uint8_t kind, uint8_t src_pid,
     s_ring[s_tail].due_us = due_us;
     s_ring[s_tail].kind = kind;
     s_ring[s_tail].src_pid = src_pid;
+    s_ring[s_tail].owner = owner;
     memcpy(s_ring[s_tail].payload, payload, FMRB_MIDI_SCHED_PAYLOAD);
     first = (s_head == s_tail);
     s_tail = next;
@@ -325,22 +335,25 @@ void fmrb_midi_sched_clear(void)
     fmrb_exit_critical(&s_lock);
 }
 
-void fmrb_midi_sched_clear_pid(uint8_t src_pid)
+/* Drop what one app queued (all_owners) or what one player of it queued.
+ * Compacts in place: everything else keeps its order and its due times. */
+static void clear_matching(uint8_t src_pid, bool all_owners, uint8_t owner)
 {
-    bool had_apu = false;
-    bool had_serial = false;
+    uint8_t apu_voices = 0;      /* bit per APU voice a dropped command was for */
+    uint16_t serial_channels = 0; /* bit per MIDI channel likewise */
 
-    /* Compacts in place: what belongs to other apps keeps its order and its
-     * due times. */
     fmrb_enter_critical(&s_lock);
     int read = s_head;
     int write = s_head;
     while (read != s_tail) {
-        if (s_ring[read].src_pid == src_pid) {
-            if (s_ring[read].kind == FMRB_MIDI_CMD_SERIAL) {
-                had_serial = true;
+        const fmrb_midi_cmd_t *cmd = &s_ring[read];
+        if (cmd->src_pid == src_pid && (all_owners || cmd->owner == owner)) {
+            if (cmd->kind == FMRB_MIDI_CMD_SERIAL) {
+                if (cmd->payload[0] > 0 && (cmd->payload[1] & 0x80)) {
+                    serial_channels |= (uint16_t)(1u << (cmd->payload[1] & 0x0F));
+                }
             } else {
-                had_apu = true;
+                apu_voices |= (uint8_t)(1u << (cmd->payload[0] & 0x03));
             }
         } else {
             if (write != read) {
@@ -359,18 +372,39 @@ void fmrb_midi_sched_clear_pid(uint8_t src_pid)
      * kernel silences an app's voices when it sees the app go, and if that
      * happens before the last queued note on fires, the note sounds forever
      * (observed in the simulation, doc/midi/report/p7_6.md). Silence emitted
-     * from here is always after the last command that could start a note. */
-    if (had_apu) {
-        for (int voice = 0; voice < 4; voice++) {
+     * from here is always after the last command that could start a note.
+     * For a whole app every voice and channel is ended; for one player only
+     * those its dropped commands were for, so another player of the same app
+     * keeps sounding on the rest. */
+    if (all_owners) {
+        if (apu_voices) {
+            apu_voices = 0x0F;
+        }
+        if (serial_channels) {
+            serial_channels = 0xFFFF;
+        }
+    }
+    for (int voice = 0; voice < 4; voice++) {
+        if (apu_voices & (1u << voice)) {
             fmrb_app_send_audio_note(src_pid, false, voice, 0, 0, 0, 0, 0);
         }
     }
-    if (had_serial) {
-        for (int channel = 0; channel < 16; channel++) {
+    for (int channel = 0; channel < 16; channel++) {
+        if (serial_channels & (1u << channel)) {
             uint8_t off[3] = { (uint8_t)(0xB0 | channel), 123, 0 }; /* all notes off */
             fmrb_midi_serial_write(off, sizeof(off));
         }
     }
+}
+
+void fmrb_midi_sched_clear_pid(uint8_t src_pid)
+{
+    clear_matching(src_pid, true, 0);
+}
+
+void fmrb_midi_sched_clear_owner(uint8_t src_pid, uint8_t owner)
+{
+    clear_matching(src_pid, false, owner);
 }
 
 void fmrb_midi_sched_get_stats(fmrb_midi_sched_stats_t *out)
@@ -413,8 +447,8 @@ static uint8_t current_pid(void)
 
 static mrb_value mrb_sched_push_apu_note(mrb_state *mrb, mrb_value self)
 {
-    mrb_int due, ch, freq, vol, duty, sweep;
-    mrb_get_args(mrb, "iiiiii", &due, &ch, &freq, &vol, &duty, &sweep);
+    mrb_int due, ch, freq, vol, duty, sweep, owner = 0;
+    mrb_get_args(mrb, "iiiiii|i", &due, &ch, &freq, &vol, &duty, &sweep, &owner);
 
     uint8_t p[FMRB_MIDI_SCHED_PAYLOAD];
     p[0] = (uint8_t)ch;
@@ -425,24 +459,24 @@ static mrb_value mrb_sched_push_apu_note(mrb_state *mrb, mrb_value self)
     p[5] = (uint8_t)sweep;
     return mrb_bool_value(fmrb_midi_sched_push((uint64_t)due,
                                                FMRB_MIDI_CMD_APU_NOTE,
-                                               current_pid(), p));
+                                               current_pid(), (uint8_t)owner, p));
 }
 
 static mrb_value mrb_sched_push_apu_off(mrb_state *mrb, mrb_value self)
 {
-    mrb_int due, ch;
-    mrb_get_args(mrb, "ii", &due, &ch);
+    mrb_int due, ch, owner = 0;
+    mrb_get_args(mrb, "ii|i", &due, &ch, &owner);
 
     uint8_t p[FMRB_MIDI_SCHED_PAYLOAD] = { (uint8_t)ch, 0, 0, 0, 0, 0 };
     return mrb_bool_value(fmrb_midi_sched_push((uint64_t)due,
                                                FMRB_MIDI_CMD_APU_OFF,
-                                               current_pid(), p));
+                                               current_pid(), (uint8_t)owner, p));
 }
 
 static mrb_value mrb_sched_push_serial(mrb_state *mrb, mrb_value self)
 {
-    mrb_int due, len, b1, b2, b3;
-    mrb_get_args(mrb, "iiiii", &due, &len, &b1, &b2, &b3);
+    mrb_int due, len, b1, b2, b3, owner = 0;
+    mrb_get_args(mrb, "iiiii|i", &due, &len, &b1, &b2, &b3, &owner);
 
     uint8_t p[FMRB_MIDI_SCHED_PAYLOAD];
     p[0] = (uint8_t)len;
@@ -453,14 +487,21 @@ static mrb_value mrb_sched_push_serial(mrb_state *mrb, mrb_value self)
     p[5] = 0;
     return mrb_bool_value(fmrb_midi_sched_push((uint64_t)due,
                                                FMRB_MIDI_CMD_SERIAL,
-                                               current_pid(), p));
+                                               current_pid(), (uint8_t)owner, p));
 }
 
 /* Only this app's commands: another app playing at the same time keeps its
- * own future. */
+ * own future. With an owner, only that player's: another player of the same
+ * app keeps its own too. */
 static mrb_value mrb_sched_clear(mrb_state *mrb, mrb_value self)
 {
-    fmrb_midi_sched_clear_pid(current_pid());
+    mrb_int owner = -1;
+    mrb_get_args(mrb, "|i", &owner);
+    if (owner < 0) {
+        fmrb_midi_sched_clear_pid(current_pid());
+    } else {
+        fmrb_midi_sched_clear_owner(current_pid(), (uint8_t)owner);
+    }
     return mrb_nil_value();
 }
 
@@ -522,10 +563,10 @@ void mrb_fmrb_midi_sched_init(mrb_state *mrb)
     struct RClass *klass = mrb_define_class_under(mrb, module, "Sched",
                                                   mrb->object_class);
 
-    mrb_define_class_method(mrb, klass, "_push_apu_note", mrb_sched_push_apu_note, MRB_ARGS_REQ(6));
-    mrb_define_class_method(mrb, klass, "_push_apu_off", mrb_sched_push_apu_off, MRB_ARGS_REQ(2));
-    mrb_define_class_method(mrb, klass, "_push_serial", mrb_sched_push_serial, MRB_ARGS_REQ(5));
-    mrb_define_class_method(mrb, klass, "_clear", mrb_sched_clear, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, klass, "_push_apu_note", mrb_sched_push_apu_note, MRB_ARGS_ARG(6, 1));
+    mrb_define_class_method(mrb, klass, "_push_apu_off", mrb_sched_push_apu_off, MRB_ARGS_ARG(2, 1));
+    mrb_define_class_method(mrb, klass, "_push_serial", mrb_sched_push_serial, MRB_ARGS_ARG(5, 1));
+    mrb_define_class_method(mrb, klass, "_clear", mrb_sched_clear, MRB_ARGS_OPT(1));
     mrb_define_class_method(mrb, klass, "_depth", mrb_sched_depth, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, klass, "_free", mrb_sched_free, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, klass, "_now_us", mrb_sched_now_us, MRB_ARGS_NONE());

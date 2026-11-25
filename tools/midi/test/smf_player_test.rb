@@ -427,22 +427,22 @@ class FakeSched
       @cmds = []
     end
 
-    def _push_apu_note(due, ch, freq, vol, duty, sweep)
+    def _push_apu_note(due, ch, freq, vol, duty, sweep, _owner = 0)
       @cmds << [due, :on, ch, freq, vol, duty, sweep]
       true
     end
 
-    def _push_apu_off(due, ch)
+    def _push_apu_off(due, ch, _owner = 0)
       @cmds << [due, :off, ch]
       true
     end
 
-    def _push_serial(due, len, b1, b2, b3)
+    def _push_serial(due, len, b1, b2, b3, _owner = 0)
       @cmds << [due, :serial, len, b1, b2, b3]
       true
     end
 
-    def _clear
+    def _clear(_owner = nil)
       @cmds = []
     end
 

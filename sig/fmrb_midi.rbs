@@ -317,12 +317,16 @@ module FmrbMidi
 
     # 曲を止める <<en>> Stop the song
     #
-    # 待ち行列に入れた分を捨て、鳴っている音を止める。
+    # このプレーヤーが待ち行列に入れた分を捨て、鳴っている音を止める。
+    # 1 つのアプリでプレーヤーを 2 つ鳴らしていても、もう片方の分は残る
+    # (pause・`device=` も同じ)。
     # ```ruby
     # @smf.stop
     # ```
     # <<en>>
-    # Drops what was queued and stops the notes that are sounding.
+    # Drops what this player queued and stops the notes that are sounding.
+    # Another player of the same app keeps its own queue (pause and
+    # `device=` too).
     # ```ruby
     # @smf.stop
     # ```
@@ -889,6 +893,16 @@ module FmrbMidi
 
     # 止める <<en>> Stop
     #
+    # このプレーヤーが待ち行列に入れた分を捨て、鳴っている音を止める。
+    # 1 つのアプリでプレーヤーを 2 つ鳴らしていても、もう片方の分は残る
+    # (pause・`device=` も同じ)。
+    # ```ruby
+    # @mml.stop
+    # ```
+    # <<en>>
+    # Drops what this player queued and stops the notes that are sounding.
+    # Another player of the same app keeps its own queue (pause and
+    # `device=` too).
     # ```ruby
     # @mml.stop
     # ```
@@ -1205,7 +1219,9 @@ module FmrbMidi
     # 状態を 1 度だけ送る (和音の内側の音が順に鳴るのを防ぐ)。
     # `due_us` (省略すると今) は `FmrbMidi.now_us` の時計の時刻で、その
     # 時刻に送る。**閉じ忘れると以後の音が鳴らない**ので、`FmrbMidi.tick` が
-    # 毎回閉じる。すでに開いていれば何もしない。
+    # 毎回閉じる。すでに開いていれば何もしない。`owner` (省略すると 0) は
+    # 待ち行列に入れる分に付ける持ち主の番号で、プレーヤーが自分の分だけを
+    # 捨てるのに使う (プレーヤーが自分で渡す)。
     # ```ruby
     # apu.defer_voices
     # apu.note_on(0, 60, 100)
@@ -1218,13 +1234,15 @@ module FmrbMidi
     # inner notes of a chord are not played in turn). `due_us` (now when left
     # out) is a time on the `FmrbMidi.now_us` clock to send at. A group left
     # open swallows every later note; `FmrbMidi.tick` closes it each time.
-    # Nothing happens when one is already open.
+    # Nothing happens when one is already open. `owner` (0 when left out) is
+    # stamped on what goes to the queue so that a player can drop only its
+    # own (the players pass it themselves).
     # ```ruby
     # apu.defer_voices
     # apu.note_on(0, 60, 100)
     # apu.flush_voices
     # ```
-    def defer_voices: (?Integer due_us) -> void
+    def defer_voices: (?Integer due_us, ?Integer owner) -> void
 
     # ひとまとめを閉じて送る <<en>> Close the group and send it
     #

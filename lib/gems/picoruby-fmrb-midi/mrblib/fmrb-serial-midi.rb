@@ -83,6 +83,7 @@ module FmrbMidi
       # writing them now, so the beat comes from a timer rather than from
       # whenever the app's task woke up (doc/midi/report/p7_6.md).
       @instant_us = nil
+      @instant_owner = 0
       @sched = FmrbMidi.scheduler
       @opened = ::FmrbMidi::SerialPort._open(path, uart || -1, tx || -1, rx, baud)
       FmrbMidi.register(self) if @opened
@@ -104,7 +105,7 @@ module FmrbMidi
 
       if @instant_us
         return @sched._push_serial(@instant_us, length, b1 & 0xFF,
-                                   b2 & 0xFF, b3 & 0xFF) ? length : -1
+                                   b2 & 0xFF, b3 & 0xFF, @instant_owner) ? length : -1
       end
 
       # picoruby has no Array#pack, so the buffer is built with setbyte.
@@ -144,8 +145,9 @@ module FmrbMidi
     # resolve here - a real instrument plays every note it is given - so all
     # this does is stamp the messages of one musical instant with the time
     # they are due, which is what the player needs from any output.
-    def defer_voices(due_us = nil)
+    def defer_voices(due_us = nil, owner = 0)
       @instant_us = @sched ? due_us : nil
+      @instant_owner = owner
       0
     end
 
