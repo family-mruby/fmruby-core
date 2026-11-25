@@ -5,6 +5,8 @@
  * File class inherits from IO and extends it with file-specific methods
  */
 
+#include <stdbool.h>
+#include <string.h>
 #include <mruby.h>
 #include <mruby/class.h>
 #include <mruby/string.h>
@@ -26,25 +28,24 @@ static const struct mrb_data_type mrb_io_type = {
   "IO", mrb_free,
 };
 
-// Convert fopen-style mode string to FMRB_O_* open flags.
+// Convert fopen-style mode string to FMRB_O_* open flags. The '+' may come
+// after a 'b' or 't' ("rb+", "ab+"), as fopen and CRuby take it.
 static uint32_t
 io_mode_to_flags(const char *mode)
 {
   if (!mode || !*mode) return FMRB_O_RDONLY;
 
+  const bool plus = strchr(mode + 1, '+') != NULL;
   uint32_t flags;
   switch (mode[0]) {
     case 'r':
-      flags = FMRB_O_RDONLY;
-      if (mode[1] == '+') flags = FMRB_O_RDWR;
+      flags = plus ? FMRB_O_RDWR : FMRB_O_RDONLY;
       break;
     case 'w':
-      flags = FMRB_O_WRONLY | FMRB_O_CREAT | FMRB_O_TRUNC;
-      if (mode[1] == '+') flags = FMRB_O_RDWR | FMRB_O_CREAT | FMRB_O_TRUNC;
+      flags = (plus ? FMRB_O_RDWR : FMRB_O_WRONLY) | FMRB_O_CREAT | FMRB_O_TRUNC;
       break;
     case 'a':
-      flags = FMRB_O_WRONLY | FMRB_O_CREAT | FMRB_O_APPEND;
-      if (mode[1] == '+') flags = FMRB_O_RDWR | FMRB_O_CREAT | FMRB_O_APPEND;
+      flags = (plus ? FMRB_O_RDWR : FMRB_O_WRONLY) | FMRB_O_CREAT | FMRB_O_APPEND;
       break;
     default:
       flags = FMRB_O_RDONLY;

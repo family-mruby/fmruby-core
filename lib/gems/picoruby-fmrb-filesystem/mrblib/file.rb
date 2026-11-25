@@ -223,17 +223,15 @@ class File < IO
     return fname[epos, fname.size - epos]
   end
 
-  # Get file path (identity function for strings)
+  # File.path(name): the name as a String (identity function for strings).
+  # An open File's own path is the instance reader (attr_accessor :path);
+  # this is the class method only, so it never reads a class-level @path.
   def self.path(filename = nil)
-    if self.instance_of?(self.class)
-      @path
+    raise ArgumentError, "missing filename" if filename.nil?
+    if filename.is_a?(String)
+      filename
     else
-      raise ArgumentError, "missing filename" if filename.nil?
-      if filename.is_a?(String)
-        filename
-      else
-        raise TypeError, "no implicit conversion of #{filename.class} into String"
-      end
+      raise TypeError, "no implicit conversion of #{filename.class} into String"
     end
   end
 
