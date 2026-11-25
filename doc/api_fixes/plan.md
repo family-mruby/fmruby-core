@@ -128,14 +128,24 @@ B8: `TRANSPARENT_COLOR`・`FmrbGfx::FONT_METRICS` を sig に、`CLOSE_BTN_*` �
 10. **VM プールの増分は受け入れ、基準を更新する** (system_desktop +約 2 KB、アプリ 1 つ +約 0.8 KB)。更新済み。
 11. B の残り 9 個は 1 つずつ聞く。
 
+### 決定 4 回目 (2026-11-25 ユーザ。B の残り 9 個)
+
+12. **MIDI の `playing?`** (ほかのプレーヤー・アプリの予約も数える見込み): 再現して直す (自分が予約した分だけ数える)。
+13. **`File.expand_path` の基準と `Dir.chdir` の後の相対パス**: P4-Nano と sim で実際の動きを表にして報告する。直さない。
+14. **書くだけの mode で `read`**: 例外 (IOError) にする。逆向き (読むだけの mode で `write`) も調べてそろえる。
+15. **`JSON.generate` の NaN・Infinity**: `JSON::GeneratorError` にする。
+16. **`I2C.new` の失敗の文**: 原因ごとの文にする (例外のクラスは変えない)。GPIO と一緒に。
+17. **`TableClient#leave`**: nil を返す。
+18. **Spinel の基底の `app_settings`**: 記録だけ (Spinel で設定が要るアプリを作るときに足す)。
+19. **`ROS::Subscription#handler=`**: Asterism の gem (元のリポジトリ) を直す。リリースと取り込み直しが要る (F5)。
+
 ## 3. スコープ
 
 - F1: A の 12 個。
 - F2: B のうち、ユーザが直すと決めた 4 つ (上の「B の決定」)。
 - F3: 上の「B の決定 2 回目」の 4 つ。
-- B の残り (まだ聞いていない): GPIO の直し方 (F2 で止めた)、`File.expand_path` の基準、`Dir.chdir` の後の相対パス、
-  `I2C.new` の失敗の文、`JSON.generate` の NaN、Spinel の基底の `app_settings`、`TableClient#leave` の戻り値、
-  `ROS::Subscription#handler=` (A11)、書くだけの mode で `read` が "" を返す。
+- F4: 決定 9 (GPIO の (a))・12〜17。
+- F5: 決定 19 (Asterism の gem の `handler=`)。
 
 ## 4. 受け入れ条件
 
