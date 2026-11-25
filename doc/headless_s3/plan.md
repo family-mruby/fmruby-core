@@ -1,6 +1,6 @@
 # ヘッドレス Family mruby (ESP32-S3、AtomS3R)
 
-> 状態: 進行中 (H3・M3s・S1 まで完了) | 更新: 2026-11-07 | 画面と操作卓を持たない市販の小型機 (最初は M5Stack AtomS3R) を、単一のアプリだけを動かす Family mruby として Asterism の網に参加させる。開発は WiFi 越し (遠隔のファイル転送・起動) と Asterism の system オブジェクト
+> 状態: 進行中 (H3・M3s・S1 まで完了) | 更新: 2026-11-25 | 画面と操作卓を持たない市販の小型機 (最初は M5Stack AtomS3R) を、単一のアプリだけを動かす Family mruby として Asterism の網に参加させる。開発は WiFi 越し (遠隔のファイル転送・起動) と Asterism の system オブジェクト
 
 ## 目的
 
@@ -120,6 +120,8 @@
 - 2026-10-12 ユーザ (H3 の後): H2b でカーネルの共通の部分に入れた「落ちたアプリの画面」で Retro・Tab5 のファームが約 3 KB 増えたことを承認 (内蔵 RAM は増えていない)。幅 320 未満の画面では、止まったときの画面にエラーの最初の 1 行だけを出す (バックトレースで案内の行が見切れるため)。
 
 - 2026-11-07 ユーザ (doc/checkpoint/report/s3_next.md の 2 章の B 案): StickS3・AtomS3R の区画表 (`config/partitions_atoms3r.csv`、2 つで共用) を factory 5.5M (0x10000〜0x590000)・storage 2496K (0x590000〜0x800000) に変えた。mruby-checkpoint の基準の表で app の空きが 4% になったため。app の空きは約 13%、storage は配る木で約 790 KB が /home に残る。既存の端末は次の節の手順で移す。
+
+- 2026-11-25 ユーザ (doc/api_fixes/plan.md の決定 23): StickS3・AtomS3R のファームからエディタと型まわり (エディタのアプリ・picoruby-fmrb-editor-core・picoruby-ti と型の db・picoruby-fmrb-debug) を外した (ビルドの選択 `FMRB_EDITOR=0`、`MINI_BUILD_DEFAULTS`)。区画は変えない。app の空きは約 5〜20 KB から約 520 KB に戻った。エディタを開こうとすると `FMRB_ERR_NOT_SUPPORTED` で断る。結果は doc/api_fixes/report/f8.md。
 
 ## 区画表を変えた端末の移し方 (StickS3・AtomS3R、2026-11-07)
 
