@@ -219,13 +219,14 @@ module FmrbAsterism
       e.message.to_s
     end
 
-    # Leaves the table (the host is told, not waited for).
+    # Leaves the table (the host is told, not waited for). Returns nil.
     def leave
       begin
         proxy.async.leave(@token) if @token
       rescue ::Asterism::Error
       end
       forget
+      nil
     end
 
     # Off the table without telling the host. A join on its way is dropped:
