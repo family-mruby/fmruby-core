@@ -91,10 +91,9 @@ module Machine
   #
   # ms が負だと ArgumentError。戻り値は渡した ms。
   #
-  # **待つ長さは機種で違う**。ESP32 の実装は FreeRTOS の `vTaskDelay(ms / 10)` で、tick を
-  # 10 ms と決め打ちしている (10 ms 未満は待たずに譲るだけ)。今のビルドの tick は 1 ms
-  # (`CONFIG_FREERTOS_HZ=1000`) なので、指定の約 1/10 しか待たない可能性がある。Linux・
-  # ネイティブ版は 10 ms 刻みで実時間を見て待つので、指定より最大で約 10 ms 長くなる。
+  # **待つ長さの細かさは機種で違う**。ESP32 は 1 ms 刻み (FreeRTOS の tick) で待つ。
+  # Linux・ネイティブ版は 10 ms 刻みで実時間を見て待つので、指定より最大で約 10 ms 長くなる。
+  # (2026-11-25 より前のファームの ESP32 は、指定の約 1/10 しか待たなかった。)
   # ```ruby
   # Machine.delay_ms(100)
   # ```
@@ -106,11 +105,10 @@ module Machine
   #
   # A negative ms raises ArgumentError. It returns the ms you passed.
   #
-  # **How long it waits differs by platform.** The ESP32 code is FreeRTOS
-  # `vTaskDelay(ms / 10)`, which assumes a 10 ms tick (under 10 ms it only yields).
-  # This build's tick is 1 ms (`CONFIG_FREERTOS_HZ=1000`), so it may wait only about
-  # a tenth of what you asked for. Linux and the native build watch the real clock
-  # in 10 ms steps, so they wait up to about 10 ms longer.
+  # **The resolution differs by platform.** ESP32 waits in 1 ms steps (the FreeRTOS
+  # tick). Linux and the native build watch the real clock in 10 ms steps, so they
+  # wait up to about 10 ms longer. (ESP32 firmware from before 2026-11-25 waited
+  # only about a tenth of what was asked.)
   # ```ruby
   # Machine.delay_ms(100)
   # ```
