@@ -43,10 +43,34 @@ sig の説明を直した後の動きに合わせる。
 (公開の名前を用意するか)、`FmrbGfx#draw_text_mixed` と枠なしの Window の定数 5 を sig に載せるか、
 `TableClient#leave` の戻り値、`rescue Foo => e` の型 (型エンジンの機能の追加)。
 
+### F1 の結果 (2026-11-25、report/f1.md)
+
+A1〜A8・A10 を直し、A12 は sig の文を直した。A9 (`GPIO#read` の失敗) は意図が実装から読めず B へ、A11
+(`ROS::Subscription#handler=`) は Asterism の gem の元のリポジトリの物なので止めた (直し方の案は報告の 2 章)。
+親の検収: 差分を読み、sim で `a+` の追記・`File.path`・`Digger` の DiggerError・`pitch_bend`・`Kernel.send_message` と
+`receive_message` (落ちない。自分の番号では HID の伝言が先に来る) を再現、`rake regress:size` で S3 と P4 のビルドが通る
+(S3 のファームの区画の空きは 269 KB = 4%)。ホストの試験 `rake api_fixes:test` が `rake test` に入った。
+未確認: ESP32 の実機での `a+`、P4 の gpio_viewer。
+
+### B の決定 (2026-11-25 ユーザ) -- F2 で直す
+
+1. **`IO#puts` は mruby に合わせる**: mruby 本家 (mruby-io の `io_puts`) と同じく、配列は要素ごとに 1 行 (入れ子も)、
+   引数なしは改行だけ、末尾が改行の文字列には改行を足さない。
+2. **`FmrbUI#bg=` は既にある部品にも反映する**。
+3. **GPIO は両方とも例外にする**: システムが使っているピン (ピンの台帳で取れないピン) の `GPIO.new` と、`read` の失敗。
+   同梱のアプリを調べてから直す。実機の確認が要る (C)。
+4. **直前のエラー文を読む公開の名前を作る** (`FmrbApp._get_last_error` → 公開の名前。sig に書き、AI ヘルパーを
+   切り替え、古い名前は消す)。midi_bench の 3 つは試験用なのでそのまま。
+
 ## 3. スコープ
 
 - F1: A の 12 個。
-- F2: B のうち、ユーザが直すと決めた物。
+- F2: B のうち、ユーザが直すと決めた 4 つ (上の「B の決定」)。
+- B の残り (まだ聞いていない): `File.expand_path` の基準、`Dir.chdir` の後の相対パス、`Kernel.*` の task_id の上限、
+  `Kernel::MSG_TASK_HOST`・`MSG_TASK_SYSTEM` の番号が本体と合わない、`I2C.new` の失敗の文、`JSON.generate` の NaN、
+  `SmfPlayer#drop_queued` の共有の待ち行列、Spinel の基底の `app_settings`、枠なしの Window の定数 5 を sig に載せるか、
+  `TableClient#leave` の戻り値、`ROS::Subscription#handler=` (A11)、書くだけの mode で `read` が "" を返す、
+  `rescue Foo => e` の型。
 
 ## 4. 受け入れ条件
 
