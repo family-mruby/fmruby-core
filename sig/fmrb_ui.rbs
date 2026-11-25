@@ -518,24 +518,26 @@ class FmrbUI
 
   # 部品の地の色を変える <<en>> Change the colour behind the widgets
   #
-  # **あとから作る部品と、隠した部品の跡を塗る色**が変わります。
-  # **すでにある部品の中の色は変わりません**。部品は作るときに色を写して
-  # 持つので、変えるなら部品の `bg=` です。渡した色は自前の色として扱われ、
-  # アプリを別の端末へ移してもテーマの色には戻りません。描き直しは
-  # `invalidate_all` のあとの flush で。
+  # **あとから作る部品と、隠した部品の跡を塗る色**が変わり、
+  # **すでにある部品の中の色も**、作るときにここから写した色のものは新しい色に
+  # なって、次の flush で描き直されます。部品の `bg=` で自分の色を渡した部品はその色のままです。
+  # 渡した色は自前の色として扱われ、アプリを別の端末へ移してもテーマの色には
+  # 戻りません。部品の外の地 (アプリが塗る所) は、アプリが塗り直します。
   # ```ruby
   # @ui.bg = @bg_col
-  # @ui.invalidate_all
+  # @ui.flush
   # ```
   # <<en>>
   # Changes what **widgets made afterwards, and the hole left by a hidden one**,
-  # are painted with. **Widgets that already exist keep their own colour**:
-  # each copies it when made, so use the widget's `bg=`. The colour
-  # counts as the app's own and does not turn back into the theme's after a
-  # move to another machine. Repaint with `invalidate_all` and a flush.
+  # are painted with, and **the widgets that already exist too**: each one whose
+  # colour was copied from here when it was made takes the new one and is
+  # redrawn at the next flush. A widget given its own colour with its `bg=`
+  # keeps it. The colour counts as the app's own and does not turn back into
+  # the theme's after a move to another machine. The ground outside the
+  # widgets is the app's to repaint.
   # ```ruby
   # @ui.bg = @bg_col
-  # @ui.invalidate_all
+  # @ui.flush
   # ```
   def bg=: (Integer c) -> void
 
@@ -657,7 +659,8 @@ class FmrbUI::Widget
   # 部品の中の色を変える <<en>> Change the colour a widget paints inside
   #
   # **自前の色として扱われ**、アプリを別の端末へ移してもテーマの色には戻り
-  # ません。**描き直しの印は付かない**ので、`@ui.invalidate_all` か、その部品が
+  # ません。あとで `@ui.bg =` で入れ物の色を変えても、この色のままです。
+  # **描き直しの印は付かない**ので、`@ui.invalidate_all` か、その部品が
   # 変わるときに描かれます。
   # ```ruby
   # @ui.find(:title).bg = FmrbGfx::BLACK
@@ -665,7 +668,7 @@ class FmrbUI::Widget
   # ```
   # <<en>>
   # The colour counts as the app's own and does not turn back into the
-  # theme's after a move to another machine.
+  # theme's after a move to another machine, nor follow a later `@ui.bg =`.
   # **It does not mark the widget for redraw**: call `@ui.invalidate_all`,
   # or wait until the widget changes.
   # ```ruby
