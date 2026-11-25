@@ -7,8 +7,9 @@
 #   - File.path (class method) returns its argument
 #     (lib/gems/picoruby-fmrb-filesystem/mrblib/file.rb, loaded into a module
 #     so it does not replace the host's own File)
-#   - JSON::Digger#dig raises past the end of an Array, and JSON.parse makes
-#     \uXXXX a UTF-8 character (lib/upstream/patch/picoruby-json/mrblib/json.rb)
+#   - JSON::Digger#dig raises past the end of an Array, JSON.parse makes
+#     \uXXXX a UTF-8 character, and JSON.generate refuses NaN and the
+#     infinities (lib/upstream/patch/picoruby-json/mrblib/json.rb)
 #   - MIDI::Device#pitch_bend works without Integer#clamp
 #     (lib/gems/picoruby-fmrb-midi/mrblib/fmrb-midi.rb over picoruby-midi)
 #   - SmfPlayer stops a note at the pitch it started at when transpose
@@ -95,6 +96,19 @@ check("u3042 in text", ubytes("\"x#{esc("3042")}y\""), [0x78, 0xE3, 0x81, 0x82, 
 check("surrogate pair", ubytes("\"#{esc("d83d", "de00")}\""), [0xF0, 0x9F, 0x98, 0x80])
 check("u cut short", raised { JSON.parse("\"#{BS}u30\"") },
       ["JSON::ParserError", "Incomplete unicode escape sequence"])
+
+# JSON.generate refuses NaN and the infinities, nested too (doc/api_fixes F4)
+nan = 0.0 / 0.0
+inf = 1.0 / 0.0
+check("generate NaN", raised { JSON.generate(nan) }, ["JSON::GeneratorError", "NaN not allowed in JSON"])
+check("generate Infinity", raised { JSON.generate(inf) },
+      ["JSON::GeneratorError", "Infinity not allowed in JSON"])
+check("generate -Infinity", raised { JSON.generate(-inf) },
+      ["JSON::GeneratorError", "-Infinity not allowed in JSON"])
+check("generate nested NaN", raised { JSON.generate({ "a" => { "b" => [1, nan] } }) },
+      ["JSON::GeneratorError", "NaN not allowed in JSON"])
+check("GeneratorError is a JSONError", JSON::GeneratorError.ancestors.include?(JSON::JSONError), true)
+check("generate finite floats", JSON.generate([1, 1.5, -0.25, { "x" => 2.0 }]), '[1,1.5,-0.25,{"x":2.0}]')
 
 # ---- MIDI --------------------------------------------------------------------
 

@@ -436,7 +436,13 @@ module JSON
       result
     end
 
+    # NaN and the infinities have no JSON form: refuse them as CRuby's
+    # JSON.generate does, rather than writing NaN / Infinity, which no JSON
+    # parser (this one included) reads back.
     def generate_number(obj)
+      if obj.is_a?(Float) && !obj.finite?
+        raise JSON::GeneratorError, "#{obj} not allowed in JSON"
+      end
       obj.to_s
     end
   end
