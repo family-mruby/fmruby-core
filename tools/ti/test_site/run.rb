@@ -86,7 +86,7 @@ Dir.mktmpdir("gen_site_test") do |tmp|
   idx = File.read(File.join(ref, "index.md"))
   check "index groups by area, unknown file under Other",
         idx.index("## Drawing") && idx.index("## Other") && idx.index("## Drawing") < idx.index("## Other")
-  check "index has the notice", idx.include?("!!! note") && File.read(File.join(ref, "index.ja.md")).include?("!!! note")
+  check "index has no notice box", !idx.include?("!!! note") && !File.read(File.join(ref, "index.ja.md")).include?("!!! note")
   check "index shows the first sentence of a wrapped one-language comment",
         idx.include?("| Every widget has a **box** and an id. | 0 |")
   wid = File.read(File.join(ref, "FmrbUI__Widget.md"))
