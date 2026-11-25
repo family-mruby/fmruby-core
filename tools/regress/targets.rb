@@ -67,6 +67,7 @@ module Regress
     "FMRB_FONT_JA" => "1",
     "FMRB_ASTERISM" => "0",
     "FMRB_IMU" => "0",
+    "FMRB_EDITOR" => "1",
     "FMRB_GC_PROFILE" => "",
     "FMRB_TASK_SELF_TICK" => "",
     "FMRB_DISPLAY_BACKEND" => ""
@@ -77,7 +78,8 @@ module Regress
     "FMRB_APP_ENGINE_EDITOR" => "mruby",
     "FMRB_FFT_SPINEL" => "0",
     "FMRB_FONT_JA" => "0",
-    "FMRB_ASTERISM" => "1"
+    "FMRB_ASTERISM" => "1",
+    "FMRB_EDITOR" => "0"
   }.freeze
 
   Target = Struct.new(:name, :family, :screen, :hires, :plain, :margin, :app, :font_ja, :conf, :exclude, :firmware,

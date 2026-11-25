@@ -36,14 +36,24 @@ MRuby::GemBox.new do |conf|
   conf.gem core: "picoruby-fmrb-spinel-hello"
   conf.gem core: "picoruby-fmrb-raycast"
   conf.gem core: "picoruby-fmrb-app"
-  # Editor document model in C (POOL_ID_EDITOR_DOC arena). After picoruby-fmrb-app
-  # so the loading order stays "framework, then the pieces that lean on it".
-  conf.gem core: "picoruby-fmrb-editor-core"
-  # Type inference engine behind the editor's completion/hover/diagnostics
-  # (pure C, no Ruby classes; parses with the prism inside mruby-compiler).
-  # Delivered from the pinned fork by rake ti:setup, see doc/editor_ti/plan.md.
-  conf.gem core: "picoruby-ti"
-  conf.gem core: "picoruby-fmrb-debug"
+  # The editor's gems: FMRB_EDITOR=0 (the AtomS3R's and StickS3's default, see
+  # the Rakefile) leaves them out of the ESP32 firmware (and its checkpoint
+  # table, ckpt-table-*), whose CMake side reads the same variable. The Linux
+  # simulation, the native program and the browser build always have them.
+  build = MRuby::Build.current.name
+  device = build.start_with?("esp32") || build.start_with?("ckpt-table-")
+  unless device && ENV['FMRB_EDITOR'] == '0'
+    # Editor document model in C (POOL_ID_EDITOR_DOC arena). After picoruby-fmrb-app
+    # so the loading order stays "framework, then the pieces that lean on it".
+    conf.gem core: "picoruby-fmrb-editor-core"
+    # Type inference engine behind the editor's completion/hover/diagnostics
+    # (pure C, no Ruby classes; parses with the prism inside mruby-compiler).
+    # Delivered from the pinned fork by rake ti:setup, see doc/editor_ti/plan.md.
+    conf.gem core: "picoruby-ti"
+    # FMRB::Debug, the editor's debugger pane. The remote debugger
+    # (main/drivers/debug) and the VM hook (MRB_USE_DEBUG_HOOK) stay.
+    conf.gem core: "picoruby-fmrb-debug"
+  end
   # MIDI: protocol layer and MML parser imported from Midori, then the
   # Family mruby transports and players
   conf.gem core: "picoruby-midi"

@@ -22,7 +22,11 @@ static const char *TAG = "fmrb_default_apps";
 // External irep declarations (compiled by picorbc)
 extern const uint8_t system_desktop_irep[];
 extern const uint8_t shell_irep[];
+#ifndef FMRB_NO_EDITOR
+// Not in a build with FMRB_EDITOR=0 (main/CMakeLists.txt): the table below
+// has no editor entries then, and fmrb_app_spawn_app refuses their names.
 extern const uint8_t editor_irep[];
+#endif
 extern const uint8_t logviewer_irep[];
 extern const uint8_t monitor_irep[];
 extern const uint8_t inspector_irep[];
@@ -204,6 +208,7 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .min_window_height = 80,
         .rounded_corners = true
     }},
+#ifndef FMRB_NO_EDITOR
     { "default/editor", {
         .app_id = -1,
         .type = APP_TYPE_USER_APP,
@@ -281,6 +286,7 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .window_pos_y = 0,
         .rounded_corners = false  // fullscreen: no frame, no shaped window
     }},
+#endif /* FMRB_NO_EDITOR */
     { "default/logviewer", {
         .app_id = -1,
         .type = APP_TYPE_USER_APP,
@@ -987,6 +993,16 @@ fmrb_err_t fmrb_app_spawn_app(const char* app_name, int32_t* out_pid)
             return spawn_builtin_app(&builtin_app_table[i], out_pid);
         }
     }
+
+#ifdef FMRB_NO_EDITOR
+    // A build without the editor (FMRB_EDITOR=0, the AtomS3R and StickS3)
+    // says so, rather than calling the name unknown: the request is for
+    // something other machines have, this one was built without.
+    if (strcmp(app_name, "default/editor") == 0 || strcmp(app_name, "default/editor_fs") == 0) {
+        FMRB_LOGW(TAG, "%s: the editor is not in this build (FMRB_EDITOR=0)", app_name);
+        return FMRB_ERR_NOT_SUPPORTED;
+    }
+#endif
 
     // Reject unknown built-in app names
     if (strncmp(app_name, "system/", 7) == 0 || strncmp(app_name, "default/", 8) == 0) {

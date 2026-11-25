@@ -206,6 +206,15 @@ else()
     endif()
 endif()
 
+# The editor's gems (picoruby-fmrb-editor-core, picoruby-fmrb-debug) are not
+# in an ESP32 firmware built with FMRB_EDITOR=0 (the AtomS3R's and StickS3's
+# default; the Rakefile), so neither are their ports. lib/upstream/family_mruby.gembox
+# reads the same variable inside the container for the gems themselves. The
+# Linux simulation always has them.
+if(NOT IDF_TARGET STREQUAL "linux" AND "$ENV{FMRB_EDITOR}" STREQUAL "0")
+    list(REMOVE_ITEM PICORUBY_SRCS ${FMRB_DEBUG_PORTS_SRCS} ${FMRB_EDITOR_CORE_PORTS_SRCS})
+endif()
+
 # Add a dummy source file for Linux build to avoid INTERFACE library
 if(IDF_TARGET STREQUAL "linux")
   file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/dummy.c "// Dummy file for Linux build\n")

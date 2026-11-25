@@ -38,3 +38,8 @@ usr/share/doc/chat_ja.md
 # only machines with two resolutions to choose from.
 usr/share/doc/display.md
 usr/share/doc/display_ja.md
+
+# The editor's own guide: the firmware has no editor (FMRB_EDITOR=0,
+# doc/api_fixes/report/f8.md).
+usr/share/doc/editor.md
+usr/share/doc/editor_ja.md

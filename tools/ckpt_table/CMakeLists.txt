@@ -7,6 +7,7 @@
 #   -DIDF_TARGET=esp32s3 | esp32p4   the chip and
 #   -DFMRB_HW_TARGET=TAB5 | ...      the board: their definitions are fmrb_hw_defines.cmake's
 #   -DFMRB_CKPT_OUT=file.c           the table
+#   -DFMRB_EDITOR=0 | 1              whether the editor's gems are in (the Rakefile)
 #
 # The gem ports are the hosted builds' (their ports/esp32 sources), compiled
 # as the Linux targets compile them -- the device's ESP-IDF branches cannot
@@ -26,6 +27,13 @@ set(FMRB_HOSTED_PLATFORM native)
 set(FMRB_HOSTED_MRUBY_BUILD ckpt-table-${FMRB_CKPT_OF})
 set(FMRB_HOSTED_NATIVE_ISA ON)
 include(${CMAKE_CURRENT_LIST_DIR}/../../hosted/hosted.cmake)
+
+# -DFMRB_EDITOR=0 (the Rakefile's, for the AtomS3R and StickS3): the editor's
+# gems are not in the configuration's libmruby (lib/upstream/family_mruby.gembox),
+# so their ports are not compiled into the maker either.
+if(FMRB_EDITOR STREQUAL "0")
+  list(FILTER FMRB_HOSTED_GEM_PORT_SRCS EXCLUDE REGEX "/picoruby-fmrb-(debug|editor-core)/ports/")
+endif()
 
 # The hosted program's definitions, less the sizes and the profile only the
 # one-process program has, plus the device's. FMRB_PLATFORM_HOSTED stays: it
