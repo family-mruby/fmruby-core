@@ -369,6 +369,9 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   (sig の例・見本どおり) を落とす (2026-11-25、doc/archive/sig_coverage/report/s6_ai_host.md)。答え直しが 2 回起きた。直していない。
 - `FmrbGfx#draw_text_mixed` は同梱のアプリが 9 か所で使うが sig に無い (`draw_text(..., mixed: true)` の、Hash を作らない形)。
   アプリを書く人に見せるかは未決定。
+- 見本 2 つ (`flash/app/tool/sprite_editor.app.rb`・`flash/app/demo/stackchan.app.rb`) が、枠の閉じるボタンの内側の数字
+  `CLOSE_BTN_CX_OFFSET`・`CLOSE_BTN_CY`・`CLOSE_BTN_HIT_R` を読んで自分でボタンの当たりを見ている。ユーザ決定 (2026-11-25):
+  sig には載せない (載せない一覧に入れた、doc/api_fixes F3)。見本の読み方をどうするか (公開の口を作る・見本を変える) は課題。
 - **S3 (NARYAv3) のファームの区画の空きが 288 KB (5%)** (2026-11-25、`rake regress:size`。区画 6 MB、像 6,003,680 バイト)。
   P4 は 1.37 MB (16%)。今は収まっている。ユーザ決定: 記録だけ、足りなくなったときに決める。減らす案 (未調査):
   S3 だけ型データベースの要約の領域 (約 112 KB) やシグネチャ (約 58 KB) を外す・S3 に要らないクラス

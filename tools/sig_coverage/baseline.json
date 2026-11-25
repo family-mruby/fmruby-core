@@ -5,16 +5,16 @@
     "sig_methods": 1479,
     "app_class": 1,
     "app_class_uses": 1,
-    "app_constant": 5,
+    "app_constant": 0,
     "app_method": 0,
     "app_method_uses": 0,
     "app_name": 44,
     "app_name_uses": 91,
     "app_bare": 2,
     "app_bare_uses": 4,
-    "impl_ruby": 1440,
+    "impl_ruby": 1441,
     "impl_ruby_missing": 5,
-    "impl_ruby_api_private": 152,
+    "impl_ruby_api_private": 153,
     "impl_c": 307,
     "impl_c_missing": 15,
     "impl_c_unresolved": 0,
@@ -30,13 +30,7 @@
     "app_class": [
       "FmrbMidi::NoteScheduler"
     ],
-    "app_constant": [
-      "CLOSE_BTN_CX_OFFSET",
-      "CLOSE_BTN_CY",
-      "CLOSE_BTN_HIT_R",
-      "FmrbGfx::FONT_METRICS",
-      "TRANSPARENT_COLOR"
-    ],
+    "app_constant": [],
     "app_method": [],
     "app_name": [
       "_clear",

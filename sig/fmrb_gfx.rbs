@@ -138,6 +138,39 @@ class FmrbGfx
   # picture_info が返す絵の大きさと形 <<en>> A picture file's size and kind, from picture_info
   type picture_info = { width: uint16, height: uint16, format: uint8, bytes: uint32, mtime: uint32 }
 
+  # FONT_METRICS の 1 つの字の種類の寸法 (ドット) <<en>> One font's sizes in pixels, in FONT_METRICS
+  type font_metrics = { char_w: Integer, half_w: Integer, kana_w: Integer, line_h: Integer }
+
+  # 字の種類ごとの字の幅と行の高さ <<en>> Character widths and line height of each font
+  #
+  # 鍵は `current_font` が返す `[family, size]` の配列
+  # (`[:default]`・`[:ja, 8]`・`[:ja, 12]`・`[:ja, 16]`・`[:ja_bold, 12]`)。
+  # 値は文字の大きさ 1 のときのドットで、`char_w` は全角 (漢字・かな) の幅、
+  # `half_w` は英数の幅、`kana_w` は半角カナの幅、`line_h` は行の高さ。
+  # 文字列の幅は `text_width`、行の高さは `font_height` の方が手軽で、
+  # どちらも `set_text_size` の倍率を掛けて返す (`text_width` は `:default`
+  # の全角を、美咲フォントで描くので表の 6 ではなく 8 で数える)。
+  # ```ruby
+  # m = FmrbGfx::FONT_METRICS[
+  #   gfx.current_font]
+  # lh = m ? m[:line_h] : 12
+  # ```
+  # <<en>>
+  # The keys are the `[family, size]` arrays `current_font` returns
+  # (`[:default]`, `[:ja, 8]`, `[:ja, 12]`, `[:ja, 16]`, `[:ja_bold, 12]`).
+  # The values are pixels at text size 1: `char_w` the full-width (kanji,
+  # kana) width, `half_w` the ASCII width, `kana_w` the half-width katakana
+  # width, `line_h` the line height. `text_width` and `font_height` are
+  # handier for a string's width and the line height, and both multiply by
+  # the `set_text_size` scale (`text_width` counts `:default`'s full width
+  # as 8, not the table's 6, since misaki draws it).
+  # ```ruby
+  # m = FmrbGfx::FONT_METRICS[
+  #   gfx.current_font]
+  # lh = m ? m[:line_h] : 12
+  # ```
+  FONT_METRICS: Hash[Array[untyped], font_metrics]
+
   # ---- 色 ----
   #
   # 短い名前 (BLACK など) は C が、COLOR_ 付きは mrblib が決めている。
@@ -292,13 +325,23 @@ class FmrbGfx
 
   # 今えらんでいる字の種類 <<en>> The font in use now
   #
+  # `set_font` が実際に選んだ `[family, size]` の配列 (`:default` は
+  # `[:default]`)。`FmrbGfx::FONT_METRICS` の鍵になる。
   # ```ruby
   # saved = gfx.current_font
   # gfx.set_font(:ja)
-  # gfx.set_font(saved)
+  # gfx.set_font(*saved)
+  # ```
+  # <<en>>
+  # The `[family, size]` array `set_font` actually chose (`[:default]` for
+  # `:default`). It is the key of `FmrbGfx::FONT_METRICS`.
+  # ```ruby
+  # saved = gfx.current_font
+  # gfx.set_font(:ja)
+  # gfx.set_font(*saved)
   # ```
   %a{fmrb.internal}
-  def current_font: () -> Symbol
+  def current_font: () -> Array[untyped]
 
   # 今の字の大きさの倍率 <<en>> The text scale in use now
   #

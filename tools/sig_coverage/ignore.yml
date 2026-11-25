@@ -778,6 +778,16 @@
   reason: >-
     draw_text(..., mixed: true) without building a keyword Hash, for the
     system's own redraw paths; apps are shown draw_text (decision 26).
+- name: CLOSE_BTN_CX_OFFSET
+  reason: >-
+    FmrbApp's close button position inside the window frame it draws (with
+    CLOSE_BTN_CY and CLOSE_BTN_HIT_R), not an app API (the user's decision,
+    doc/api_fixes F3). Two samples read them to tell a click on the button;
+    doc/reference/TODO.md keeps that as an open point.
+- name: CLOSE_BTN_CY
+  reason: The close button's centre row in the title bar; see CLOSE_BTN_CX_OFFSET.
+- name: CLOSE_BTN_HIT_R
+  reason: The close button's hit radius; see CLOSE_BTN_CX_OFFSET.
 
 # ---- names that are errors on purpose -----------------------------------
 

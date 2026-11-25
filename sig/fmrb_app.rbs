@@ -67,6 +67,28 @@ class FmrbApp
   # mode: mode).
   type event = { type: :key_down | :key_up | :mouse_down | :mouse_up | :mouse_move | :mouse_wheel | :gamepad_down | :gamepad_up | :gamepad_axis | :kana_mode, x: int32, y: int32, wx: int32, wy: int32, button: int32, keycode: int32, scancode: int32, modifier: int32, character: int32, delta: int32, gamepad_id: int32, axis: int32, value: int32, mode: int32 }
 
+  # 透ける色 (RGB332 の 0x01) <<en>> The see-through colour (RGB332 0x01)
+  #
+  # この色で塗った所は**透けて、後ろ (デスクトップやほかの Window) が見える**。
+  # 枠なしの Window (window_frame = "none") は地をこの色で塗って始まるので、
+  # 描かなかった所は透ける。描いた絵を消して透けた地に戻すのにも使う。
+  # **テーマの色や絵の色に 0x01 を使うと、そこも透ける**。
+  # ```ruby
+  # gfx.fill_rect(0, 0, 40, 10,
+  #               TRANSPARENT_COLOR)
+  # ```
+  # <<en>>
+  # **What is painted in it shows through to what is behind** (the desktop or
+  # another window). A frameless window (window_frame = "none") starts with
+  # its ground painted in it, so whatever it does not draw is see-through;
+  # paint it again to take a drawing away. **A theme or picture colour of**
+  # **0x01 goes see-through too.**
+  # ```ruby
+  # gfx.fill_rect(0, 0, 40, 10,
+  #               TRANSPARENT_COLOR)
+  # ```
+  TRANSPARENT_COLOR: Integer
+
   # 絵を描く画面
   @gfx: FmrbGfx
 
