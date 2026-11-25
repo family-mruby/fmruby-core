@@ -160,6 +160,33 @@ module FmrbBuildOptions
     ([head] + lines + body + ["#{OVERRIDE}=1 goes on anyway (when you know CMake will configure again)."]).join("\n")
   end
 
+  # libmruby lives outside build/ (picoruby/build/<name>/), so a build/
+  # removed by hand leaves it behind, made with whatever options the removed
+  # build had. What to do with the libmruby directory lib_dir before a build
+  # with now, given whether build/ was configured when this run began:
+  #   :keep    its record says the same options (or there is no libmruby)
+  #   :adopt   no record, but build/ was configured and passed the guard: the
+  #            pair is one build; the record is written beside libmruby
+  #   :remake  its record differs, or there is no record and build/ is new:
+  #            remove it, the build makes it again
+  def libmruby_action(lib_dir, now, build_was_configured)
+    return :keep unless Dir.exist?(lib_dir)
+    path = File.join(lib_dir, FILE)
+    unless File.exist?(path)
+      return build_was_configured ? :adopt : :remake
+    end
+    was = begin
+      JSON.parse(File.read(path))
+    rescue JSON::ParserError
+      nil
+    end
+    return :remake unless was.is_a?(Hash)
+    differences(was, now).empty? ? :keep : :remake
+  end
+
+  # The directory name of the chip's libmruby under picoruby/build.
+  def libmruby_name(hw_target) = chip_of(hw_target) == "esp32p4" ? "esp32p4" : "esp32"
+
   # The record of a build that is about to start with now: written over the
   # old one (and over F8's FMRB_EDITOR file, which it replaces).
   def write(build_dir, now)
