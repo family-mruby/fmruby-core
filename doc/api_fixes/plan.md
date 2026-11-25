@@ -252,6 +252,23 @@ rubygems.org への公開はしていない (ユーザ判断)。
 26. **asterism 0.14.1 は今は rubygems.org に公開しない** (次に直すときにまとめて)。
 27. **この計画は実機の確認まで開けておく** (StickS3・AtomS3R・NARYA v3・Tab5、SD カード)。
 
+### F9 の結果 (2026-11-26、report/f9.md)
+
+ESP32 のビルドの結果を変える 13 個の選択 (`FMRB_HW_TARGET`・エンジン 3 つ・`FMRB_FFT_SPINEL`・`FMRB_FONT_JA`・
+`FMRB_EDITOR`・`FMRB_ASTERISM`・`FMRB_IMU`・`FMRB_GC_PROFILE`・`FMRB_TASK_SELF_TICK`・`FMRB_DISPLAY_BACKEND`・
+`DOCKER_IMAGE`。.env とボードの既定を足した後の値) を `build/fmrb_build_options.json` に残し、前と違う選択の
+`rake build:esp32` と `rake flash*` (5 つ) は、違う名前・前と今の値・直すコマンドを出して止まる (`BUILD_OPTS_OK=1` で
+続ける)。F8 の `FMRB_EDITOR` だけの守りは置き換えた。記録の無い build/ は CMake の cache のターゲットだけで比べて通す。
+`regress:size`・`regress:boot` は build/ ごと退避するので両立する。
+親の検収: 試験 56 件、`FMRB_HW_TARGET=NARYAv4 FMRB_FONT_JA=0` で止まること・同じ値で通ること・.env のまま (NARYAv3) の
+`flash_options` が止まること、`rake regress` を確かめた。
+知っておくこと: **MCP の flash ツールは .env のターゲット (NARYAv3) で `rake flash` を流すので、P4-Nano 用の build/ は
+焼く前に止まる** (前は違うチップ向けに書こうとして esptool で失敗していた)。P4-Nano に焼くときは
+`FMRB_HW_TARGET=NARYAv4 rake flash:app_sync` を直接流す。
+見つかった別の物 (直していない): `PICORB_DEBUG` と `FMRB_HW_TARGET` がビルドのコンテナに渡っておらず、
+`family_mruby_esp32.rb` の ATOM_DISPLAY を除く条件が効いていない (ATOM は中断中で今は害なし)。build/ だけを手で消すと、
+外にある libmruby は古い値のまま残る (`rake clean_all` なら起きない)。
+
 ## 3. スコープ
 
 - F1: A の 12 個。
