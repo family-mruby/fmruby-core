@@ -139,6 +139,33 @@ B8: `TRANSPARENT_COLOR`・`FmrbGfx::FONT_METRICS` を sig に、`CLOSE_BTN_*` �
 18. **Spinel の基底の `app_settings`**: 記録だけ (Spinel で設定が要るアプリを作るときに足す)。
 19. **`ROS::Subscription#handler=`**: Asterism の gem (元のリポジトリ) を直す。リリースと取り込み直しが要る (F5)。
 
+### F4 の結果 (2026-11-25、report/f4.md)
+
+C1〜C6 を直し、C7 は調べた。親の検収: P4-Nano 用にビルドして焼き (`45af62d0`)、確認用のアプリで: 空きのピン 48 は
+取れて読める・台帳で「アプリが使用中」、システムのピン 35・37・38 の `GPIO.new`・`set_dir_at` は IOError
+("is used by the system")、`read_at(35)` は読める、無い番号 60 は ArgumentError、書くだけの mode の `read` と
+読むだけの mode の `write` は IOError、`JSON.generate` の NaN は GeneratorError。crash 0。
+回帰: `rake regress`・`regress:size ALL=1` (5 端末のビルド)・`regress:live` 17/17・`regress:run` が通過。
+未確認: I2C の文、別のアプリとのピンの取り合い、gpio_viewer の表示、SD (P4-Nano にカードが入っていない)、
+StickS3 のボタン (KEY1) と step_sensor、NARYA v3 で step_sensor が IOError を rescue して続くこと。
+
+相対パス (C7) の P4-Nano での実際: `Dir.getwd` は "/"、`Dir.chdir` は RuntimeError、chdir の後も "/"、相対パスは
+ルートからの意味 (サブの読みどおり)。sim は chdir が成功し、その後は全アプリの全てのパスが外れる (不具合)。
+
+### 決定 5 回目 (2026-11-25 ユーザ)
+
+20. **GPIO の台帳の穴は (b)**: GPIO だけが見る「アプリが触ってはいけないピン」の表を機種ごとに持つ (台帳は変えない。
+    `fmrb_pin_assign.h` から作るビルド時の定数。読むだけは今までどおり通す) (F6)。
+21. **相対パスは (b)**: アプリごとに「今いる場所」を持ち、`Dir.chdir` を実機でも使えるようにする。ファイルの HAL と
+    `File.expand_path` が相対パスにそれを付ける。sim の不具合 (chdir の後に全てのパスが外れる) もこれで消す (F7)。
+22. **zenohd を 1.10.2 に上げる** (手元で確かめてから。console の compose・VPS・asterism-watch の `running`)。
+
+### 見つかったこと: StickS3 と AtomS3R のファームの区画の空きがほぼ無い (2026-11-25)
+
+`regress:size ALL=1` で、STICKS3 の空きが 5,344 バイト、ATOMS3R が 20,128 バイト (どちらも区画 5,767,168 バイトの 0%)。
+基準 (11-07) から +738 KB で、大きいのは sig の型データベース (どの端末にも入る。`family_mruby.gembox` の
+`picoruby-ti`)。F6・F7 でコードが増えると、この 2 つはビルドが通らなくなる。**ユーザの判断待ち**。
+
 ## 3. スコープ
 
 - F1: A の 12 個。
@@ -146,6 +173,7 @@ B8: `TRANSPARENT_COLOR`・`FmrbGfx::FONT_METRICS` を sig に、`CLOSE_BTN_*` �
 - F3: 上の「B の決定 2 回目」の 4 つ。
 - F4: 決定 9 (GPIO の (a))・12〜17。
 - F5: 決定 19 (Asterism の gem の `handler=`)。
+- F6: 決定 20 (GPIO 用の表)。F7: 決定 21 (アプリごとの今いる場所)。
 
 ## 4. 受け入れ条件
 
