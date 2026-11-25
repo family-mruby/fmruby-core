@@ -260,6 +260,24 @@ Handshake` と返すので `HandshakeError: Invalid handshake response` にな�
   上流に出すなら別の話として扱う。
 - 上流 PR: そのまま出せる。
 
+## 2026-11-25 追加: sig を書くために読んで見つけた 4 つ (doc/api_fixes/report/f1.md)
+
+うちの直しは `lib/upstream/patch/picoruby-json/mrblib/json.rb` と Family mruby の gem の側。上流の HEAD で同じ
+不具合が残っているかは未確認 (PR を出す前に確かめる)。
+
+- **`JSON::Digger#dig` が範囲の外の位置で例外を出さない** [picoruby-json mrblib/json.rb]: `DiggerError.new(...)` を
+  作るだけで `raise` していない行があり、`JSON::Digger.new('[1]').dig(5).parse` が 1 を返す。空の Array と、最後の
+  区切りの後も同じ扱いが要る。修正: `raise` を付ける + 空の Array の分岐。
+- **`JSON.parse` の `\uXXXX` が 1 バイトに丸められる** [picoruby-json mrblib/json.rb]: `[code].pack('C*')` なので
+  ASCII の外 (`\u3042`) が壊れ、`Array#pack` の無いビルドでは NoMethodError。修正: コードポイントを UTF-8 の
+  1〜4 バイトに組み立てる (サロゲートペアは 1 文字にする。pack を使わない)。
+- **`File.path(name)` (クラスメソッド) が nil を返す** [picoruby-posix-io mrblib の `1_file.rb:241` 付近。うちの
+  `picoruby-fmrb-filesystem` の file.rb が同じ書き方を写していた]: クラスメソッドの中でインスタンスの ivar を
+  読む分岐に入る。修正: クラスメソッドは引数をそのまま返す。
+- **`MIDI::Device#pitch_bend` が `Integer#clamp` を使う** [Midori の picoruby-midi]: clamp の無い mruby の構成で
+  NoMethodError。修正: 比較 2 つで丸める。
+- 上流 PR: 4 つとも数行で、そのまま出せる小ささ。JSON の 2 つは 1 本にまとめてよい。
+
 ## fmrb固有でPRに含めないもの
 
 - `fmrb_sys_malloc/free` (候補1) → 上流では malloc 等に読み替え
