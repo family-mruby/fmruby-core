@@ -67,6 +67,26 @@
 #define FMRB_PIN_SD_D2         GPIO_NUM_41
 #define FMRB_PIN_SD_D3         GPIO_NUM_42
 
+// Audio: ES8388 (out) and ES7210 (in) share one I2S bus. The I2S peripheral
+// is set up from audio_p4_hw.c's own constants; these carry the same numbers
+// so the pin manager knows the lines (change both together).
+#define FMRB_PIN_I2S_MCLK      GPIO_NUM_30
+#define FMRB_PIN_I2S_SCLK      GPIO_NUM_27
+#define FMRB_PIN_I2S_LRCK      GPIO_NUM_29
+#define FMRB_PIN_I2S_DOUT      GPIO_NUM_26
+#define FMRB_PIN_I2S_DIN       GPIO_NUM_28
+
+// Radio: ESP32-C6 over SDIO. esp_hosted takes the lines from
+// config/sdkconfig.defaults.tab5; these name the same numbers for the pin
+// manager, which checks them against sdkconfig when it is built.
+#define FMRB_PIN_SDIO_CLK      GPIO_NUM_12
+#define FMRB_PIN_SDIO_CMD      GPIO_NUM_13
+#define FMRB_PIN_SDIO_D0       GPIO_NUM_11
+#define FMRB_PIN_SDIO_D1       GPIO_NUM_10
+#define FMRB_PIN_SDIO_D2       GPIO_NUM_9
+#define FMRB_PIN_SDIO_D3       GPIO_NUM_8
+#define FMRB_PIN_RADIO_EN      GPIO_NUM_15  // esp_hosted's reset line to the C6
+
 // Not applicable / not yet mapped on Tab5 (no WROVER child chip). NC = unused.
 #define FMRB_PIN_SD_CS         GPIO_NUM_NC
 #define FMRB_PIN_SD_MOSI       GPIO_NUM_NC
@@ -172,9 +192,29 @@
 #define FMRB_PIN_I2S_DIN       GPIO_NUM_11  // codec ADC -> P4 (ASDOUT)
 #define FMRB_PIN_AUDIO_AMP_EN  GPIO_NUM_53
 
-// Radio: ESP32-C6 over SDIO. The data lines belong to esp_hosted and are set
-// in config/sdkconfig.defaults.naryav4; only the EN line is ours to name.
+// Radio: ESP32-C6 over SDIO. The lines belong to esp_hosted and are set in
+// config/sdkconfig.defaults.naryav4; these name the same numbers for the pin
+// manager, which checks them against sdkconfig when it is built.
+#define FMRB_PIN_SDIO_CLK      GPIO_NUM_18
+#define FMRB_PIN_SDIO_CMD      GPIO_NUM_19
+#define FMRB_PIN_SDIO_D0       GPIO_NUM_14
+#define FMRB_PIN_SDIO_D1       GPIO_NUM_15
+#define FMRB_PIN_SDIO_D2       GPIO_NUM_16
+#define FMRB_PIN_SDIO_D3       GPIO_NUM_17
 #define FMRB_PIN_RADIO_EN      GPIO_NUM_54
+
+// The 100M Ethernet PHY's RMII lines (doc/naryav4/report/p0.md; GPIO35, the
+// ninth, is FMRB_PIN_RESTRICTED_BOOT above). Never driven by us, but wired on
+// the board. Which signal each one carries is not recorded here.
+#define FMRB_PIN_ETH_RMII_0    GPIO_NUM_28
+#define FMRB_PIN_ETH_RMII_1    GPIO_NUM_29
+#define FMRB_PIN_ETH_RMII_2    GPIO_NUM_30
+#define FMRB_PIN_ETH_RMII_3    GPIO_NUM_31
+#define FMRB_PIN_ETH_RMII_4    GPIO_NUM_34
+#define FMRB_PIN_ETH_RMII_5    GPIO_NUM_49
+#define FMRB_PIN_ETH_RMII_6    GPIO_NUM_50
+#define FMRB_PIN_ETH_RMII_7    GPIO_NUM_51
+#define FMRB_PIN_ETH_RMII_8    GPIO_NUM_52
 
 // Not applicable on this board (no WROVER child chip, no LEDs, no buttons
 // beyond BOOT, no SPI SD).

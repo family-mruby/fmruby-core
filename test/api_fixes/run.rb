@@ -526,6 +526,25 @@ PIN_BOARDS = {
   "ATOMS3R" => [nil, [41], [14, 15, 19, 20, 21, 35, 36, 37, 42, 46, 48]],
   "STICKS3" => [nil, [11, 12], [0, 19, 20, 21, 35, 36, 37, 39, 40, 41, 45]],
 }
+
+# The pins GPIO must leave alone (doc/api_fixes F6), and pins that must stay
+# out of that table: the buttons and the pins left to apps (Grove, headers).
+PIN_RESERVED = {
+  # board => [the table, representative pins it must hold, pins it must not]
+  "NARYAV3" => [[0, 1, 3, 4, 5, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+                 35, 36, 37, 38, 39, 45, 46],
+                [14, 21, 11, 15], [6, 7, 8, 47, 48]],
+  "TAB5" => [[0, 1, 8, 9, 10, 11, 12, 13, 15, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+              39, 40, 41, 42, 43, 44, 50],
+             [39, 11, 26, 31, 50], [53, 54]],
+  "NARYAV4" => [[7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 28, 29, 30, 31, 34, 35,
+                 37, 38, 39, 40, 41, 42, 43, 44, 49, 50, 51, 52, 53, 54],
+                [39, 14, 11, 53, 54, 28, 7], [48]],
+  "ATOMS3R" => [[0, 14, 15, 19, 20, 21, 35, 36, 37, 42, 45, 46, 47, 48],
+                [0, 45, 47], [41, 1, 2, 5, 6, 7, 8, 38, 39]],
+  "STICKS3" => [[0, 14, 15, 16, 17, 18, 19, 20, 21, 35, 36, 37, 38, 39, 40, 41, 42, 45, 46, 47, 48],
+                [47, 48, 38, 16, 42], [11, 12, 9, 10, 1, 2, 3, 4, 5, 6, 7, 8, 43, 44]],
+}
 pl = File.join(ROOT, "test/api_fixes/pin_ledger")
 Dir.mktmpdir("pin_ledger") do |tmp|
   PIN_BOARDS.each do |board, (chip, inputs, system)|
@@ -545,6 +564,14 @@ Dir.mktmpdir("pin_ledger") do |tmp|
     check("pin ledger #{board}: verdicts", [st.success?, out[/^FAIL.*$/]], [true, nil])
     check("pin ledger #{board}: buttons (input only)", nums.call("inputs"), inputs)
     check("pin ledger #{board}: other system pins", nums.call("system"), system)
+    table, held, left = PIN_RESERVED.fetch(board)
+    reserved = nums.call("reserved")
+    check("pin ledger #{board}: pins GPIO leaves alone", reserved, table)
+    check("pin ledger #{board}: the table holds the system pins", (system - reserved), [])
+    check("pin ledger #{board}: representative pins in the table", held - reserved, [])
+    check("pin ledger #{board}: buttons and app pins out of the table", left & reserved, [])
+    check("pin ledger #{board}: a free reserved pin was tried with I2C",
+          nums.call("reserved_free").first.to_i >= 0, true)
   end
 end
 
