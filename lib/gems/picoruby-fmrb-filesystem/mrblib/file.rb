@@ -109,7 +109,9 @@ class File < IO
         raise ArgumentError, "~username expansion not supported"
       end
     else
-      expanded_path = _concat_path(base_path, ENV["PWD"] || "/")
+      # The base of a relative path is the app's working directory
+      # (Dir.chdir; File._getwd is the same value as Dir.getwd).
+      expanded_path = _concat_path(base_path, File._getwd)
       expanded_path += "/" + path
     end
 
@@ -235,7 +237,8 @@ class File < IO
     end
   end
 
-  # Following methods are implemented in C (src/fmrb_filesystem.c):
+  # Following methods are implemented in C (ports/esp32/fmrb_filesystem.c):
+  # - File._getwd (the working directory, for expand_path)
   # - File.file?(path)
   # - File.exist?(path)
   # - File.directory?(path)

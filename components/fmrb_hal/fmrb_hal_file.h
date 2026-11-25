@@ -72,7 +72,9 @@ typedef struct {
  * mount, "/sd" and "/mnt/sd" -> SD mount). On POSIX (Linux dev mode) it
  * roots everything under the local "flash" directory. Callers (file and
  * directory HALs alike) should run user-facing paths through this before
- * touching libc.
+ * touching libc. A relative path is first put under the calling app's working
+ * directory (fmrb_hal_file_chdir) and folded; an absolute one is resolved as
+ * it is.
  *
  * @param virtual_path Path as seen by user code (must not be NULL).
  * @param out          Output buffer (must not be NULL).
@@ -286,18 +288,61 @@ fmrb_err_t fmrb_hal_file_sync(fmrb_file_t handle);
  */
 fmrb_err_t fmrb_hal_file_size(fmrb_file_t handle, uint32_t *size);
 
+/*
+ * The working directory (doc/api_fixes F7).
+ *
+ * Each app has its own, kept here rather than in the process (the process's
+ * chdir() would move every app's paths at once, and ESP-IDF has none). It
+ * starts at "/", is seen only by the app that set it, and is gone when the app
+ * ends. A task that is not an app (the kernel, the host and the C tasks) is
+ * always at "/". Relative paths given to any fmrb_hal_file_* call (and to
+ * fmrb_hal_file_resolve_path) are taken from it; absolute paths are not
+ * touched.
+ */
+
+/** Longest working directory, with its NUL (the device's path bound). */
+#define FMRB_HAL_FILE_CWD_MAX 128
+
 /**
- * @brief Change current working directory
+ * @brief Which app the calling task is, for the working directory.
+ * @return 0..FMRB_MAX_APPS-1, or -1 when the caller is not an app.
+ */
+typedef int (*fmrb_hal_file_cwd_slot_fn_t)(void);
+
+/**
+ * @brief Install the function that names the calling app (the app layer, at
+ *        boot). Without one every task is at "/" and chdir fails.
+ */
+void fmrb_hal_file_set_cwd_slot(fmrb_hal_file_cwd_slot_fn_t fn);
+
+/**
+ * @brief Put an app's working directory back to "/" (the app layer, when the
+ *        app in that slot ends).
+ * @param slot The app's slot (as the slot function returns it).
+ */
+void fmrb_hal_file_cwd_forget(int slot);
+
+/**
+ * @brief Change the calling app's working directory
+ *
+ * A relative path is taken from the current one; "." and ".." are folded and
+ * never climb above "/". The directory has to be there (fmrb_hal_file_stat).
+ * The process's working directory is never changed.
+ *
  * @param path Directory path
- * @return FMRB_OK on success, error code otherwise
+ * @return FMRB_OK; FMRB_ERR_NOT_FOUND when nothing is there,
+ *         FMRB_ERR_INVALID_STATE when it is not a directory,
+ *         FMRB_ERR_INVALID_PARAM when the result is longer than
+ *         FMRB_HAL_FILE_CWD_MAX - 1, FMRB_ERR_NOT_SUPPORTED when the caller
+ *         is not an app.
  */
 fmrb_err_t fmrb_hal_file_chdir(const char *path);
 
 /**
- * @brief Get current working directory
+ * @brief Get the calling app's working directory ("/" for a non-app task)
  * @param buffer Buffer to store path
  * @param size Buffer size
- * @return FMRB_OK on success, error code otherwise
+ * @return FMRB_OK, or FMRB_ERR_INVALID_PARAM when it does not fit
  */
 fmrb_err_t fmrb_hal_file_getcwd(char *buffer, size_t size);
 

@@ -45,7 +45,8 @@ typedef struct {
 
 /*
  * Switch the resolver to the layered table. The strings are copied; every
- * root should be an absolute path (Dir.chdir changes the process cwd). The
+ * root should be an absolute path (a relative one is taken from the process
+ * cwd, which nothing in Family mruby moves: Dir.chdir is per app). The
  * roots other than system_root are created by fmrb_hal_file_init.
  */
 fmrb_err_t fmrb_hal_file_set_layout(const fmrb_hal_file_layout_t *layout);

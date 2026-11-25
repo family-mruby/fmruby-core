@@ -206,6 +206,7 @@ namespace :native do
     fincs = %W[#{NATIVE_TEST_DIR}/stub components/fmrb_hal components/fmrb_hal/platform/posix
                components/fmrb_common/include]
     fsrcs = %w[components/fmrb_hal/platform/posix/fmrb_hal_file_posix.c
+               components/fmrb_hal/fmrb_hal_file_cwd.c
                components/fmrb_hal/platform/posix/fmrb_tmpfs_posix.c].push("#{NATIVE_TEST_DIR}/file_hal.c")
     sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror -DCONFIG_IDF_TARGET_LINUX -DFMRB_HAL_FILE_TEST_HOOK " \
        "#{fincs.map { |i| "-I #{i}" }.join(' ')} #{fsrcs.join(' ')} -o #{NATIVE_TEST_BUILD}/native_file_test"
