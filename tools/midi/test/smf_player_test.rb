@@ -450,7 +450,7 @@ class FakeSched
       nil
     end
 
-    def _depth
+    def _depth(_owner = nil)
       0
     end
 

@@ -97,6 +97,19 @@ int fmrb_midi_sched_depth(void)
     return d;
 }
 
+int fmrb_midi_sched_depth_owner(uint8_t src_pid, uint8_t owner)
+{
+    int n = 0;
+    fmrb_enter_critical(&s_lock);
+    for (int i = s_head; i != s_tail; i = (i + 1) % FMRB_MIDI_SCHED_CAPACITY) {
+        if (s_ring[i].src_pid == src_pid && s_ring[i].owner == owner) {
+            n++;
+        }
+    }
+    fmrb_exit_critical(&s_lock);
+    return n;
+}
+
 int fmrb_midi_sched_free(void)
 {
     /* One slot is always left empty so full and empty stay distinguishable. */
@@ -505,9 +518,16 @@ static mrb_value mrb_sched_clear(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
+/* No owner: the whole queue (every app). An owner: what that player of
+ * this app still has queued. */
 static mrb_value mrb_sched_depth(mrb_state *mrb, mrb_value self)
 {
-    return mrb_fixnum_value(fmrb_midi_sched_depth());
+    mrb_int owner = -1;
+    mrb_get_args(mrb, "|i", &owner);
+    if (owner < 0) {
+        return mrb_fixnum_value(fmrb_midi_sched_depth());
+    }
+    return mrb_fixnum_value(fmrb_midi_sched_depth_owner(current_pid(), (uint8_t)owner));
 }
 
 static mrb_value mrb_sched_free(mrb_state *mrb, mrb_value self)
@@ -567,7 +587,7 @@ void mrb_fmrb_midi_sched_init(mrb_state *mrb)
     mrb_define_class_method(mrb, klass, "_push_apu_off", mrb_sched_push_apu_off, MRB_ARGS_ARG(2, 1));
     mrb_define_class_method(mrb, klass, "_push_serial", mrb_sched_push_serial, MRB_ARGS_ARG(5, 1));
     mrb_define_class_method(mrb, klass, "_clear", mrb_sched_clear, MRB_ARGS_OPT(1));
-    mrb_define_class_method(mrb, klass, "_depth", mrb_sched_depth, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, klass, "_depth", mrb_sched_depth, MRB_ARGS_OPT(1));
     mrb_define_class_method(mrb, klass, "_free", mrb_sched_free, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, klass, "_now_us", mrb_sched_now_us, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, klass, "_stats", mrb_sched_stats, MRB_ARGS_NONE());
