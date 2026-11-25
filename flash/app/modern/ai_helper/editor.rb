@@ -583,7 +583,7 @@ class AiHelperApp < FmrbApp
   # its first run). The editor cuts a long name to RUN_NAME_MAX bytes, so the
   # error's name is cut the same way before the two are compared.
   def run_error
-    e = FmrbApp._get_last_error
+    e = FmrbApp.last_error
     return nil unless e && @doc
     rn = @doc["rn"].to_s
     return nil if rn.empty?

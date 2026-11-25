@@ -1,18 +1,72 @@
 # Shell I/O classes - stdout/stdin wrappers for script execution
 
+# puts as IO#puts does it (lib/gems/picoruby-fmrb-io, after mruby's
+# mruby-io): each element of an Array on its own line, nested ones too, an
+# empty Array as a newline, no argument as a newline, and no newline added
+# after a string that already ends with one. The two stand-ins for $stdout
+# below write through their own #write.
+module ShellPuts
+  def puts(*args)
+    n = args.size
+    if n == 0
+      write("\n")
+      return nil
+    end
+    i = 0
+    while i < n
+      a = args[i]
+      if a.is_a?(Array)
+        shell_puts_ary(a, 0)
+      else
+        shell_puts_str(a)
+      end
+      i += 1
+    end
+    nil
+  end
+
+  def shell_puts_str(obj)
+    str = obj.to_s
+    write(str)
+    write("\n") unless str.end_with?("\n")
+    nil
+  end
+
+  # 16 deep prints "[...]", as IO#puts (an array that contains itself).
+  def shell_puts_ary(ary, depth)
+    if depth >= 16
+      write("[...]\n")
+      return nil
+    end
+    n = ary.size
+    if n == 0
+      write("\n")
+      return nil
+    end
+    i = 0
+    while i < n
+      e = ary[i]
+      if e.is_a?(Array)
+        shell_puts_ary(e, depth + 1)
+      else
+        shell_puts_str(e)
+      end
+      i += 1
+    end
+    nil
+  end
+end
+
 # Simple output capturer for IRB
 class OutputCapturer
+  include ShellPuts
+
   def initialize
     @output = []
   end
 
   def write(str)
     @output << str
-  end
-
-  def puts(str = "")
-    @output << str.to_s
-    @output << "\n" unless str.to_s.end_with?("\n")
   end
 
   def print(str)
@@ -32,6 +86,8 @@ end
 
 # Stdout wrapper that pushes output directly to ShellApp's history
 class ShellStdout
+  include ShellPuts
+
   def initialize(shell_app)
     @shell = shell_app
     @remainder = ""
@@ -41,21 +97,6 @@ class ShellStdout
     @remainder += str.to_s
     flush_lines
     str.to_s.size
-  end
-
-  def puts(*args)
-    if args.empty?
-      write("\n")
-    else
-      i = 0
-      while i < args.size
-        str = args[i].to_s
-        write(str)
-        write("\n") unless str.end_with?("\n")
-        i += 1
-      end
-    end
-    nil
   end
 
   def print(*args)

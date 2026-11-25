@@ -86,6 +86,11 @@ class FmrbUI
   # Width of the < and > halves of a Stepper at text size 1.
   STEP_W = 14
 
+  # Where a widget's bg came from (Widget, @bg_from).
+  BG_THEME = 0
+  BG_CONTAINER = 1
+  BG_OWN = 2
+
   # Common state and geometry. Subclasses add their own contents and drawing.
   class Widget
     attr_reader :id, :x, :y, :w, :h
@@ -108,31 +113,44 @@ class FmrbUI
     # hidden widget is the container's job and goes through bg_painter when
     # the app gave one (see FmrbUI#flush).
     #
-    # @bg_theme is true while bg is the theme's window background the widget
-    # got by default (nobody chose a colour): an app restored from a
-    # checkpoint image on a machine under another theme takes that machine's
-    # window background there (follow_theme_ground), while a colour the app
-    # chose is carried as it is. A boolean, so Spinel keeps its type.
+    # @bg_from says where bg came from, one Integer (Spinel keeps its type,
+    # and the widget has no more instance variables than when this was a
+    # single boolean):
+    #
+    #   BG_THEME     the theme's window background, copied from a container
+    #                nobody gave a colour. An app restored from a checkpoint
+    #                image on a machine under another theme takes that
+    #                machine's window background there (follow_theme_ground).
+    #   BG_CONTAINER the colour the app gave the container, copied from it.
+    #                Carried as it is by a restore.
+    #   BG_OWN       the colour the app gave this widget (bg=). Kept by a
+    #                restore, and by a later FmrbUI#bg=, which moves the two
+    #                above along with the container (take_ground).
     attr_reader :bg
 
     def bg=(c)
       @bg = c
-      @bg_theme = false
+      @bg_from = BG_OWN
     end
 
-    # FmrbUI#add: the colour the container gives, and whether it is the
-    # theme's default. Named apart from bg= because it is called on a
-    # base-typed receiver (see draw_widget).
+    # The colour the container gives, and whether it is the theme's default:
+    # from FmrbUI#add when the widget is added, and from FmrbUI#bg= when the
+    # container's colour changes. A widget the app gave its own colour keeps
+    # it. Marked for the next flush when it is on screen; a hidden one just
+    # keeps the colour for when it is shown. Named apart from bg= because it
+    # is called on a base-typed receiver (see draw_widget).
     def take_ground(c, theme)
+      return nil if @bg_from == BG_OWN
       @bg = c
-      @bg_theme = theme
+      @bg_from = theme ? BG_THEME : BG_CONTAINER
+      @dirty = true if @visible
       nil
     end
 
     # Back to this machine's window background, if the widget's is the
     # theme's default (a restored app, FmrbUI#_checkpoint_ground).
     def follow_theme_ground
-      return nil unless @bg_theme
+      return nil unless @bg_from == BG_THEME
       @bg = C_BG
       @dirty = true
       nil
@@ -159,7 +177,7 @@ class FmrbUI
       @visible = true
       @shown = false
       @bg = C_BG
-      @bg_theme = true
+      @bg_from = BG_THEME
     end
 
     # Glyph height at this widget's size.
@@ -961,13 +979,22 @@ class FmrbUI
   #
   # The colour behind the widgets. Settable because an app whose palette can
   # change at runtime (the shell's `color` command) has to move its widgets
-  # with it; invalidate_all afterwards to repaint them. A colour set here is
-  # the app's own, as one passed as bg: is.
+  # with it: every widget whose colour is the one it copied from here takes
+  # the new one and is drawn with it at the next flush. A widget the app gave
+  # its own colour (Widget#bg=) keeps it. A colour set here is the app's own,
+  # as one passed as bg: is.
   attr_reader :bg
 
   def bg=(c)
     @bg = c
     @bg_theme = false
+    n = @widgets.size
+    i = 0
+    while i < n
+      @widgets[i].take_ground(c, false)
+      i += 1
+    end
+    c
   end
 
   def initialize(app, bg: -1, text_size: 1, bg_painter: nil)

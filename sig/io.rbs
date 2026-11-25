@@ -65,18 +65,22 @@ class IO
   # 改行つきで書く <<en>> Write with a newline
   #
   # 引数を 1 つずつ to_s して書き、末尾が "\n" でなければ "\n" を足す。引数が無いときは
-  # "\n" だけ。**配列は展開しない** (`puts [1, 2]` は "[1, 2]" の 1 行。CRuby は 1 要素 1 行)。
-  # nil は空行。いつも nil を返す。
+  # "\n" だけ。**配列は 1 要素 1 行** (入れ子も展開する。`puts [1, [2]]` は "1" と "2" の
+  # 2 行、空の配列は空行)。16 段より深い配列 (自分自身を含む配列) はそこで "[...]"。
+  # nil は空行。いつも nil を返す。mruby と同じ。
   # ```ruby
   # f.puts "line"
+  # f.puts ["a", "b"]   # 2 行
   # ```
   # <<en>>
   # Writes each argument after to_s and adds "\n" unless it already ends with one;
-  # with no arguments it writes just "\n". **Arrays are not flattened** (`puts [1, 2]`
-  # writes the one line "[1, 2]"; CRuby writes one line per element). nil is an empty
-  # line. Always returns nil.
+  # with no arguments it writes just "\n". **An Array is one line per element**,
+  # nested ones too (`puts [1, [2]]` writes "1" and "2"; an empty Array is an
+  # empty line). An Array nested deeper than 16 (one that contains itself) prints
+  # "[...]" there. nil is an empty line. Always returns nil. As in mruby.
   # ```ruby
   # f.puts "line"
+  # f.puts ["a", "b"]   # two lines
   # ```
   def puts: (*untyped objects) -> nil
 

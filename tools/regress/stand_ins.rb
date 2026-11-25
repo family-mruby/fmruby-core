@@ -175,7 +175,7 @@ class FmrbApp
   def self.pool_usage = 25
   def self.pool_used = 256 * 1024
   def self.sys_pool_info = { used: 100_000, total: 400_000 }
-  def self._get_last_error = nil
+  def self.last_error = nil
   def self.config(_k) = nil
   def self.uptime_us = Regress::Env.ms * 1000
   def self.script_path = Regress::Env.app_path

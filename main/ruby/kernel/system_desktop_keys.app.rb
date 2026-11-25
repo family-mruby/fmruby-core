@@ -784,7 +784,7 @@ class KeysDesktopApp < FmrbApp
       end
     elsif cmd == "show_error"
       @starting_name = nil
-      err = FmrbApp._get_last_error
+      err = FmrbApp.last_error
       open_error_dialog(err[:name] || "Unknown", err[:error] || "Unknown error") if err
     elsif cmd == "spawn_failed"
       open_error_dialog(msg["app"] || "Unknown", spawn_failed_text(msg))

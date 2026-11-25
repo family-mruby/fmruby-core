@@ -1068,9 +1068,9 @@ static mrb_value mrb_fmrb_app_s_ps(mrb_state *mrb, mrb_value self)
     return result;
 }
 
-// FmrbApp._get_last_error -> Hash {name:, error:} or nil
+// FmrbApp.last_error -> Hash {name:, error:} or nil
 // Read last error from shared static buffer (set by crashed app)
-static mrb_value mrb_fmrb_app_s_get_last_error(mrb_state *mrb, mrb_value self)
+static mrb_value mrb_fmrb_app_s_last_error(mrb_state *mrb, mrb_value self)
 {
     const char *name = fmrb_app_get_last_error_name();
     const char *msg = fmrb_app_get_last_error_msg();
@@ -2486,7 +2486,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "heap_info", mrb_fmrb_app_s_heap_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "pool_usage", mrb_fmrb_app_s_pool_usage, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "pool_used", mrb_fmrb_app_s_pool_used, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "_get_last_error", mrb_fmrb_app_s_get_last_error, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "last_error", mrb_fmrb_app_s_last_error, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "config", mrb_fmrb_app_s_config, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "_app_instance_made?", mrb_fmrb_app_s_app_instance_made, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_start_class_name", mrb_fmrb_app_s_start_class_name, MRB_ARGS_NONE());
