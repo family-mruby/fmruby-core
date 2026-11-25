@@ -93,6 +93,7 @@ rake -T # その他のコマンドの使い方
 
 - lib/ 以下のファイルを編集した場合は、ビルド前に `rake clean` を実行すること
 - Linux (sim) のビルドは `build-linux/`、ESP32 のビルドは `build/` で別の場所にある。Spinel の生成物も `main/ruby/spinel/gen/esp32`・`linux`・`hosted` (ネイティブ版とブラウザ版) に分かれていて、ビルドの rake タスクがそれぞれ作る (変わっていなければ作り直さない)。切り替えに `rake clean_all` は要らない (`clean_all` は ESP32 の分だけを消す。sim は `rake clean:linux`、ブラウザ版は `rake clean:web`)
+- ESP32 のビルドは、結果を変える選択 (`FMRB_HW_TARGET`・エンジン・`FMRB_ASTERISM`・`FMRB_FONT_JA`・`FMRB_IMU`・`FMRB_EDITOR` ほか。.env とボードの既定を足した後の値) を `build/fmrb_build_options.json` に残し、前のビルドと違う選択の `rake build:esp32` と `rake flash*` は、違う名前・前と今の値・直すコマンド (`rake clean_all`、または前の値で流す) を出して止まる (CMake は構成のときしか環境変数を読まず、rake の libmruby と食い違うため)。承知で続けるなら `BUILD_OPTS_OK=1` (rakelib/build_options.rb、doc/regression/usage.md 2.1)
 - sim・ネイティブ版・ブラウザ版は、作ったソースの印 (`fmrb_build_stamp.json`) より木が新しいと起動の道具が断る (doc/regression/usage.md 2.1)。断られたら出たコマンドで作り直す
 - プログラムの実行確認は、リポジトリルート (family-mruby) の自律検証ツールで headless に行える
   (起動+画面キャプチャ+入力注入。使い方はルートの CLAUDE.md 参照)。音声・実機・操作感の最終確認はユーザが行う。

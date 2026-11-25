@@ -394,7 +394,8 @@ FMRB_IMU = ENV["FMRB_IMU"] == "1"
 # checkpoint table maker (tools/ckpt_table/CMakeLists.txt). CMake reads it
 # when it configures, which a change to it does not cause, so build:esp32
 # refuses to build a build/ configured with the other value: `rake
-# clean_all` first (rakelib/build.rake).
+# clean_all` first. The same goes for every option here that changes the
+# firmware (rakelib/build_options.rb).
 FMRB_EDITOR = (ENV["FMRB_EDITOR"] || "1") != "0"
 
 ESP_IDF_VERSION = ENV.fetch("ESP_IDF_VERSION", "v5.5.4")
@@ -455,8 +456,10 @@ ENGINE_ENV_OPTS = [
   # Display output backend for Modern (doc/wasm/, P3): unset/ppa is the PPA
   # hardware path, `cpu` the software compositor (main/CMakeLists.txt reads it
   # and defines FMRB_DISPLAY_BACKEND_CPU). Changing only this env var does not
-  # make ninja reconfigure -- touch main/CMakeLists.txt when switching, and
-  # check the boot log ("CPU display backend" vs "PPA Blend initialized").
+  # make ninja reconfigure, so build:esp32 stops on a switch
+  # (rakelib/build_options.rb): touch main/CMakeLists.txt and go on with
+  # BUILD_OPTS_OK=1, and check the boot log ("CPU display backend" vs "PPA
+  # Blend initialized").
   "-e FMRB_DISPLAY_BACKEND=#{ENV['FMRB_DISPLAY_BACKEND']}"
 ].join(" ")
 

@@ -134,8 +134,18 @@ def ch34x_port?(port)
   %w[NARYAv3 NARYAv4].include?(ENV['FMRB_HW_TARGET'])
 end
 
+# Every flash task first checks that build/ was made with the options (the
+# board among them) this run asks for (rakelib/build_options.rb): idf.py flash
+# builds again with them first, and the other tasks write what build/ holds,
+# so a build/ made for another board or with other options stops here,
+# before the port is touched. Once per rake run (keep_home and app_sync go
+# through flash and flash:app).
+task :flash_options do
+  esp32_options_guard!('flash', what: "flash")
+end
+
 desc "Flash to ESP32 (FLASH_BAUD= overrides the speed; CH34x boards 115200, others 460800)"
-task :flash do
+task :flash => :flash_options do
   port = get_serial_port
   sh "#{DOCKER_CMD_PRIVILEGED} idf.py -p #{port} #{flash_baud_opt(port)} flash".gsub(/\s+/, ' ')
 end
@@ -147,7 +157,7 @@ namespace :flash do
   # PORT=/dev/ttyACMx flashes that port instead of the cached one (rake
   # regress:boot finds its board by VID:PID and passes it here).
   desc "Flash only the app partition (keeps storage incl. the device's /home; PORT= overrides .serial_port)"
-  task :app do
+  task :app => :flash_options do
     port = ENV['PORT'] && !ENV['PORT'].empty? ? ENV['PORT'] : get_serial_port
     sh "#{DOCKER_CMD_PRIVILEGED} idf.py -p #{port} #{flash_baud_opt(port)} app-flash".gsub(/\s+/, ' ')
   end
@@ -160,7 +170,7 @@ namespace :flash do
   # build/storage_root as the last build left it.
 
   desc "Full flash that keeps the board's /home: back it up over WiFi (keys too, into ~/asterism_keys), flash, write it back, reboot (HOST=ip|fmruby-xxxxxx.local, BACKUP_DIR=)"
-  task :keep_home do
+  task :keep_home => :flash_options do
     host = flash_keep_host
     flash_keep_need_storage_root
     dir = ENV['BACKUP_DIR'] && !ENV['BACKUP_DIR'].empty? ? ["--dir", File.expand_path(ENV['BACKUP_DIR'])] : []
@@ -180,7 +190,7 @@ namespace :flash do
   # partition (doc/flash_layout F4), so first the board's are compared with
   # the build's; when they differ this stops and says to use keep_home.
   desc "App-only flash, then send what differs between build/storage_root and the board over WiFi; /home untouched; stops when the board's partition table or font image is not the build's (HOST=, CONF=1 sends /etc/system_conf.toml too)"
-  task :app_sync do
+  task :app_sync => :flash_options do
     host = flash_keep_host
     flash_keep_need_storage_root
     flash_keep_tool("layout", host, "--build", File.expand_path("build"))
@@ -201,7 +211,7 @@ namespace :flash do
   # build/storage.bin. Everything in the container the build uses, with the
   # build's own littlefs venv.
   desc "Full flash keeping /home over serial: read storage, put its /home into the new image, write (BACKUP=dir uses a backup's /home instead of reading; STORAGE_ONLY=1 writes only storage; BACKUP_DIR=, DEVICE=<machine>-<mac>, READ_BAUD=, PORT=)"
-  task :keep_home_serial do
+  task :keep_home_serial => :flash_options do
     require "json"
     require "fileutils"
     flash_keep_need_storage_root
