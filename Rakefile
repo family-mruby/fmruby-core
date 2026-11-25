@@ -430,6 +430,10 @@ USER_OPT = "--user #{UID}:#{GID}"
 # that had just been built. Put them on the container itself so no call site can
 # forget them.
 ENGINE_ENV_OPTS = [
+  # The board, for what lib/upstream/family_mruby_esp32.rb decides by it
+  # inside the container (the networking gems are left out for ATOM_DISPLAY).
+  # CMake gets it as -DFMRB_HW_TARGET; libmruby's rake did not get it at all.
+  "-e FMRB_HW_TARGET=#{ENV['FMRB_HW_TARGET']}",
   "-e FMRB_KERNEL_ENGINE=#{FMRB_KERNEL_ENGINE}",
   "-e FMRB_APP_ENGINE_DESKTOP=#{FMRB_APP_ENGINE_DESKTOP}",
   "-e FMRB_APP_ENGINE_EDITOR=#{FMRB_APP_ENGINE_EDITOR}",

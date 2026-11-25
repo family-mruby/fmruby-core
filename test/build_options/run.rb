@@ -141,7 +141,27 @@ check("rake flash guards", device.include?("task :flash => :flash_options do"), 
 %w[app keep_home app_sync keep_home_serial].each do |t|
   check("flash:#{t} guards", device.include?("task :#{t} => :flash_options do"), true)
 end
+# libmruby outside build/: kept with the same record, adopted when the
+# build/ it came with is still there, made again otherwise.
+Dir.mktmpdir("libmruby_rec") do |tmp|
+  now = B.current({ "FMRB_HW_TARGET" => "NARYAv4" }, "img")
+  lib = File.join(tmp, "esp32p4")
+  check("no libmruby: keep", B.libmruby_action(lib, now, false), :keep)
+  FileUtils.mkdir_p(lib)
+  check("unrecorded, build/ configured: adopt", B.libmruby_action(lib, now, true), :adopt)
+  check("unrecorded, build/ new: remake", B.libmruby_action(lib, now, false), :remake)
+  File.write(File.join(lib, B::FILE), JSON.generate(now))
+  check("same record: keep", B.libmruby_action(lib, now, false), :keep)
+  other = B.current({ "FMRB_HW_TARGET" => "TAB5" }, "img")
+  check("another board of the chip: remake", B.libmruby_action(lib, other, true), :remake)
+  File.write(File.join(lib, B::FILE), "{")
+  check("broken record: remake", B.libmruby_action(lib, now, true), :remake)
+  check("the P4's directory", B.libmruby_name("NARYAv4"), "esp32p4")
+  check("an S3's directory", B.libmruby_name("STICKS3"), "esp32")
+end
+
 rakefile = File.read(File.join(ROOT, "Rakefile"))
+check("FMRB_HW_TARGET reaches the container", rakefile.include?("\"-e FMRB_HW_TARGET="), true)
 (B::NAMES - %w[FMRB_HW_TARGET DOCKER_IMAGE]).each do |k|
   check("#{k} reaches the container", rakefile.include?("\"-e #{k}="), true)
 end

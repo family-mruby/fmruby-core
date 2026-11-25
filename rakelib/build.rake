@@ -126,6 +126,33 @@ def esp32_options_guard!(task, what: "build")
        "#{task}: going on anyway (#{FmrbBuildOptions::OVERRIDE}=1)"
 end
 
+# libmruby is outside build/ (picoruby/build/esp32, esp32p4), so a build/
+# removed by hand leaves the old one behind and the next build links it with
+# an app made for other options. Its record of the options sits beside it;
+# one that differs (or an unrecorded libmruby under a fresh build/) is removed
+# here and made again by the build. The checkpoint table of the chip is made
+# from the same gems and goes with it.
+def esp32_libmruby_check!(hw_target)
+  name = FmrbBuildOptions.libmruby_name(hw_target)
+  lib_dir = File.join(PICORUBY_BUILD_DIR, name)
+  now = esp32_build_options
+  case FmrbBuildOptions.libmruby_action(lib_dir, now, FmrbBuildOptions.configured?('build'))
+  when :remake
+    puts "build:esp32: #{lib_dir} was made with other build options (or by a build/ that is gone); making it again"
+    rm_rf lib_dir
+    rm_rf File.join(PICORUBY_BUILD_DIR, "ckpt-table-#{name}")
+  when :adopt
+    File.write(File.join(lib_dir, FmrbBuildOptions::FILE), JSON.pretty_generate(now) + "\n")
+  end
+end
+
+# Beside libmruby once the build has made it (esp32_libmruby_check! reads it).
+def esp32_libmruby_record!(hw_target)
+  lib_dir = File.join(PICORUBY_BUILD_DIR, FmrbBuildOptions.libmruby_name(hw_target))
+  return unless Dir.exist?(lib_dir)
+  File.write(File.join(lib_dir, FmrbBuildOptions::FILE), JSON.pretty_generate(esp32_build_options) + "\n")
+end
+
 namespace :build do
   desc "Linux target build (dev/test). FMRB_KERNEL_ENGINE=spinel swaps the kernel."
   task :linux => :setup do
@@ -198,6 +225,11 @@ namespace :build do
   desc "ESP32(S3) build (stops when build/ was made with other build options: rake clean_all first)"
   task :esp32 => [:esp32_options, :setup] do
     hw_target = ENV['FMRB_HW_TARGET'] || ''
+    esp32_libmruby_check!(hw_target)
+    if ENV['PICORB_DEBUG']
+      warn "build:esp32: PICORB_DEBUG is set, but the ESP32 build does not take it " \
+           "(it is not passed into the build container; the firmware is the normal one)"
+    end
 
     # Select sdkconfig.defaults based on HW target
     # All configs are under config/ directory
@@ -326,6 +358,7 @@ namespace :build do
     # run's with them). Written once the configure is certain to use them.
     FmrbBuildOptions.write('build', esp32_build_options)
     sh "#{DOCKER_CMD} idf.py #{cmake_opts.strip} build"
+    esp32_libmruby_record!(hw_target)
   end
 end
 
