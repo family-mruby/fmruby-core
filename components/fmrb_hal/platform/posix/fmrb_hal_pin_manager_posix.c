@@ -62,3 +62,25 @@ bool fmrb_pin_manager_is_available(int pin)
     }
     return s_pins[pin].usage == FMRB_PIN_UNUSED;
 }
+
+// The simulation has no GPIO class and registers no system pins; the same
+// rule keeps the API whole (no pin is a button here).
+bool fmrb_pin_manager_is_system_input(int pin)
+{
+    (void)pin;
+    return false;
+}
+
+fmrb_pin_gpio_verdict_t fmrb_pin_manager_claim_gpio(int pin, fmrb_pin_gpio_use_t use,
+                                                    void *caller)
+{
+    if (pin < 0 || pin >= FMRB_PIN_MAX) {
+        return FMRB_PIN_GPIO_NO_RANGE;
+    }
+    fmrb_pin_gpio_verdict_t v = fmrb_pin_gpio_judge(s_pins[pin], false, use, caller);
+    if (v == FMRB_PIN_GPIO_OK && s_pins[pin].usage == FMRB_PIN_UNUSED) {
+        s_pins[pin].usage = FMRB_PIN_USER_GPIO;
+        s_pins[pin].owner = caller;
+    }
+    return v;
+}

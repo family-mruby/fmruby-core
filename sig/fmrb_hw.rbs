@@ -28,9 +28,11 @@ module FmrbHw
   PIN_UNUSED: Integer
   # システム専用のピン <<en>> System-only pin; apps cannot use it
   #
-  # USB・PSRAM・SD・画面・ボタンなどのピン。アプリは使えない。
+  # USB・PSRAM・SD・画面・ボタンなどのピン。アプリは使えない。ただし本体のボタンは
+  # `GPIO.new(ピン, GPIO::IN)` で入力として読める (出力にはできない)。
   # <<en>>
-  # System-only pin (USB, PSRAM, SD, display, buttons; apps cannot use it).
+  # System-only pin (USB, PSRAM, SD, display, buttons; apps cannot use it). The board's buttons
+  # can still be read as an input with `GPIO.new(pin, GPIO::IN)` (not made an output).
   PIN_SYSTEM_EXCLUSIVE: Integer
   # アプリが GPIO として取っているピン <<en>> Held by an app as GPIO
   PIN_USER_GPIO: Integer

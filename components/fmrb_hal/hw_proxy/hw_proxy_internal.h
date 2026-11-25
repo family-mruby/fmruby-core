@@ -86,7 +86,10 @@ typedef struct {
 
 typedef struct {
     int pin;
-} hw_proxy_gpio_reset_params_t;
+    int use;            // fmrb_pin_gpio_use_t
+    bool reset;         // reset the pin when the caller takes it now
+    int *out_verdict;   // fmrb_pin_gpio_verdict_t
+} hw_proxy_gpio_claim_params_t;
 
 typedef struct {
     int pin;

@@ -26,6 +26,9 @@
 #     fmrb_midi_sched.c does)
 #   - A player's playing? ends with its own queued commands, not with the
 #     whole queue (doc/api_fixes F4, C3)
+#   - The pin table's GPIO rule on every board: the buttons are input only,
+#     the other system pins and another app's pins refuse GPIO (C, compiled
+#     here with gcc: test/api_fixes/pin_ledger)
 #
 # The C halves (File.open modes, Kernel.send_message) are checked on the sim
 # (doc/api_fixes/report/f1.md, f3.md).
@@ -504,6 +507,46 @@ long2.stop
 
 FmrbMidi.instance_variable_set(:@scheduler, nil)
 FmrbMidi.instance_variable_set(:@scheduler_checked, false)
+
+# ---- The pin table's GPIO rule, per board (doc/api_fixes F4, C1) -----------
+#
+# test/api_fixes/pin_ledger/pin_ledger_test.c over the ESP32 pin manager,
+# compiled for each board with its real fmrb_pin_assign.h. The buttons are the
+# only system pins an app may read as an input; the rest refuse GPIO.
+
+require "tmpdir"
+require "open3"
+
+PIN_BOARDS = {
+  # board => [chip define, the buttons (input only), the other system pins]
+  "NARYAV3" => [nil, [6, 7, 8],
+                [0, 1, 3, 4, 5, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 35, 36, 37, 38, 39, 45, 46]],
+  "TAB5" => ["CONFIG_IDF_TARGET_ESP32P4", [], [24, 25]],
+  "NARYAV4" => ["CONFIG_IDF_TARGET_ESP32P4", [], [35, 37, 38]],
+  "ATOMS3R" => [nil, [41], [14, 15, 19, 20, 21, 35, 36, 37, 42, 46, 48]],
+  "STICKS3" => [nil, [11, 12], [0, 19, 20, 21, 35, 36, 37, 39, 40, 41, 45]],
+}
+pl = File.join(ROOT, "test/api_fixes/pin_ledger")
+Dir.mktmpdir("pin_ledger") do |tmp|
+  PIN_BOARDS.each do |board, (chip, inputs, system)|
+    exe = File.join(tmp, board)
+    cmd = ["gcc", "-std=gnu11", "-Wall", "-Wno-unused-variable", "-Werror"]
+    cmd << "-DFMRB_HW_#{board}" unless board == "NARYAV3" # the default branch
+    cmd << "-D#{chip}" if chip
+    cmd += ["-I#{pl}/stub", "-I#{ROOT}/components/fmrb_hal", "-I#{ROOT}/components/fmrb_common/include",
+            "-o", exe, "#{pl}/pin_ledger_test.c",
+            "#{ROOT}/components/fmrb_hal/platform/esp32/fmrb_hal_pin_manager_esp32.c"]
+    out, st = Open3.capture2e(*cmd)
+    check("pin ledger #{board}: builds", [st.success?, out], [true, ""])
+    next unless st.success?
+
+    out, st = Open3.capture2e(exe)
+    nums = ->(label) { (out[/^#{label}:(.*)$/, 1] || "").split.map(&:to_i) }
+    check("pin ledger #{board}: verdicts", [st.success?, out[/^FAIL.*$/]], [true, nil])
+    check("pin ledger #{board}: buttons (input only)", nums.call("inputs"), inputs)
+    check("pin ledger #{board}: other system pins", nums.call("system"), system)
+  end
+end
 
 if $failures.zero?
   puts "api_fixes: #{$count} checks passed"

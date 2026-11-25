@@ -1,15 +1,19 @@
 #include "fmrb_hal_gpio.h"
 #include "hw_proxy.h"
 #include "hw_proxy_internal.h"
+#include "fmrb_hal_pin_manager.h"
 
-fmrb_err_t fmrb_hal_gpio_reset(fmrb_gpio_num_t gpio_num) {
-    if (gpio_num < 0) {
-        return FMRB_ERR_INVALID_PARAM;
+int fmrb_hal_gpio_claim(fmrb_gpio_num_t gpio_num, int use, bool reset) {
+    int verdict = FMRB_PIN_GPIO_NO_RANGE;
+    hw_proxy_gpio_claim_params_t params = {
+        .pin = gpio_num, .use = use, .reset = reset, .out_verdict = &verdict
+    };
+    hw_proxy_request_t req = { .op = HW_PROXY_OP_GPIO_CLAIM, .params = &params };
+    fmrb_err_t ret = hw_proxy_call(&req);
+    if (ret == FMRB_ERR_FAILED && fmrb_pin_gpio_granted((fmrb_pin_gpio_verdict_t)verdict)) {
+        return -1;
     }
-
-    hw_proxy_gpio_reset_params_t params = { .pin = gpio_num };
-    hw_proxy_request_t req = { .op = HW_PROXY_OP_GPIO_RESET, .params = &params };
-    return hw_proxy_call(&req);
+    return verdict;
 }
 
 fmrb_err_t fmrb_hal_gpio_config(fmrb_gpio_num_t gpio_num,

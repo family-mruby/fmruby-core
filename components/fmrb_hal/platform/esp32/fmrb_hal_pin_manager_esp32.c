@@ -150,3 +150,36 @@ bool fmrb_pin_manager_is_available(int pin)
     }
     return s_pins[pin].usage == FMRB_PIN_UNUSED;
 }
+
+bool fmrb_pin_manager_is_system_input(int pin)
+{
+    if (pin < 0) {
+        return false;
+    }
+    // GPIO_NUM_NC (-1) never matches a pin >= 0.
+#ifdef FMRB_PIN_BUTTON_UP
+    if (pin == FMRB_PIN_BUTTON_UP) return true;
+#endif
+#ifdef FMRB_PIN_BUTTON_DOWN
+    if (pin == FMRB_PIN_BUTTON_DOWN) return true;
+#endif
+#ifdef FMRB_PIN_BUTTON_ENTER
+    if (pin == FMRB_PIN_BUTTON_ENTER) return true;
+#endif
+    return false;
+}
+
+fmrb_pin_gpio_verdict_t fmrb_pin_manager_claim_gpio(int pin, fmrb_pin_gpio_use_t use,
+                                                    void *caller)
+{
+    if (pin < 0 || pin >= FMRB_PIN_MAX) {
+        return FMRB_PIN_GPIO_NO_RANGE;
+    }
+    fmrb_pin_gpio_verdict_t v = fmrb_pin_gpio_judge(
+        s_pins[pin], fmrb_pin_manager_is_system_input(pin), use, caller);
+    if (v == FMRB_PIN_GPIO_OK && s_pins[pin].usage == FMRB_PIN_UNUSED) {
+        s_pins[pin].usage = FMRB_PIN_USER_GPIO;
+        s_pins[pin].owner = caller;
+    }
+    return v;
+}
