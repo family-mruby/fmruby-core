@@ -6,16 +6,17 @@
 module FmrbI18n
   # 言葉の表を足す <<en>> Add a table of words
   #
-  # アプリごとに自分の表を足す。**すでにある印を消さない**ので、
-  # デスクトップの表と並んで残る。
+  # アプリごとに自分の表を足す。**表にない印は消さない**ので、デスクトップの
+  # 表と並んで残る。**同じ言葉の同じ印は、後から足した方に置きかわる**。
   # ```ruby
   # FmrbI18n.add(
   #   "en" => { save: "Save" },
   #   "ja" => { save: "保存" })
   # ```
   # <<en>>
-  # Each app adds its own table. Existing keys are left alone, so this table
-  # and the desktop's live side by side.
+  # Each app adds its own table. **Keys it does not name are kept**,
+  # so this table and the desktop's live side by side.
+  # **A key named again for the same language is replaced** by the later value.
   # ```ruby
   # FmrbI18n.add(
   #   "en" => { save: "Save" },

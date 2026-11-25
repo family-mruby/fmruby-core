@@ -230,7 +230,11 @@ bool fmrb_hal_file_entry_is_read_only(const char *virtual_path) {
 // Convert flags to POSIX mode string
 static void flags_to_mode(uint32_t flags, char *mode) {
     if (flags & FMRB_O_RDWR) {
-        if (flags & FMRB_O_CREAT) {
+        if (flags & FMRB_O_APPEND) {
+            // "a+": reads from anywhere, every write goes to the end, and a
+            // missing file is made. "r+" would write over the start instead.
+            strcpy(mode, "a+");
+        } else if (flags & FMRB_O_CREAT) {
             if (flags & FMRB_O_TRUNC) {
                 strcpy(mode, "w+");
             } else {

@@ -806,9 +806,7 @@ module FmrbMidi
       when 0xC0
         @device.send_program_change(channel, d1) unless @ignore_program_change
       end
-      # Aftertouch and pitch bend are dropped: the APU has neither, and
-      # MIDI::Device#pitch_bend needs Integer#clamp, which this build of
-      # mruby does not provide (see doc/midi/report/p2.md).
+      # Aftertouch and pitch bend are dropped: the APU has neither.
     end
 
     def handle_meta(type, pos, len)
@@ -831,27 +829,33 @@ module FmrbMidi
       n
     end
 
-    # What is sounding is kept as packed Integers, (channel << 7) | note,
-    # rather than [channel, note] pairs: an Array per note is an object per
-    # note, and playback has to leave the collector alone (see varlen).
+    # What is sounding is kept as packed Integers,
+    # (channel << 14) | (note << 7) | played, rather than arrays: an Array per
+    # note is an object per note, and playback has to leave the collector
+    # alone (see varlen). The note as written is kept beside the one that was
+    # played, so a note off finds the pitch its note on went out at even when
+    # transpose changed in between.
     def send_note_on(channel, note, velocity)
       played = shift(channel, note)
       @device.send_note_on(channel, played, velocity)
-      @sounding << ((channel << 7) | played)
+      @sounding << ((channel << 14) | (note << 7) | played)
     end
 
     def send_note_off(channel, note)
-      played = shift(channel, note)
-      @device.send_note_off(channel, played)
-      packed = (channel << 7) | played
+      key = (channel << 7) | note
       i = 0
       while i < @sounding.size
-        if @sounding[i] == packed
+        packed = @sounding[i]
+        if (packed >> 7) == key
           @sounding.delete_at(i)
+          @device.send_note_off(channel, packed & 0x7F)
           return
         end
         i += 1
       end
+      # Not one this player started (or already released): send it as the
+      # song has it, shifted as a note on would be now.
+      @device.send_note_off(channel, shift(channel, note))
     end
 
     # Release everything this player started. Called on stop, pause and at
@@ -865,7 +869,7 @@ module FmrbMidi
       i = 0
       while i < list.size
         packed = list[i]
-        @device.send_note_off(packed >> 7, packed & 0x7F)
+        @device.send_note_off(packed >> 14, packed & 0x7F)
         i += 1
       end
     end

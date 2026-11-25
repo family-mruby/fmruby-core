@@ -49,9 +49,11 @@ module JSON
 
   # JSON::Digger の例外 <<en>> Raised by JSON::Digger
   #
-  # 掘る先のキーが無いとき ("Key not found: name")。
+  # 掘る先のキーが無いとき ("Key not found: name") と、Array の位置が
+  # 範囲の外のとき ("Array index out of range")。
   # <<en>>
-  # The key to dig to is not there ("Key not found: name").
+  # The key to dig to is not there ("Key not found: name"), or an Array
+  # position is past the end ("Array index out of range").
   class DiggerError < JSONError
   end
 
@@ -64,8 +66,8 @@ module JSON
   # `:` や `,` が無いなど構造の崩れは `JSON::JSONError` (親)。**後ろのごみは黙って捨てる**
   # (JSON の後ろに付いた字) (`"[1,2] xyz"` は `[1, 2]`)。
   #
-  # **`\uXXXX` の読みは当てにならない**。1 バイトに詰める実装で、日本語は正しく読めない。
-  # 日本語は `\u` にせず UTF-8 のまま書いた JSON を渡す。小数は自前の計算で組み立てるので、
+  # `\uXXXX` は UTF-8 の文字になる (日本語も、`\ud83d\ude00` のような 2 つ組も)。
+  # 小数は自前の計算で組み立てるので、
   # 末尾の桁が CRuby とずれることがある。全部 Ruby の実装で、大きな JSON を丸ごと読むのは重い。
   # ```ruby
   # h = JSON.parse('{"temp": 21.5}')
@@ -80,8 +82,8 @@ module JSON
   # `JSON::JSONError` (the parent). **Trailing junk after the JSON is dropped silently**
   # (`"[1,2] xyz"` is `[1, 2]`).
   #
-  # **Do not trust `\uXXXX`.** It is packed into one byte, so Japanese is not read right. Pass
-  # JSON with the text as UTF-8 instead. Floats are built by hand, so the last digits can
+  # `\uXXXX` becomes the UTF-8 character (Japanese too, and a pair such as
+  # `\ud83d\ude00`). Floats are built by hand, so the last digits can
   # differ from CRuby. It is all Ruby, so reading a big JSON whole is heavy.
   # ```ruby
   # h = JSON.parse('{"temp": 21.5}')
@@ -146,8 +148,8 @@ module JSON
     #
     # キーが無いと `JSON::DiggerError` ("Key not found: name")。Hash に位置、Array にキーを
     # 使うなど形が合わないと `JSON::JSONError`。String と Integer 以外は ArgumentError。
-    # **範囲を超えた Array の位置は例外にならない**。後の `parse` は nil か、別の
-    # 要素を返す (`[1]` の 5 番目で 1 が返る)。位置は自分で確かめてから渡す。
+    # Array の位置が範囲の外 (空の Array を含む) なら `JSON::DiggerError`
+    # ("Array index out of range")。
     # ```ruby
     # d = JSON::Digger.new('{"a": [10, 20]}')
     # d.dig("a", 1).parse   #=> 20
@@ -160,8 +162,8 @@ module JSON
     # A missing key raises `JSON::DiggerError` ("Key not found: name"). A shape that does not
     # fit (a position on a Hash, a key on an Array) raises `JSON::JSONError`. Anything but a
     # String or an Integer is an ArgumentError.
-    # **A position past the end does not raise**: the later `parse` returns nil
-    # or some other element (index 5 of `[1]` gives 1). Check the index yourself.
+    # An Array position past the end (an empty Array included) raises
+    # `JSON::DiggerError` ("Array index out of range").
     # ```ruby
     # d = JSON::Digger.new('{"a": [10, 20]}')
     # d.dig("a", 1).parse   #=> 20

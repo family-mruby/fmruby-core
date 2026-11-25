@@ -202,9 +202,9 @@ class File < IO
   # ファイルを開く (new) <<en>> Open a file (new)
   #
   # mode は `"r"` (省略時・読む)・`"w"` (空にして書く。無ければ作る)・`"a"` (末尾に足す。無ければ作る)
-  # と、`"r+"` (読み書き。無いと失敗)・`"w+"` (空にして読み書き)。**`+` は 2 文字目に置く**
-  # (`"rb"` の `b` は 2 文字目なので `"rb+"` は読み取り専用になる)。
-  # **ほかの文字で始まる mode は読み取り専用として開く** (エラーにならない)。**`a+` は追記にならない** (`r+` と同じで、先頭から上書きする)。
+  # と、`"r+"` (読み書き。無いと失敗)・`"w+"` (空にして読み書き)・`"a+"` (読めて、書くと
+  # 必ず末尾に足す。無ければ作る)。`b` は付けてもよく (`"rb+"` は `"r+"` と同じ)、
+  # **ほかの文字で始まる mode は読み取り専用として開く** (エラーにならない)。
   # `perm` は受け取るだけで使わない。
   #
   # **開けないと RuntimeError ("failed to open file: パス")**。理由 (無い・場所が無い・
@@ -218,11 +218,10 @@ class File < IO
   # <<en>>
   # mode: `"r"` (default; read), `"w"` (truncate and write; created when missing), `"a"`
   # (append; created when missing), `"r+"` (read and write; fails when missing),
-  # `"w+"` (truncate, read and write). **The `+` must be the second character** (the
-  # `b` of `"rb"` is the second one, so `"rb+"` opens read-only).
+  # `"w+"` (truncate, read and write) and `"a+"` (read, and every write goes to the
+  # end; created when missing). A `b` may be added (`"rb+"` is `"r+"`).
   # **A mode starting with any other letter opens read-only**
-  # (no error). **`a+` does not append**: like
-  # `r+` it overwrites from the start. `perm` is accepted and ignored.
+  # (no error). `perm` is accepted and ignored.
   #
   # **RuntimeError ("failed to open file: path") when it cannot open**; the reason
   # (missing, no room, too many open) is not told apart. Only 10 files can be open on

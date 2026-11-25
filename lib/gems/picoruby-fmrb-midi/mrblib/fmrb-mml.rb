@@ -74,6 +74,9 @@ module FmrbMidi
     DRAIN_POLL_MS = 20
     STALL_US = 200_000
 
+    # #error when what was added so far holds no notes.
+    NO_NOTES_ERROR = "no notes in the MML"
+
     attr_reader :device, :bpm, :total_clocks, :error
 
     def initialize(device)
@@ -191,7 +194,12 @@ module FmrbMidi
       pack_events(sequence)
       @total_clocks = sequence.total_length if sequence.total_length > @total_clocks
       @loaded = @events.size > 0
-      @error = "no notes in the MML" unless @loaded
+      if @loaded
+        # An earlier empty part said so; this one has notes, so the tune does.
+        @error = nil if @error == NO_NOTES_ERROR
+      else
+        @error = NO_NOTES_ERROR
+      end
       @loaded
     end
 

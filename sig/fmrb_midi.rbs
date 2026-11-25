@@ -549,16 +549,16 @@ module FmrbMidi
     # 全部の音に足す半音の数 <<en>> Semitones added to every melodic note
     #
     # 0 が元のまま。**channel 9 (ドラム) は動かさない**。0〜127 を出る音も
-    # 元の高さのまま。音を止めずに変えると、鳴っている音の止め方がずれる
-    # ことがある (止めるときも今の値で計算する)。`load` で 0 に戻る。
+    # 元の高さのまま。鳴らしている途中でも変えられ、次の音から効く
+    # (鳴っている音は始めた高さで止める)。`load` で 0 に戻る。
     # ```ruby
     # @smf.transpose = 2
     # ```
     # <<en>>
     # 0 leaves the notes as written. **Channel 9 (drums) is not moved**, and
-    # a note that would leave 0-127 keeps its pitch. Changing it without
-    # stopping can mis-stop sounding notes (the note-off uses the current
-    # value too). `load` puts it back to 0.
+    # a note that would leave 0-127 keeps its pitch. It can change while the
+    # song plays and takes effect from the next note (a sounding note is
+    # stopped at the pitch it started at). `load` puts it back to 0.
     # ```ruby
     # @smf.transpose = 2
     # ```
