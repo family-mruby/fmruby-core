@@ -487,6 +487,22 @@ void fmrb_hal_file_deinit(void) {
     }
 }
 
+// A relative path made absolute under the caller's working directory, then
+// handled as that absolute path. Out of line so that the buffer is only on
+// the stack when a relative path is given (never on hw_proxy's).
+static __attribute__((noinline)) fmrb_err_t open_relative(const char *path, uint32_t flags,
+                                                          fmrb_file_t *out_handle) {
+    char abs_path[MAX_PATH_LEN];
+    const char *p = fmrb_hal_file_cwd_apply(path, abs_path, sizeof(abs_path));
+    return p != NULL ? fmrb_hal_file_open(p, flags, out_handle) : FMRB_ERR_INVALID_PARAM;
+}
+
+static __attribute__((noinline)) fmrb_err_t stat_relative(const char *path, fmrb_file_info_t *info) {
+    char abs_path[MAX_PATH_LEN];
+    const char *p = fmrb_hal_file_cwd_apply(path, abs_path, sizeof(abs_path));
+    return p != NULL ? fmrb_hal_file_stat(p, info) : FMRB_ERR_INVALID_PARAM;
+}
+
 // Open a file
 // PSRAM stack tasks are routed through hw_proxy (internal RAM stack) to avoid
 // SPI flash DMA crashes. Internal RAM stack tasks call the impl directly.
@@ -496,10 +512,8 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
     }
     // The working directory is the caller's: a relative path is made
     // absolute here, before hw_proxy's task (which is not the app) sees it.
-    char abs_path[MAX_PATH_LEN];
-    path = fmrb_hal_file_cwd_apply(path, abs_path, sizeof(abs_path));
-    if (path == NULL) {
-        return FMRB_ERR_INVALID_PARAM;
+    if (path[0] != '/') {
+        return open_relative(path, flags, out_handle);
     }
     if (hw_proxy_needs_proxy()) {
         hw_proxy_file_open_params_t p = { .path = path, .flags = flags, .out_handle = out_handle };
@@ -827,11 +841,8 @@ fmrb_err_t fmrb_hal_file_stat(const char *path, fmrb_file_info_t *info) {
         return FMRB_ERR_INVALID_PARAM;
     }
     // Made absolute in the caller's task, as in fmrb_hal_file_open.
-    char abs_path[MAX_PATH_LEN];
-    const char *name_path = path;
-    path = fmrb_hal_file_cwd_apply(path, abs_path, sizeof(abs_path));
-    if (path == NULL) {
-        return FMRB_ERR_INVALID_PARAM;
+    if (path[0] != '/') {
+        return stat_relative(path, info);
     }
 
     // Virtual mount-point parents have no on-disk entry. Report them as
@@ -839,8 +850,8 @@ fmrb_err_t fmrb_hal_file_stat(const char *path, fmrb_file_info_t *info) {
     // Dir.open behavior.
     if (fmrb_hal_file_virtual_children(path, NULL) != NULL) {
         memset(info, 0, sizeof(fmrb_file_info_t));
-        const char *basename = strrchr(name_path, '/');
-        basename = (basename && basename[1]) ? basename + 1 : name_path;
+        const char *basename = strrchr(path, '/');
+        basename = (basename && basename[1]) ? basename + 1 : path;
         snprintf(info->name, sizeof(info->name), "%s", basename);
         info->mode = FMRB_S_IFDIR;
         info->is_dir = true;
@@ -867,12 +878,12 @@ fmrb_err_t fmrb_hal_file_stat(const char *path, fmrb_file_info_t *info) {
 
     memset(info, 0, sizeof(fmrb_file_info_t));
 
-    // Extract basename from the path as given
-    const char *basename = strrchr(name_path, '/');
+    // Extract basename from path
+    const char *basename = strrchr(path, '/');
     if (basename != NULL) {
         basename++;
     } else {
-        basename = name_path;
+        basename = path;
     }
     snprintf(info->name, sizeof(info->name), "%s", basename);
 

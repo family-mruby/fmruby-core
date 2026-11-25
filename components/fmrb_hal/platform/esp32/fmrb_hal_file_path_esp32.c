@@ -55,24 +55,11 @@ static const path_virtual_t s_virtual_dirs[] = {
 
 #define PATH_VIRTUAL_COUNT (sizeof(s_virtual_dirs) / sizeof(s_virtual_dirs[0]))
 
-// Resolve a virtual path to the underlying VFS path.
+// Resolve an absolute virtual path to the underlying VFS path.
 // Order of resolution:
 //   1. Match against the alias table (prefix must terminate at '/' or '\0').
 //   2. Otherwise, treat as living under the flash mount.
-// A relative path is first put under the calling app's working directory and
-// folded (fmrb_hal_file_cwd_apply), so it is resolved as the absolute path it
-// names; an absolute path is used exactly as given.
-fmrb_err_t fmrb_hal_file_resolve_path(const char *path,
-                                      char *out, size_t out_len) {
-    if (path == NULL || out == NULL || out_len == 0) {
-        return FMRB_ERR_INVALID_PARAM;
-    }
-    char abs[PATH_BUF_LEN];
-    const char *virtual_path = fmrb_hal_file_cwd_apply(path, abs, sizeof(abs));
-    if (virtual_path == NULL) {
-        out[0] = '\0';
-        return FMRB_ERR_INVALID_PARAM;
-    }
+static void resolve_absolute(const char *virtual_path, char *out, size_t out_len) {
     for (size_t i = 0; i < PATH_ALIAS_COUNT; i++) {
         const char *prefix = s_path_aliases[i].prefix;
         size_t plen = strlen(prefix);
@@ -80,24 +67,44 @@ fmrb_err_t fmrb_hal_file_resolve_path(const char *path,
             (virtual_path[plen] == '\0' || virtual_path[plen] == '/')) {
             snprintf(out, out_len, "%s%s",
                      s_path_aliases[i].mount, virtual_path + plen);
-            return FMRB_OK;
+            return;
         }
     }
     snprintf(out, out_len, "%s%s", LITTLEFS_PATH, virtual_path);
+}
+
+// A relative path is put under the calling app's working directory and
+// folded first. Kept out of line so that an absolute path, the common case
+// (and every path hw_proxy's internal-RAM stack resolves), costs no buffer.
+static __attribute__((noinline)) fmrb_err_t resolve_relative(const char *path, char *out,
+                                                             size_t out_len) {
+    char abs[PATH_BUF_LEN];
+    const char *virtual_path = fmrb_hal_file_cwd_apply(path, abs, sizeof(abs));
+    if (virtual_path == NULL) {
+        out[0] = '\0';
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    resolve_absolute(virtual_path, out, out_len);
+    return FMRB_OK;
+}
+
+// An absolute path is used exactly as given; a relative one names the
+// absolute path it has under the working directory.
+fmrb_err_t fmrb_hal_file_resolve_path(const char *virtual_path,
+                                      char *out, size_t out_len) {
+    if (virtual_path == NULL || out == NULL || out_len == 0) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    if (virtual_path[0] != '/') {
+        return resolve_relative(virtual_path, out, out_len);
+    }
+    resolve_absolute(virtual_path, out, out_len);
     return FMRB_OK;
 }
 
 // Look up the synthetic children for a virtual mount-point directory.
 // Returns NULL if `virtual_path` is not a known virtual directory.
-// A relative path is taken from the working directory, like the resolver.
-const char *const *fmrb_hal_file_virtual_children(const char *path,
-                                                  size_t *out_count) {
-    char abs[PATH_BUF_LEN];
-    const char *virtual_path = fmrb_hal_file_cwd_apply(path, abs, sizeof(abs));
-    if (virtual_path == NULL) {
-        if (out_count) *out_count = 0;
-        return NULL;
-    }
+static const char *const *lookup_virtual(const char *virtual_path, size_t *out_count) {
     for (size_t i = 0; i < PATH_VIRTUAL_COUNT; i++) {
         if (strcmp(virtual_path, s_virtual_dirs[i].path) == 0) {
             if (out_count) *out_count = s_virtual_dirs[i].count;
@@ -106,6 +113,32 @@ const char *const *fmrb_hal_file_virtual_children(const char *path,
     }
     if (out_count) *out_count = 0;
     return NULL;
+}
+
+static __attribute__((noinline)) const char *const *virtual_relative(const char *path,
+                                                                     size_t *out_count) {
+    char abs[PATH_BUF_LEN];
+    const char *virtual_path = fmrb_hal_file_cwd_apply(path, abs, sizeof(abs));
+    if (virtual_path == NULL) {
+        if (out_count) *out_count = 0;
+        return NULL;
+    }
+    return lookup_virtual(virtual_path, out_count);
+}
+
+// Look up the synthetic children for a virtual mount-point directory.
+// Returns NULL if `virtual_path` is not a known virtual directory. A relative
+// path is taken from the working directory, like the resolver.
+const char *const *fmrb_hal_file_virtual_children(const char *virtual_path,
+                                                  size_t *out_count) {
+    if (virtual_path == NULL) {
+        if (out_count) *out_count = 0;
+        return NULL;
+    }
+    if (virtual_path[0] != '/') {
+        return virtual_relative(virtual_path, out_count);
+    }
+    return lookup_virtual(virtual_path, out_count);
 }
 
 // The device's storage is one writable volume (fmrb_hal_file.h).
