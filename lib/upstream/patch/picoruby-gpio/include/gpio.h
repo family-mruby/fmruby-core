@@ -28,7 +28,7 @@ extern "C" {
 #define GPIO_CLAIM_OK_SHARED   1  /* allowed without owning it (a read, a button as input) */
 #define GPIO_CLAIM_NO_RANGE    2  /* no such pin */
 #define GPIO_CLAIM_NO_SYSTEM   3  /* a pin the system uses */
-#define GPIO_CLAIM_INPUT_ONLY  4  /* a system button: input only */
+#define GPIO_CLAIM_INPUT_ONLY  4  /* a system button or a chip's interrupt line: input only */
 #define GPIO_CLAIM_IN_USE      5  /* held by another app or for another use */
 #define GPIO_CLAIM_FAILED      6  /* granted, but setting it up failed */
 

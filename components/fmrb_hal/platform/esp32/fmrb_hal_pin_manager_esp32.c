@@ -337,6 +337,23 @@ bool fmrb_pin_manager_is_available(int pin)
     return s_pins[pin].usage == FMRB_PIN_UNUSED;
 }
 
+// A chip on the board drives these lines (an interrupt output): an app may
+// take one as an input and watch it, but must not drive it against the chip.
+// The system does not use them itself, so the table does not hold them.
+static bool is_input_only_line(int pin)
+{
+    if (pin < 0) {
+        return false;
+    }
+#ifdef FMRB_PIN_IMU_INT
+    if (pin == FMRB_PIN_IMU_INT) return true;
+#endif
+#ifdef FMRB_PIN_PM1_IRQ
+    if (pin == FMRB_PIN_PM1_IRQ) return true;
+#endif
+    return false;
+}
+
 bool fmrb_pin_manager_is_system_input(int pin)
 {
     if (pin < 0) {
@@ -380,6 +397,9 @@ fmrb_pin_gpio_verdict_t fmrb_pin_manager_claim_gpio(int pin, fmrb_pin_gpio_use_t
     }
     if (use != FMRB_PIN_GPIO_READ && fmrb_pin_manager_is_gpio_reserved(pin)) {
         return FMRB_PIN_GPIO_NO_SYSTEM;
+    }
+    if (use == FMRB_PIN_GPIO_OUTPUT && is_input_only_line(pin)) {
+        return FMRB_PIN_GPIO_NO_INPUT_ONLY;
     }
     fmrb_pin_gpio_verdict_t v = fmrb_pin_gpio_judge(
         s_pins[pin], fmrb_pin_manager_is_system_input(pin), use, caller);

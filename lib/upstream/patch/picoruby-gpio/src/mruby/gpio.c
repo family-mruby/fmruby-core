@@ -25,7 +25,7 @@ gpio_raise_claim(mrb_state *mrb, int pin, int claim)
       mrb_raisef(mrb, io_error, "GPIO %d is used by the system", pin);
       break;
     case GPIO_CLAIM_INPUT_ONLY:
-      mrb_raisef(mrb, io_error, "GPIO %d is a system button: input only", pin);
+      mrb_raisef(mrb, io_error, "GPIO %d is input only (a system button or a chip's interrupt line)", pin);
       break;
     case GPIO_CLAIM_IN_USE:
       mrb_raisef(mrb, io_error, "GPIO %d is in use by another app or driver", pin);

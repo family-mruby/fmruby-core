@@ -1,6 +1,6 @@
 # sig の作業で見つかった API の不具合を直す
 
-> 状態: 進行中 | 更新: 2026-11-25 | sig を書くために実装を読んで見つけた不具合の疑い (doc/reference/TODO.md) のうち、書いてある意図と動きが食い違っている物を直す (F1)。利用者から見た動きを決め直す物はユーザに選択肢で聞く (2 章の B)
+> 状態: 進行中 (実機の確認待ち) | 更新: 2026-11-26 | sig を書くために実装を読んで見つけた不具合の疑い (doc/reference/TODO.md) のうち、書いてある意図と動きが食い違っている物を直す (F1)。利用者から見た動きを決め直す物はユーザに選択肢で聞く (2 章の B)
 
 ## 1. 目的
 
@@ -241,6 +241,33 @@ nil で止まる。試験 (後から付ける・nil・2 回付けても 2 重に
 fmruby-core は `ASTERISM_PIN` を上げ、sig の `handler=` の説明を直した。`rake regress`・`regress:live` 17/17 通過。
 未確認: mruby の上での動き (直したファイルは CRuby と同じ `mrblib/ros.rb`。CRuby の試験で確かめた)。
 rubygems.org への公開はしていない (ユーザ判断)。
+
+### 決定 6 回目 (2026-11-26 ユーザ)
+
+24. **ビルドの選択の守りを全部の選択に広げる** (F9): ESP32 のビルドで、結果を変える環境変数 (ターゲット・エンジン・
+    Asterism・フォント・IMU・エディタ ほか) を build ディレクトリに記録し、前のビルドと違うときは理由と直すコマンドを
+    出して止まる。
+25. **チップが出す割り込みの線は入力だけ通す**: AtomS3R の 16 (BMI270)・StickS3 の 13 (M5PM1)。アプリは入力として
+    取れるが、出力にすると IOError。済 (`f408e959`。ホストの試験)。
+26. **asterism 0.14.1 は今は rubygems.org に公開しない** (次に直すときにまとめて)。
+27. **この計画は実機の確認まで開けておく** (StickS3・AtomS3R・NARYA v3・Tab5、SD カード)。
+
+### F9 の結果 (2026-11-26、report/f9.md)
+
+ESP32 のビルドの結果を変える 13 個の選択 (`FMRB_HW_TARGET`・エンジン 3 つ・`FMRB_FFT_SPINEL`・`FMRB_FONT_JA`・
+`FMRB_EDITOR`・`FMRB_ASTERISM`・`FMRB_IMU`・`FMRB_GC_PROFILE`・`FMRB_TASK_SELF_TICK`・`FMRB_DISPLAY_BACKEND`・
+`DOCKER_IMAGE`。.env とボードの既定を足した後の値) を `build/fmrb_build_options.json` に残し、前と違う選択の
+`rake build:esp32` と `rake flash*` (5 つ) は、違う名前・前と今の値・直すコマンドを出して止まる (`BUILD_OPTS_OK=1` で
+続ける)。F8 の `FMRB_EDITOR` だけの守りは置き換えた。記録の無い build/ は CMake の cache のターゲットだけで比べて通す。
+`regress:size`・`regress:boot` は build/ ごと退避するので両立する。
+親の検収: 試験 56 件、`FMRB_HW_TARGET=NARYAv4 FMRB_FONT_JA=0` で止まること・同じ値で通ること・.env のまま (NARYAv3) の
+`flash_options` が止まること、`rake regress` を確かめた。
+知っておくこと: **MCP の flash ツールは .env のターゲット (NARYAv3) で `rake flash` を流すので、P4-Nano 用の build/ は
+焼く前に止まる** (前は違うチップ向けに書こうとして esptool で失敗していた)。P4-Nano に焼くときは
+`FMRB_HW_TARGET=NARYAv4 rake flash:app_sync` を直接流す。
+見つかった別の物 (直していない): `PICORB_DEBUG` と `FMRB_HW_TARGET` がビルドのコンテナに渡っておらず、
+`family_mruby_esp32.rb` の ATOM_DISPLAY を除く条件が効いていない (ATOM は中断中で今は害なし)。build/ だけを手で消すと、
+外にある libmruby は古い値のまま残る (`rake clean_all` なら起きない)。
 
 ## 3. スコープ
 

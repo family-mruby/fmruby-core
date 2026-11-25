@@ -16,6 +16,8 @@
 # Each Linux build stamps the sources it was made from (tools/build_stamp.rb),
 # and the starters refuse a stale one.
 require_relative "../tools/build_stamp"
+# The ESP32 build's options and their guard (doc/api_fixes F9).
+require_relative "build_options"
 
 LINUX_BUILD_DIR = 'build-linux'
 LINUX_SDKCONFIG = "#{LINUX_BUILD_DIR}/sdkconfig"
@@ -109,6 +111,21 @@ def warn_libmruby_left_behind(now)
        "#{newer.size > 3 ? ', ...' : ''}); it is not rebuilt by itself -- run `rake clean` first if those go into libmruby"
 end
 
+# The options this run asks of an ESP32 build (the Rakefile's ENV after .env
+# and the board defaults), and the guard against a build/ made with others
+# (rakelib/build_options.rb): build:esp32 and the flash tasks
+# (rakelib/device.rake) run it before anything else. BUILD_OPTS_OK=1 goes on
+# with a warning.
+def esp32_build_options = FmrbBuildOptions.current(ENV, IMAGE)
+
+def esp32_options_guard!(task, what: "build")
+  msg = FmrbBuildOptions.refusal('build', esp32_build_options, what: what, task: task)
+  return unless msg
+  abort msg unless ENV[FmrbBuildOptions::OVERRIDE] == '1'
+  warn "#{msg.lines.first.chomp}\n#{msg.lines[1..].take_while { |l| l.start_with?('  ') }.join}" \
+       "#{task}: going on anyway (#{FmrbBuildOptions::OVERRIDE}=1)"
+end
+
 namespace :build do
   desc "Linux target build (dev/test). FMRB_KERNEL_ENGINE=spinel swaps the kernel."
   task :linux => :setup do
@@ -173,8 +190,13 @@ namespace :build do
     puts "Linux build complete (#{hw_family}): #{elf}. Start it with the sim tools (sim_up, tools/dev_run_check.sh)."
   end
 
-  desc "ESP32(S3) build"
-  task :esp32 => :setup do
+  # Before :setup, so a refused build starts nothing.
+  task :esp32_options do
+    esp32_options_guard!('build:esp32')
+  end
+
+  desc "ESP32(S3) build (stops when build/ was made with other build options: rake clean_all first)"
+  task :esp32 => [:esp32_options, :setup] do
     hw_target = ENV['FMRB_HW_TARGET'] || ''
 
     # Select sdkconfig.defaults based on HW target
@@ -248,21 +270,6 @@ namespace :build do
       Rake::Task['font_ja:image'].invoke
     end
 
-    # FMRB_EDITOR (the Rakefile) decides what CMake and libmruby are made of,
-    # but CMake reads it only when it configures, and changing it does not
-    # make it configure again: a build/ made with the other value would link
-    # the editor's gems without their ports, or the other way round. Refused
-    # here instead (a build/ from before the option was recorded had it on).
-    editor_opt = 'build/fmrb_editor_option'
-    editor_now = FMRB_EDITOR ? '1' : '0'
-    if File.exist?('build/CMakeCache.txt')
-      editor_was = File.exist?(editor_opt) ? File.read(editor_opt).strip : '1'
-      unless editor_was == editor_now
-        abort "build:esp32: build/ was configured with FMRB_EDITOR=#{editor_was} and this build " \
-              "asks for FMRB_EDITOR=#{editor_now}; run `rake clean_all` first"
-      end
-    end
-
     # set-target must also receive SDKCONFIG_DEFAULTS so sdkconfig is generated
     # correctly (it runs the first cmake configure).
     unless File.exist?('build/CMakeCache.txt')
@@ -315,7 +322,9 @@ namespace :build do
     release = ENV["FMRB_RELEASE"] == "1"
     cmake_opts += " -DFMRB_DEV_REMOTE_CTL=#{release ? 'OFF' : 'ON'}"
     cmake_opts += " #{ENV['CMAKE_OPTS']}" if ENV['CMAKE_OPTS']
-    File.write(editor_opt, "#{editor_now}\n")
+    # The options this build is made with (the guard above compares the next
+    # run's with them). Written once the configure is certain to use them.
+    FmrbBuildOptions.write('build', esp32_build_options)
     sh "#{DOCKER_CMD} idf.py #{cmake_opts.strip} build"
   end
 end
