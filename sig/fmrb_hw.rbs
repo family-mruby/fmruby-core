@@ -7,6 +7,7 @@
 # ピンの台帳を読む <<en>> Read the table of how pins are used
 #
 # どのピンが「システム専用」で、どれをアプリの `GPIO`・`I2C`・RMT が使っているかを調べる。
+# 機種ごとにアプリが使えるピンは `FmrbHw.pin_available?` で確かめる。
 # **台帳に実際の印が付くのは実機だけ**。Linux sim・ネイティブ版・ブラウザ版はピンを持たず、
 # 台帳は全部 `PIN_UNUSED` のまま (ピンの数は 49)。
 # ```ruby
@@ -16,7 +17,8 @@
 # ```
 # <<en>>
 # Which pins are system-only, and which an app's `GPIO`,
-# `I2C` or RMT holds. **Only a real board marks the table.** The Linux sim, the native build
+# `I2C` or RMT holds. Check with `FmrbHw.pin_available?` which pins an app may use on this board.
+# **Only a real board marks the table.** The Linux sim, the native build
 # and the browser build have no pins, so every entry stays `PIN_UNUSED` (49 pins).
 # ```ruby
 # if FmrbHw.pin_available?(5)
@@ -28,11 +30,14 @@ module FmrbHw
   PIN_UNUSED: Integer
   # システム専用のピン <<en>> System-only pin; apps cannot use it
   #
-  # USB・PSRAM・SD・画面・ボタンなどのピン。アプリは使えない。ただし本体のボタンは
-  # `GPIO.new(ピン, GPIO::IN)` で入力として読める (出力にはできない)。
+  # USB・PSRAM・SD・画面・無線・音・システムの I2C・ボタンなどのピン。`GPIO` では設定できない
+  # (IOError)。ただし本体のボタンは `GPIO.new(ピン, GPIO::IN)` で入力として読める (出力にはできない)。
+  # システムの I2C のピンは、`I2C.new` でそのバスを開くことはできる (開いている間は `PIN_USER_I2C`)。
   # <<en>>
-  # System-only pin (USB, PSRAM, SD, display, buttons; apps cannot use it). The board's buttons
-  # can still be read as an input with `GPIO.new(pin, GPIO::IN)` (not made an output).
+  # System-only pin (USB, PSRAM, SD, display, radio, audio, the system I2C, buttons). `GPIO`
+  # cannot set it up (IOError). The board's buttons can still be read as an input with
+  # `GPIO.new(pin, GPIO::IN)` (not made an output). A system I2C pin's bus can still be opened
+  # with `I2C.new` (the pins read `PIN_USER_I2C` while it is open).
   PIN_SYSTEM_EXCLUSIVE: Integer
   # アプリが GPIO として取っているピン <<en>> Held by an app as GPIO
   PIN_USER_GPIO: Integer
@@ -109,12 +114,14 @@ module FmrbHw
 
   # ピンの使われ方 (PIN_* の値) <<en>> How a pin is used (a PIN_* value)
   #
+  # システムが使うピンは、台帳に取られていなくても `PIN_SYSTEM_EXCLUSIVE` (`GPIO` が断るピンと同じ)。
   # 範囲外のピン番号は例外にならず `PIN_UNUSED` (0)。
   # ```ruby
   # FmrbHw.pin_status(25) == FmrbHw::PIN_SYSTEM_EXCLUSIVE
   # ```
   # <<en>>
-  # A pin number out of range does not raise: it is `PIN_UNUSED` (0).
+  # A pin the system uses is `PIN_SYSTEM_EXCLUSIVE` even when the table does not hold it (the
+  # same pins `GPIO` refuses). A pin number out of range does not raise: it is `PIN_UNUSED` (0).
   # ```ruby
   # FmrbHw.pin_status(25) == FmrbHw::PIN_SYSTEM_EXCLUSIVE
   # ```
@@ -122,14 +129,14 @@ module FmrbHw
 
   # そのピンをアプリが取れるか <<en>> Whether an app can take the pin
   #
-  # `PIN_UNUSED` のピンだけ true。**範囲外の番号は false**。システム専用のピンと、すでに
-  # 誰かが取っているピンは false。
+  # `PIN_UNUSED` のピンだけ true。**範囲外の番号は false**。システム専用のピン (`GPIO` が断る
+  # ピン) と、すでに誰かが取っているピンは false。
   # ```ruby
   # FmrbHw.pin_available?(5)   #=> true か false
   # ```
   # <<en>>
   # true only for a `PIN_UNUSED` pin. **A number out of range is false**, and so is a
-  # system-only pin or one somebody already holds.
+  # system-only pin (one `GPIO` refuses) or one somebody already holds.
   # ```ruby
   # FmrbHw.pin_available?(5)   #=> true or false
   # ```
@@ -137,12 +144,13 @@ module FmrbHw
 
   # 全ピンの使われ方 <<en>> How every pin is used
   #
-  # 添字がピン番号、値が `PIN_*`。長さは `pin_count`。
+  # 添字がピン番号、値が `PIN_*` (`pin_status` と同じ値)。長さは `pin_count`。
   # ```ruby
   # FmrbHw.pin_status_all[5]
   # ```
   # <<en>>
-  # The index is the pin number and the value is a `PIN_*`. The length is `pin_count`.
+  # The index is the pin number and the value is a `PIN_*` (as `pin_status` gives it). The
+  # length is `pin_count`.
   # ```ruby
   # FmrbHw.pin_status_all[5]
   # ```

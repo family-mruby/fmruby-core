@@ -3,7 +3,9 @@
  * pin manager (components/fmrb_hal/platform/esp32/fmrb_hal_pin_manager_esp32.c)
  * built for one board (-DFMRB_HW_<BOARD>, the real fmrb_pin_assign.h) against
  * the stand-ins in stub/. Prints the board's buttons (the system pins an app
- * may read as an input) and its other system pins, then checks the verdicts.
+ * may read as an input), its other system pins and the pins GPIO must leave
+ * alone (doc/api_fixes F6: the build-time table, which also holds pins the
+ * table does not), then checks the verdicts.
  * test/api_fixes/run.rb builds it once per board and compares the lists.
  */
 #include <stdio.h>
@@ -40,7 +42,53 @@ int main(void)
             printf(" %d", pin);
         }
     }
+    printf("\nreserved:");
+    for (int pin = 0; pin < FMRB_PIN_MAX; pin++) {
+        if (fmrb_pin_manager_is_gpio_reserved(pin)) {
+            printf(" %d", pin);
+        }
+    }
     printf("\n");
+
+    /* The GPIO-only table: refused before the table is asked, reads go on,
+     * the table is left as it was, and an app sees the pin as a system one. */
+    int reserved_free = -1;
+    for (int pin = 0; pin < FMRB_PIN_MAX; pin++) {
+        fmrb_pin_status_t before = fmrb_pin_manager_get_status(pin);
+        fmrb_pin_status_t app = fmrb_pin_manager_get_app_status(pin);
+        if (!fmrb_pin_manager_is_gpio_reserved(pin)) {
+            expect("app view of a pin outside the table", pin, app.usage, before.usage);
+            continue;
+        }
+        expect("reserved pin is no button", pin, fmrb_pin_manager_is_system_input(pin), 0);
+        expect("reserved read", pin, fmrb_pin_manager_claim_gpio(pin, FMRB_PIN_GPIO_READ, app_a),
+               FMRB_PIN_GPIO_OK_SHARED);
+        expect("reserved input", pin, fmrb_pin_manager_claim_gpio(pin, FMRB_PIN_GPIO_INPUT, app_a),
+               FMRB_PIN_GPIO_NO_SYSTEM);
+        expect("reserved output", pin, fmrb_pin_manager_claim_gpio(pin, FMRB_PIN_GPIO_OUTPUT, app_a),
+               FMRB_PIN_GPIO_NO_SYSTEM);
+        fmrb_pin_status_t after = fmrb_pin_manager_get_status(pin);
+        expect("reserved pin's table entry left as it was", pin, after.usage, before.usage);
+        expect("app view of a reserved pin", pin, app.usage, FMRB_PIN_SYSTEM_EXCLUSIVE);
+        if (before.usage == FMRB_PIN_UNUSED && reserved_free < 0) reserved_free = pin;
+    }
+    expect("out of range is not reserved", FMRB_PIN_MAX,
+           fmrb_pin_manager_is_gpio_reserved(FMRB_PIN_MAX), 0);
+    expect("negative is not reserved", -1, fmrb_pin_manager_is_gpio_reserved(-1), 0);
+
+    /* A reserved pin the table leaves free still goes to I2C as before; the
+     * app view then shows the I2C, and GPIO still refuses it. */
+    if (reserved_free >= 0) {
+        int q = reserved_free;
+        expect("i2c on a reserved pin", q, fmrb_pin_manager_acquire(q, FMRB_PIN_USER_I2C, app_a), FMRB_OK);
+        expect("app view shows the i2c", q, fmrb_pin_manager_get_app_status(q).usage, FMRB_PIN_USER_I2C);
+        expect("gpio on it, same app", q, fmrb_pin_manager_claim_gpio(q, FMRB_PIN_GPIO_INPUT, app_a),
+               FMRB_PIN_GPIO_NO_SYSTEM);
+        fmrb_pin_manager_release_by_owner(app_a);
+        expect("released", q, fmrb_pin_manager_get_status(q).usage, FMRB_PIN_UNUSED);
+        expect("app view after", q, fmrb_pin_manager_get_app_status(q).usage, FMRB_PIN_SYSTEM_EXCLUSIVE);
+    }
+    printf("reserved_free: %d\n", reserved_free);
 
     int free_pin = -1;
     for (int pin = 0; pin < FMRB_PIN_MAX; pin++) {
@@ -58,7 +106,7 @@ int main(void)
             expect("system pin owner left as it was", pin, after.owner != NULL, 0);
         } else {
             expect("free pin is no button", pin, fmrb_pin_manager_is_system_input(pin), 0);
-            if (free_pin < 0) free_pin = pin;
+            if (free_pin < 0 && !fmrb_pin_manager_is_gpio_reserved(pin)) free_pin = pin;
         }
     }
 

@@ -71,6 +71,18 @@ bool fmrb_pin_manager_is_system_input(int pin)
     return false;
 }
 
+// No board, so no pin the system uses.
+bool fmrb_pin_manager_is_gpio_reserved(int pin)
+{
+    (void)pin;
+    return false;
+}
+
+fmrb_pin_status_t fmrb_pin_manager_get_app_status(int pin)
+{
+    return fmrb_pin_manager_get_status(pin);
+}
+
 fmrb_pin_gpio_verdict_t fmrb_pin_manager_claim_gpio(int pin, fmrb_pin_gpio_use_t use,
                                                     void *caller)
 {

@@ -116,11 +116,26 @@ fmrb_pin_gpio_judge(fmrb_pin_status_t st, bool system_input,
 // read as an input. Decided from fmrb_pin_assign.h at build time (no table).
 bool fmrb_pin_manager_is_system_input(int pin);
 
+// Whether the pin is one the system uses that an app must not set up as a
+// GPIO: the board's display, SD, radio, audio, console, system I2C and the
+// like (fmrb_pin_assign.h), whether or not the table holds it. A build-time
+// constant per board; the buttons are never in it. Only the GPIO class looks
+// at it -- I2C, RMT and the table itself do not.
+bool fmrb_pin_manager_is_gpio_reserved(int pin);
+
 // Judge a GPIO use of the pin for caller and, when the pin is free and the
 // use sets it up (INPUT, OUTPUT), take it for caller as FMRB_PIN_USER_GPIO.
-// A refusal leaves the table as it was.
+// A pin fmrb_pin_manager_is_gpio_reserved() names is refused as a system pin
+// before the table is asked (reading is still allowed). A refusal leaves the
+// table as it was.
 fmrb_pin_gpio_verdict_t fmrb_pin_manager_claim_gpio(int pin, fmrb_pin_gpio_use_t use,
                                                     void *caller);
+
+// How the pin looks to an app (FmrbHw.pin_status): the table's status, except
+// that a free pin fmrb_pin_manager_is_gpio_reserved() names reads as
+// FMRB_PIN_SYSTEM_EXCLUSIVE. Out of range is FMRB_PIN_UNUSED, as in
+// fmrb_pin_manager_get_status().
+fmrb_pin_status_t fmrb_pin_manager_get_app_status(int pin);
 
 #ifdef __cplusplus
 }

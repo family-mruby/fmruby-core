@@ -78,16 +78,19 @@ static mrb_value mrb_fmrb_hw_pin_status(mrb_state *mrb, mrb_value klass)
 {
     mrb_int pin;
     mrb_get_args(mrb, "i", &pin);
-    fmrb_pin_status_t st = fmrb_pin_manager_get_status(pin);
+    fmrb_pin_status_t st = fmrb_pin_manager_get_app_status(pin);
     return mrb_fixnum_value(st.usage);
 }
 
 // FmrbHw.pin_available?(pin) -> true/false
+// A pin the system uses without the table holding it (fmrb_pin_assign.h) is
+// not available either: GPIO refuses it.
 static mrb_value mrb_fmrb_hw_pin_available_p(mrb_state *mrb, mrb_value klass)
 {
     mrb_int pin;
     mrb_get_args(mrb, "i", &pin);
-    return mrb_bool_value(fmrb_pin_manager_is_available(pin));
+    return mrb_bool_value(fmrb_pin_manager_is_available(pin) &&
+                          !fmrb_pin_manager_is_gpio_reserved(pin));
 }
 
 // FmrbHw.pin_status_all -> Array of Integer (index=pin, value=usage)
@@ -95,7 +98,7 @@ static mrb_value mrb_fmrb_hw_pin_status_all(mrb_state *mrb, mrb_value klass)
 {
     mrb_value ary = mrb_ary_new_capa(mrb, FMRB_PIN_MAX);
     for (int i = 0; i < FMRB_PIN_MAX; i++) {
-        fmrb_pin_status_t st = fmrb_pin_manager_get_status(i);
+        fmrb_pin_status_t st = fmrb_pin_manager_get_app_status(i);
         mrb_ary_push(mrb, ary, mrb_fixnum_value(st.usage));
     }
     return ary;

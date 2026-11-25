@@ -4,7 +4,8 @@
 # **入るのは ESP32 の実機 (S3・P4) だけ**。Linux sim・ネイティブ版・ブラウザ版には `GPIO` が無く、
 # NameError になる。同梱のアプリで `GPIO` を使うのは step_sensor (StickS3 の KEY1 を入力で読む) だけ。
 # ピンはピンの台帳 (`FmrbHw.pin_status`) に照らす: 空いているピンは最初に設定したアプリの物になり、
-# アプリが終わると返る。システムのピンは断られる。ただし**本体のボタン** (StickS3 の 11・12、
+# アプリが終わると返る。システムのピン (台帳に取られていない画面・SD・無線・音・システムの I2C
+# などのピンも、機種ごとの表で) は断られる。ただし**本体のボタン** (StickS3 の 11・12、
 # AtomS3R の 41、NARYA v3 の 6・7・8) は、入力として設定して読むことだけできる。
 # 注: tools/ti/test_sig/gpio.rbs は型エンジンの試験用の見本で、ファイル名が同じなので試験のときは
 # そちらが優先される。
@@ -52,7 +53,8 @@ class GPIO
   # `alt_function` (省略すると 0) は ALT 用で、この端末では効かない。
   #
   # 作るときにピンの台帳へ取る。**取れないときは IOError で、ピンの設定 (向き・プル) は変えない**:
-  # システムのピンは "GPIO n is used by the system"、ほかのアプリ (または I2C などの別の使い方) が
+  # システムのピン (`FmrbHw.pin_status` が `PIN_SYSTEM_EXCLUSIVE` のピン) は "GPIO n is used by the
+  # system"、ほかのアプリ (または I2C などの別の使い方) が
   # 持っているピンは "GPIO n is in use by another app or driver"。**本体のボタン**は台帳には取らず、
   # `IN` (プルつきも) でだけ開ける。`OUT` などで開くと "GPIO n is a system button: input only"。
   # 取ったピンはアプリが終わると台帳へ返る。
@@ -70,8 +72,9 @@ class GPIO
   #
   # The pin is claimed in the pin table.
   # **When it cannot be, IOError is raised and the pin's setup (direction, pull) is left alone**:
-  # a system pin is "GPIO n is used by the system", a pin
-  # another app (or another use such as I2C) holds is "GPIO n is in use by another app or driver".
+  # a system pin (one `FmrbHw.pin_status` gives as `PIN_SYSTEM_EXCLUSIVE`) is "GPIO n is used by
+  # the system", a pin another app (or another use such as I2C) holds is "GPIO n is in use by
+  # another app or driver".
   # **The board's buttons** are not claimed and open with `IN` (pulls too) only; `OUT` and the like
   # raise "GPIO n is a system button: input only". A claimed pin goes back to the table when the
   # app ends.
