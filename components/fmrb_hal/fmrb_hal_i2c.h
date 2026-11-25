@@ -18,7 +18,12 @@ extern "C" {
  * @param frequency SCL frequency in Hz
  * @param sda_pin SDA GPIO pin number
  * @param scl_pin SCL GPIO pin number
- * @return 0 on success, negative on error
+ * @return FMRB_I2C_OK (0) on success, otherwise the fmrb_err_t of the
+ *         refusal: FMRB_ERR_INVALID_PARAM (no such unit), FMRB_ERR_BUSY
+ *         (another task owns the unit), FMRB_ERR_NOT_SUPPORTED (the unit is
+ *         fixed to other pins on this board), FMRB_ERR_INVALID_STATE (the
+ *         driver that lends the unit is not up yet), FMRB_ERR_FAILED (the bus
+ *         did not start on these pins)
  */
 int fmrb_hal_i2c_init(int unit, uint32_t frequency, int8_t sda_pin, int8_t scl_pin);
 

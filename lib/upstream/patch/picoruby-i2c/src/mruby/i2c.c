@@ -189,12 +189,31 @@ mrb_i2c__init(mrb_state *mrb, mrb_value self)
   int unit_num = I2C_unit_name_to_unit_num(unit);
   i2c_status_t status = I2C_gpio_init(unit_num, (uint32_t)frequency, (uint8_t)sda_pin, (uint8_t)scl_pin);
   if (status < 0) {
-    const char *message;
+    // One message per cause, each naming the unit (and the pins where they
+    // are the question), so a failing I2C.new says what to change.
     switch (status) {
-      case I2C_ERROR_INVALID_UNIT: message = "Invalid I2C unit"; break;
-      default: message = "Unknow I2C error"; break;
+      case I2C_ERROR_INVALID_UNIT:
+        mrb_raisef(mrb, IOError, "Invalid I2C unit: %s", unit);
+        break;
+      case I2C_ERROR_BUSY:
+        mrb_raisef(mrb, IOError, "I2C unit %s is in use by another app", unit);
+        break;
+      case I2C_ERROR_FIXED_PINS:
+        mrb_raisef(mrb, IOError,
+                   "I2C unit %s is fixed to other pins on this board (not SDA %d / SCL %d)",
+                   unit, (int)sda_pin, (int)scl_pin);
+        break;
+      case I2C_ERROR_NOT_READY:
+        mrb_raisef(mrb, IOError, "I2C unit %s is not ready yet", unit);
+        break;
+      case I2C_ERROR_BUS_FAILED:
+        mrb_raisef(mrb, IOError, "I2C unit %s did not start on SDA %d / SCL %d",
+                   unit, (int)sda_pin, (int)scl_pin);
+        break;
+      default:
+        mrb_raisef(mrb, IOError, "I2C unit %s failed to start (error %d)", unit, (int)status);
+        break;
     }
-    mrb_raise(mrb, IOError, message);
   }
   return mrb_fixnum_value(unit_num);
 }
