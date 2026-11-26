@@ -419,3 +419,9 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   深いと見ている (仮説。どの関数のフレームが大きいかは測っていない)。`rshell.rb` 1 つを `require` するだけの小さなアプリでも
   余りは 944 B だった。上の「require したアプリだけに読み込む」を作るなら、同じ `require` の道を通るので、先にここを測って
   浅くする (Sandbox を使わずに今の VM で読み込む形など)。
+- (2026-11-27 ユーザとの相談) `require` は上流 (picoruby-require・picoruby-sandbox) の根本の設計に関わるので慎重に。親の案:
+  上流は触らず、Family mruby の gem の側に別の読み込み (仮に `FmrbApp.load_lib` か、アプリの VM の中だけで効く
+  `require` の差し替え) を試しに作り、同じ部品を両方で読んで比べる (スタック・プール・読み込みの時間・例外・
+  `$LOADED_FEATURES`・`.mrb`)。その前に、今の `require` のどこが深いかを測る (小さく済む直し方があるかで道が変わる)。
+  上流へ出すかは、比べた後に上流の関心 (mruby/c との共通の作り、Sandbox の役目) で決める。今の差分は
+  `lib/upstream/patch/picoruby-require` (表を const にしただけ) と `picoruby-sandbox` (依存の調整) で、作りは上流のまま。
