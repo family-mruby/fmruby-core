@@ -150,6 +150,30 @@ end
 class RangeError < StandardError
 end
 
+# 入出力や機器の口が使えない <<en>> An I/O stream or a device port cannot be used
+#
+# 閉じた `File` への読み書き、ほかのアプリが使っている・本体のピンなどで開けない
+# `UART`・`GPIO` など。
+# ```ruby
+# begin
+#   u = UART.new(unit: 2, txd_pin: 47)
+# rescue IOError => e
+#   Log.info(e.message)
+# end
+# ```
+# <<en>>
+# Reading or writing a closed `File`; a `UART` or `GPIO` that cannot be opened (another
+# app has it, a system pin ...).
+# ```ruby
+# begin
+#   u = UART.new(unit: 2, txd_pin: 47)
+# rescue IOError => e
+#   Log.info(e.message)
+# end
+# ```
+class IOError < StandardError
+end
+
 # 整数の 0 での割り算 <<en>> Integer division by zero
 #
 # Float の割り算は例外にならず、Infinity か NaN になる。
