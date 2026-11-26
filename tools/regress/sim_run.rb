@@ -86,6 +86,11 @@ module Regress
     #                  the VM pools, so ps shows 0 for it and its stack only)
     #   running_tools  the editor (default/editor, Spinel, the built-in app
     #                  people use most) and a game (flappy: BMP sprites)
+    #   running_transfer  the transfer app (headless, Asterism, a large pool;
+    #                  doc/remote_shell R2) as the kernel starts it; it
+    #                  connects only when the sim's /home (flash/home) has
+    #                  Asterism settings, and holds the remote shell only
+    #                  when receive.toml there turns it on (keep both out)
     #
     # Family BASIC is left out: a .bas app opens fullscreen and suspends the
     # others, and the debug server's ps does not list it.
@@ -109,6 +114,9 @@ module Regress
       ["running_tools", %w[
         default/editor
         /app/game/flappy.app.rb
+      ]],
+      ["running_transfer", %w[
+        /usr/share/transfer/transfer.app.rb
       ]]
     ].map { |pt, apps| [pt, apps.freeze].freeze }.freeze
     # The screen each family's sim comes up at. Modern's is the resolution

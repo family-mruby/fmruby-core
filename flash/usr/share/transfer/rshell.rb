@@ -1,5 +1,6 @@
-# The remote shell's machine side (doc/remote_shell R1): the commands that
-# look at the machine, run without a screen in the transfer app, which
+# The remote shell's machine side (doc/remote_shell R1, R2): the commands
+# that look at the machine and change it, run without a screen in the
+# transfer app, which
 # reads this file only while rshell_enabled = true in receive.toml (a
 # machine with it off holds none of it) and stays up for it as for its
 # other switches (TransferApp#rshell). Door#switch exposes the door as
@@ -15,12 +16,19 @@
 #                              "rshell"}, "commands" => {name => "read" |
 #                              "write"}, "out_max", "total_max", "idle_ms"}
 #   exec_read(id, line)     a command that only looks
-#   exec_write(id, line)    any command (the ones that change the machine
-#                           are not in this version: they answer so)
-#                           -> {"out", "code", "cwd", "more", "cut"}
+#   exec_write(id, line)    any command, the ones that change the machine
+#                           too
+#                           -> {"out", "code", "cwd", "more", "cut", "wait"}
 #   more(id, pos)           the output from pos on (pos: the "more" of the
 #                           last answer; the same pos may be asked again)
-#                           -> {"out", "more", "cut"}
+#                           -> {"out", "more", "cut", "wait", "code"}
+#
+# kill and open ask the kernel and answer at once that they asked, with
+# "wait" => true and "more" at the end of that text: the result (ended,
+# started, refused) comes as the text more returns from there, with "code"
+# (0 or 1) once it is in. Until then more answers "" with the same pos and
+# "wait" => true (ask again a little later); after WAIT_MS without a
+# result it says there was no answer.
 #   complete(id, line, pos) -> {"word", "items", "cut"}: what may stand for
 #                           the word under pos (pos and word count
 #                           characters; pos nil or past the end: the end)
@@ -28,8 +36,8 @@
 #                           of a file from pos (get, doc/remote_shell R4)
 #   close(id)               -> true
 #
-# Refusals (the switch off, a node not let in, another session, no such
-# session) are raised: the caller sees an error with the reason. A command
+# Refusals (the switch off, a connection that is not checked, a node not
+# let in, another session, no such session) are raised: the caller sees an error with the reason. A command
 # that fails answers with code 1 (2: a usage error, 126: a command that
 # changes the machine sent to exec_read, 127: no such command).
 #
@@ -40,11 +48,13 @@
 # once), the one File kept open between calls while the reads follow on.
 #
 # The secrets (FmrbFile.secret_path?, fmrb_secret_path.c: the WiFi password,
-# the API keys and /home/asterism with everything in it) are never read: a
-# path is folded (".", "..", "//") before it is looked at, and ls and the
-# completion name the folder but never show what is in it.
+# the API keys and /home/asterism with everything in it) are never read nor
+# written: a path is folded (".", "..", "//") before it is looked at, and ls
+# and the completion name the folder but never show what is in it. They are
+# neither the source nor the destination of cp and mv, and rm and mv refuse
+# a folder that holds one ("/", /home, /etc, /home/asterism).
 module RShell
-  PROTO = 1
+  PROTO = 2
   OUT_MAX = 8192
   TOTAL_MAX = 65536
   READ_MAX = 8192
@@ -56,6 +66,13 @@ module RShell
   # last lines
   CHUNK = 4096
   LINES_DEFAULT = 10
+  # cp copies this much at a time
+  COPY_CHUNK = 8192
+  # kill and open: how long the kernel's answer is waited for
+  WAIT_MS = 5000
+  # FmrbApp.ps's type of an app that may be ended
+  TYPE_USER = 2
+  APP_EXTS = [".app.rb", ".app.wasm"]
   # where df looks (the ones that are there)
   MOUNTS = ["/home", "/tmp", "/sd", "/mnt/sd"]
   READ = "read"
@@ -74,12 +91,12 @@ module RShell
     ["ps", READ, "ps", "the tasks"],
     ["ver", READ, "ver", "the versions of this machine"],
     ["help", READ, "help", "this list"],
-    ["cp", WRITE, "cp <src> <dst>", "copy a file"],
-    ["mv", WRITE, "mv <src> <dst>", "move or rename"],
-    ["rm", WRITE, "rm <path...>", "delete files or empty directories"],
-    ["mkdir", WRITE, "mkdir <dir>", "make a directory"],
-    ["kill", WRITE, "kill <pid>", "end an app"],
-    ["open", WRITE, "open <file>", "start an app, or open a file with its app"]
+    ["cp", WRITE, "cp [-f] <src> <dst>", "copy a file (-f: over one there)"],
+    ["mv", WRITE, "mv [-f] <src> <dst>", "move or rename (-f: over a file there)"],
+    ["rm", WRITE, "rm [-r] <path...>", "delete files, empty directories (-r: with all in them)"],
+    ["mkdir", WRITE, "mkdir <dir...>", "make a directory"],
+    ["kill", WRITE, "kill <pid|name>", "end an app"],
+    ["open", WRITE, "open <app>", "start an app (.app.rb, .app.wasm)"]
   ]
   OBJECT = "rshell"
   DOC = "the remote shell: commands a line at a time (doc/remote_shell)"
@@ -88,8 +105,8 @@ module RShell
   METHODS = {
     "open" => { args: [], doc: "a session: its id, where it is, the version and the commands (read / write)" },
     "exec_read" => { args: ["id", "line"], doc: "a command that only looks -> out, code, cwd, more, cut" },
-    "exec_write" => { args: ["id", "line"], doc: "any command (none that changes the machine yet)" },
-    "more" => { args: ["id", "pos"], doc: "the output from pos on (the more of the last answer)" },
+    "exec_write" => { args: ["id", "line"], doc: "any command, the ones that change the machine too" },
+    "more" => { args: ["id", "pos"], doc: "the output from pos on (the more of the last answer; wait: ask again)" },
     "complete" => { args: ["id", "line", "pos"], doc: "what may stand for the word under pos -> word, items, cut" },
     "read" => { args: ["id", "path", "pos", "len"], doc: "up to 8 KB of a file from pos -> data, pos, size" },
     "close" => { args: ["id"], doc: "ends the session" }
@@ -220,6 +237,42 @@ module RShell
     FmrbFile.secret_path?(path) == true
   end
 
+  # A folded path that holds a secret, or is one: "/", /home, /etc,
+  # /home/asterism and what is in it ("/flash/..." is "/" under another
+  # name). fmrb_path_contains_secret in fmrb_secret_path.c, which Ruby
+  # cannot call, with the same rule.
+  def self.holds_secret?(path)
+    p = path
+    p = p.byteslice(6, p.bytesize - 6).to_s if p == "/flash" || p.start_with?("/flash/")
+    p = "/" if p.empty?
+    return true if p == "/" || p == "/home" || p == "/etc"
+    secret?(p)
+  end
+
+  # The byte where a path's last "/" is (-1: none). Bytes, not characters:
+  # names may be UTF-8.
+  def self.last_slash(path)
+    i = path.bytesize - 1
+    while i >= 0
+      return i if path.getbyte(i) == 47
+      i -= 1
+    end
+    -1
+  end
+
+  # The last name of a folded path
+  def self.base(path)
+    i = last_slash(path)
+    i < 0 ? path : path.byteslice(i + 1, path.bytesize - i - 1).to_s
+  end
+
+  # The folder of a folded path ("/" for one at the top)
+  def self.dir(path)
+    i = last_slash(path)
+    return "/" if i <= 0
+    path.byteslice(0, i).to_s
+  end
+
   # ---- cutting the output ----
 
   # The bytes of s to send when at most n may go: n, or less so that the
@@ -282,9 +335,10 @@ module RShell
     attr_reader :id, :from, :cwd
     attr_accessor :at
 
-    def initialize(id, from, now)
+    def initialize(id, from, now, app = nil)
       @id = id
       @from = from
+      @app = app        # the TransferApp: kill and open ask the kernel through it
       @at = now
       @cwd = HOME
       @text = nil       # a command's output, at most TOTAL_MAX bytes
@@ -294,6 +348,8 @@ module RShell
       @rd = nil         # the File kept open while the reads follow on
       @rd_path = nil
       @rd_pos = 0
+      @wait = nil       # kill / open: {"what", "pid", "name", "path", "at", "stage"}
+      @code = nil       # ... and the code of its result once it is in
     end
 
     # ---- the calls ----
@@ -304,6 +360,8 @@ module RShell
       @text = nil
       @src = nil
       @cut = false
+      @wait = nil
+      @code = nil
       l = line.to_s
       return answer(error("the line is longer than #{LINE_MAX} bytes"), 2) if l.bytesize > LINE_MAX
       w = RShell.words(l)
@@ -312,11 +370,8 @@ module RShell
       args = w[1, w.size - 1] || []
       r = RShell.row(name)
       return answer("#{name}: no such command (help lists them)\n", 127) if r.nil?
-      if r[1] == WRITE
-        unless write
-          return answer("#{name}: changes the machine; not taken by exec_read (exec_write)\n", 126)
-        end
-        return answer("#{name}: not in this version of the remote shell\n", 127)
+      if r[1] == WRITE && !write
+        return answer("#{name}: changes the machine; not taken by exec_read (exec_write)\n", 126)
       end
       run(name, args)
     rescue => e
@@ -327,6 +382,7 @@ module RShell
     def more(pos)
       p = pos.to_i
       raise ArgumentError, "pos: #{pos.inspect} is not a position" if p < 0
+      waited(RShell.now_ms) if @wait
       if @src
         page = file_page(p)
       elsif @text
@@ -334,7 +390,39 @@ module RShell
       else
         page = ["", nil]
       end
-      { "out" => page[0], "more" => page[1], "cut" => @cut && page[1].nil? }
+      if @wait && page[1].nil?
+        # the kernel's answer is not in yet: ask again from the end
+        n = @text.to_s.bytesize
+        return { "out" => page[0], "more" => p > n ? p : n, "cut" => false, "wait" => true, "code" => nil }
+      end
+      { "out" => page[0], "more" => page[1], "cut" => @cut && page[1].nil?, "wait" => false, "code" => @code }
+    end
+
+    # A message from the kernel that the transfer app passes on: kill_result,
+    # spawn_result, spawn_failed, and "died" (an app ended, app/died).
+    def note(data)
+      w = @wait
+      return unless w && data.is_a?(Hash)
+      cmd = data["cmd"].to_s
+      if w["what"] == "kill"
+        return unless data["pid"] == w["pid"]
+        if cmd == "died"
+          done("kill: PID #{w['pid']} (#{w['name']}) ended\n", 0)
+        elsif cmd == "kill_result"
+          if data["ok"] == true
+            w["stage"] = "asked"
+          else
+            done("kill: PID #{w['pid']} (#{w['name']}): refused by the kernel (#{data['info']})\n", 1)
+          end
+        end
+      elsif w["what"] == "open"
+        return unless data["app"].to_s == w["path"]
+        if cmd == "spawn_result"
+          done("open: #{w['path']} started (PID #{data['pid']})\n", 0)
+        elsif cmd == "spawn_failed"
+          done("open: #{w['path']}: not started (#{data['reason']})\n", 1)
+        end
+      end
     end
 
     # What may stand for the word under pos.
@@ -358,7 +446,11 @@ module RShell
         start = last[1]
         first = a.size == 1
       end
-      items = first ? command_items(word) : path_items(word)
+      cmd = a.empty? ? "" : a[0][0]
+      items = if first then command_items(word)
+              elsif cmd == "kill" then app_items(word)
+              else path_items(word, cmd == "open")
+              end
       cut = items.size > COMPLETE_MAX
       items = items[0, COMPLETE_MAX] if cut
       { "word" => head.byteslice(0, start).to_s.length, "items" => items, "cut" => cut }
@@ -382,6 +474,7 @@ module RShell
       close_reader
       @text = nil
       @src = nil
+      @wait = nil
       nil
     end
 
@@ -401,6 +494,12 @@ module RShell
       when "ps" then cmd_ps
       when "ver" then cmd_ver
       when "help" then cmd_help
+      when "cp" then cmd_cp(args, false)
+      when "mv" then cmd_cp(args, true)
+      when "rm" then cmd_rm(args)
+      when "mkdir" then cmd_mkdir(args)
+      when "kill" then cmd_kill(args)
+      when "open" then cmd_open(args)
       else answer("#{name}: no such command\n", 127)
       end
     end
@@ -603,10 +702,318 @@ module RShell
       while i < TABLE.size
         r = TABLE[i]
         i += 1
-        note = r[1] == WRITE ? " (changes the machine; not in this version)" : ""
+        note = r[1] == WRITE ? " (changes the machine)" : ""
         out << "  #{r[2].ljust(20)} #{r[3]}#{note}\n"
       end
       answer(out, 0)
+    end
+
+    # ---- the commands that change the machine ----
+
+    # cp (move: mv) [-f] <src> <dst>: dst a folder puts it in there under
+    # its name. A file there is not written over without -f. A file is
+    # copied a COPY_CHUNK at a time; mv renames, or copies and deletes when
+    # the two are on different storage.
+    def cmd_cp(args, move)
+      name = move ? "mv" : "cp"
+      a = flags(args, "f")
+      return answer("usage: #{name} [-f] <src> <dst>\n", 2) if a.nil? || a[1].size != 2
+      force = !a[0].index("f").nil?
+      src = RShell.resolve(@cwd, a[1][0])
+      return answer(kept(name, src), 1) if RShell.secret?(src)
+      return answer("#{name}: #{src}: no such file or directory\n", 1) unless File.exist?(src)
+      dir = File.directory?(src)
+      return answer("#{name}: #{src}: a directory (cp copies files)\n", 1) if dir && !move
+      return answer(kept(name, src), 1) if move && RShell.holds_secret?(src)
+      return answer(read_only(name, src), 1) if move && FmrbFile.path_read_only?(src)
+      dst = RShell.resolve(@cwd, a[1][1])
+      dst = RShell.join(dst, RShell.base(src)) if File.directory?(dst)
+      return answer(kept(name, dst), 1) if RShell.secret?(dst) || RShell.holds_secret?(dst)
+      return answer("#{name}: #{src} and #{dst} are the same\n", 1) if src == dst
+      if dir && dst.start_with?("#{src}/")
+        return answer("#{name}: #{dst}: inside #{src}\n", 1)
+      end
+      unless File.directory?(RShell.dir(dst))
+        return answer("#{name}: #{RShell.dir(dst)}: no such directory\n", 1)
+      end
+      return answer(read_only(name, dst), 1) if FmrbFile.path_read_only?(dst)
+      if File.exist?(dst)
+        return answer("#{name}: #{dst}: a directory there\n", 1) if File.directory?(dst)
+        return answer("#{name}: #{dst}: already there (-f to write over it)\n", 1) unless force
+      end
+      if move
+        why = move_path(src, dst, dir)
+        return answer("mv: #{src} -> #{dst}: #{why}\n", 1) if why
+        Log.info("rshell: mv #{src} #{dst}")
+        return answer("mv: #{src} -> #{dst}\n", 0)
+      end
+      n = copy_file(src, dst)
+      return answer("cp: #{src} -> #{dst}: #{n}\n", 1) if n.is_a?(String)
+      Log.info("rshell: cp #{src} #{dst} (#{n} bytes)")
+      answer("cp: #{src} -> #{dst} (#{n} bytes)\n", 0)
+    end
+
+    # nil when it moved, else why not.
+    def move_path(src, dst, dir)
+      File.delete(dst) if File.exist?(dst)
+      ok = begin
+        File.rename(src, dst)
+        File.exist?(dst) && !File.exist?(src)
+      rescue StandardError
+        false
+      end
+      return nil if ok
+      return "cannot be renamed there" if dir
+      # another storage (/home and the SD card): copied, then deleted
+      n = copy_file(src, dst)
+      return n if n.is_a?(String)
+      File.delete(src)
+      File.exist?(src) ? "copied, but #{src} could not be deleted" : nil
+    rescue StandardError => e
+      e.message
+    end
+
+    # The bytes copied, or why not (a String); a part written is deleted.
+    def copy_file(src, dst)
+      close_reader
+      n = 0
+      i = nil
+      o = nil
+      begin
+        i = File.open(src, "r")
+        o = File.open(dst, "w")
+        while true
+          s = i.read(COPY_CHUNK)
+          break if s.nil? || s.empty?
+          o.write(s)
+          n += s.bytesize
+        end
+      rescue StandardError => e
+        why = e.message.to_s
+      end
+      o.close if o
+      i.close if i
+      if why
+        File.delete(dst) if File.exist?(dst)
+        return why.empty? ? "not written" : why
+      end
+      n
+    rescue StandardError => e
+      e.message.to_s
+    end
+
+    # rm [-r] <path...>: files, empty directories, and with -r a directory
+    # with all in it.
+    def cmd_rm(args)
+      a = flags(args, "rf")
+      return answer("usage: rm [-r] <path...>\n", 2) if a.nil? || a[1].empty?
+      deep = !a[0].index("r").nil?
+      out = ""
+      code = 0
+      i = 0
+      while i < a[1].size
+        p = RShell.resolve(@cwd, a[1][i])
+        i += 1
+        why = rm_one(p, deep)
+        if why
+          out << why
+          code = 1
+        end
+      end
+      answer(out, code)
+    end
+
+    # nil when p went, else the line saying why not.
+    def rm_one(p, deep)
+      return kept("rm", p) if RShell.holds_secret?(p)
+      return "rm: #{p}: no such file or directory\n" unless File.exist?(p)
+      return read_only("rm", p) if FmrbFile.path_read_only?(p)
+      unless File.directory?(p)
+        File.delete(p)
+        return File.exist?(p) ? "rm: #{p}: could not be deleted\n" : nil
+      end
+      names = FmrbFile.list(p)
+      return "rm: #{p}: cannot be read\n" if names.nil?
+      if !names.empty? && !deep
+        return "rm: #{p}: a directory with things in it (rm -r)\n"
+      end
+      left = rm_tree(p)
+      left ? "rm: #{left}: could not be deleted\n" : nil
+    rescue StandardError => e
+      "rm: #{p}: #{e.message}\n"
+    end
+
+    # Deletes dir with all in it, deepest first, without recursion (a stack
+    # of the directories still to empty). nil when it went, else the path
+    # that would not.
+    def rm_tree(dir)
+      stack = [dir]
+      while !stack.empty?
+        d = stack[stack.size - 1]
+        names = FmrbFile.list(d)
+        return d if names.nil?
+        sub = nil
+        i = 0
+        while i < names.size
+          n = names[i]
+          i += 1
+          if n.end_with?("/")
+            sub = RShell.join(d, n[0, n.length - 1])
+            break
+          end
+          f = RShell.join(d, n)
+          File.delete(f)
+          return f if File.exist?(f)
+        end
+        if sub
+          stack << sub
+          next
+        end
+        Dir.rmdir(d)
+        return d if File.exist?(d)
+        stack.pop
+      end
+      nil
+    end
+
+    def cmd_mkdir(args)
+      return answer("usage: mkdir <dir...>\n", 2) if args.empty?
+      out = ""
+      code = 0
+      i = 0
+      while i < args.size
+        p = RShell.resolve(@cwd, args[i])
+        i += 1
+        why = mkdir_one(p)
+        if why
+          out << why
+          code = 1
+        end
+      end
+      answer(out, code)
+    end
+
+    def mkdir_one(p)
+      return kept("mkdir", p) if RShell.secret?(p)
+      return "mkdir: #{p}: already there\n" if File.exist?(p)
+      return "mkdir: #{RShell.dir(p)}: no such directory\n" unless File.directory?(RShell.dir(p))
+      return read_only("mkdir", p) if FmrbFile.path_read_only?(p)
+      Dir.mkdir(p)
+      File.directory?(p) ? nil : "mkdir: #{p}: not made\n"
+    rescue StandardError => e
+      "mkdir: #{p}: #{e.message}\n"
+    end
+
+    # kill <pid|name>: the kernel asks the app to end (as the shell's kill
+    # does); the answer says it asked, the result comes with more.
+    def cmd_kill(args)
+      return answer("usage: kill <pid|name>\n", 2) if args.size != 1
+      t = args[0]
+      pr = nil
+      procs = FmrbApp.ps || []
+      num = int_arg(t)
+      found = 0
+      i = 0
+      while i < procs.size
+        q = procs[i]
+        i += 1
+        next if q[:state] == 0
+        if (num && q[:id] == num) || (num.nil? && q[:name].to_s == t)
+          pr = q
+          found += 1
+        end
+      end
+      return answer("kill: #{t}: no such app (ps lists them)\n", 1) if pr.nil?
+      return answer("kill: #{found} apps are named #{t}: give the PID (ps)\n", 1) if found > 1
+      nm = pr[:name].to_s
+      return answer("kill: #{nm}: the transfer app holds this session\n", 1) if pr[:id] == FmrbApp.pid
+      if pr[:type] != TYPE_USER
+        return answer("kill: #{nm}: a #{TYPE_NAMES[pr[:type]] || '?'} task, not ended from here\n", 1)
+      end
+      return answer("kill: the kernel cannot be reached\n", 1) unless ask_kernel({ "cmd" => "kill", "pid" => pr[:id] })
+      @wait = { "what" => "kill", "pid" => pr[:id], "name" => nm, "at" => RShell.now_ms, "stage" => "sent" }
+      waiting("kill: asked the kernel to end PID #{pr[:id]} (#{nm})\n")
+    end
+
+    # open <app>: the kernel starts it; the result comes with more.
+    def cmd_open(args)
+      return answer("usage: open <app>\n", 2) if args.size != 1
+      p = RShell.resolve(@cwd, args[0])
+      return answer(kept("open", p), 1) if RShell.secret?(p)
+      return answer("open: #{p}: no such file\n", 1) unless File.file?(p)
+      return answer("open: #{p}: not an app (#{APP_EXTS.join(', ')})\n", 1) unless app_path?(p)
+      return answer("open: the kernel cannot be reached\n", 1) unless ask_kernel({ "cmd" => "spawn", "app_name" => p })
+      @wait = { "what" => "open", "path" => p, "at" => RShell.now_ms, "stage" => "sent" }
+      waiting("open: asked the kernel to start #{p}\n")
+    end
+
+    def app_path?(p)
+      i = 0
+      while i < APP_EXTS.size
+        return true if p.end_with?(APP_EXTS[i])
+        i += 1
+      end
+      false
+    end
+
+    def ask_kernel(h)
+      return false unless @app
+      @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, h) ? true : false
+    end
+
+    # The first answer of kill / open: the text, more at its end, wait.
+    def waiting(text)
+      @text = text
+      @src = nil
+      Log.info("rshell: #{text.strip}")
+      { "out" => text, "code" => 0, "cwd" => @cwd, "more" => text.bytesize, "cut" => false, "wait" => true }
+    end
+
+    # WAIT_MS gone without the kernel's answer
+    def waited(now)
+      w = @wait
+      return if now - w["at"] < WAIT_MS
+      s = WAIT_MS / 1000
+      if w["what"] == "kill" && w["stage"] == "asked"
+        done("kill: PID #{w['pid']} (#{w['name']}) was asked to end and has not in #{s} s (ps)\n", 1)
+      else
+        done("#{w['what']}: no answer from the kernel in #{s} s (ps)\n", 1)
+      end
+    end
+
+    def done(text, code)
+      @text = "#{@text}#{text}"
+      @wait = nil
+      @code = code
+      Log.info("rshell: #{text.strip}")
+    end
+
+    # [the flags given, the other words] (letters: the flags taken), nil
+    # for another flag.
+    def flags(args, letters)
+      got = ""
+      rest = []
+      i = 0
+      while i < args.size
+        a = args[i]
+        i += 1
+        if a.start_with?("-") && a.bytesize > 1 && rest.empty?
+          j = 1
+          while j < a.bytesize
+            c = a.byteslice(j, 1)
+            return nil if letters.index(c).nil?
+            got << c
+            j += 1
+          end
+        else
+          rest << a
+        end
+      end
+      [got, rest]
+    end
+
+    def read_only(name, p)
+      "#{name}: #{p}: read-only here\n"
     end
 
     # ---- inside ----
@@ -802,9 +1209,26 @@ module RShell
       out.sort
     end
 
+    # The running apps that may be ended (kill), by name.
+    def app_items(word)
+      out = []
+      procs = FmrbApp.ps || []
+      me = FmrbApp.pid
+      i = 0
+      while i < procs.size
+        q = procs[i]
+        i += 1
+        next if q[:state] == 0 || q[:type] != TYPE_USER || q[:id] == me
+        n = RShell.escape(q[:name].to_s)
+        out << n if n.start_with?(word) && !out.include?(n)
+      end
+      out.sort
+    end
+
     # The names that go on from word (as it was typed, quotes and
-    # backslashes read), each as the whole word to put in its place.
-    def path_items(word)
+    # backslashes read), each as the whole word to put in its place. apps:
+    # only folders and apps (open).
+    def path_items(word, apps = false)
       cut = -1
       j = 0
       while j < word.bytesize
@@ -822,7 +1246,9 @@ module RShell
       while i < names.size
         nm = names[i]
         i += 1
-        out << RShell.escape(dirpart + nm) if nm.start_with?(base)
+        next unless nm.start_with?(base)
+        next if apps && !nm.end_with?("/") && !app_path?(nm)
+        out << RShell.escape(dirpart + nm)
       end
       out.sort
     end
@@ -841,6 +1267,11 @@ module RShell
       @next_id = 1
     end
 
+    # A message from the kernel for the session's kill / open (TransferApp).
+    def note(data)
+      @s.note(data) if @s
+    end
+
     attr_reader :s
 
     def open(from: nil)
@@ -855,9 +1286,10 @@ module RShell
         Log.info("rshell: session #{cur.id} from #{cur.from} replaced")
         cur.close
       end
-      @s = Session.new(@next_id, from.to_s, now)
+      @s = Session.new(@next_id, from.to_s, now, @app)
       @next_id += 1
       Log.info("rshell: session #{@s.id} opened from #{from}")
+      mark(true) unless cur
       { "id" => @s.id, "cwd" => @s.cwd,
         "version" => { "os" => FmrbConst::OS_VERSION, "board" => FmrbConst::BOARD, "rshell" => PROTO },
         "commands" => RShell.commands, "out_max" => OUT_MAX, "total_max" => TOTAL_MAX, "idle_ms" => IDLE_MS }
@@ -922,6 +1354,15 @@ module RShell
       Log.info("rshell: session #{s.id} from #{s.from} ends (#{why})")
       s.close
       @s = nil
+      mark(false)
+    end
+
+    # The mark on the desktop's menu bar while a session is open: the kernel
+    # passes it on (rshell_state).
+    def mark(on)
+      @app.tell_kernel({ "cmd" => "rshell_state", "on" => on }) if @app
+    rescue StandardError => e
+      Log.warn("rshell: #{e.message}")
     end
 
     # ---- inside ----
@@ -930,13 +1371,25 @@ module RShell
       @app ? @app.node_name : "this machine"
     end
 
-    # The switch, and the caller in the rshell kind's lists (by hand, from
-    # the console), read on every call. Raises the reason.
+    def certified?
+      @app ? @app.certified? == true : false
+    end
+
+    # The switch, the connection, and the caller in the rshell kind's lists
+    # (by hand, from the console), read on every call. Raises the reason.
+    # The connection must be a checked one (TransferApp#certified?: a tls/
+    # router, or the console's door in the browser build), where the caller's
+    # name is its certificate's; rshell_uncertified = true by hand takes any
+    # (the sim, development checks).
     def let_in(from)
       p = ::FmrbReceiveConf.parts
       unless ::FmrbReceiveConf.rshell_enabled?(p)
         drop("the remote shell was turned off")
         raise ArgumentError, "#{node} lets no remote shell in (rshell_enabled is off there)"
+      end
+      unless certified? || ::FmrbReceiveConf.rshell_uncertified?(p)
+        raise ArgumentError, "#{node} takes the remote shell only over a checked connection (a tls/ router with " \
+                             "certificates, or the console's door in the browser build); this one is not"
       end
       h = ::FmrbReceiveConf.hand(p)
       m = ::FmrbReceiveConf.managed(p)

@@ -208,6 +208,9 @@ class FmrbKernelImpl < FmrbKernel
     @xfer_pid = -1
     @xfer_ready = false
     @xfer_reason = ""
+    # The remote shell has a session open (doc/remote_shell): the desktop's
+    # mark, taken down when the transfer app ends without saying so.
+    @rshell_open = false
 
     # Periodic cleanup tracking
     @tick_count = 0
@@ -355,13 +358,16 @@ class FmrbKernelImpl < FmrbKernel
       else
         Log.error("Failed to spawn app: #{app_name}")
         # Let the desktop show an error dialog to the user
-        if @desktop_pid
+        if @desktop_pid || pid == @xfer_pid
           reason = spawn_error_reason
           # The code goes too: the desktop words the reason in the user's
           # language from it (ErrorDialogMixin#spawn_failed_text).
           data = MessagePack.pack({"cmd" => "spawn_failed", "app" => app_name,
                                    "reason" => reason, "code" => @last_spawn_err})
-          _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+          _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, data) if @desktop_pid
+          # The transfer app hears it too: the remote shell's open waits for
+          # the result (doc/remote_shell).
+          _send_raw_message(pid, FmrbConst::MSG_TYPE_APP_CONTROL, data) if pid == @xfer_pid
         end
       end
     when "spawned"
@@ -476,6 +482,8 @@ class FmrbKernelImpl < FmrbKernel
       note_transfer_ready(pid, data["node"].to_s)
     when "transfer_down"
       note_transfer_down(pid, data["reason"].to_s)
+    when "rshell_state"
+      note_rshell_state(pid, data["on"] ? true : false)
     when "move_checked"
       note_move_checked(pid, data["ok"] ? true : false, data["reason"].to_s, data["missing"].to_s)
     when "move_sent"
@@ -1152,6 +1160,24 @@ class FmrbKernelImpl < FmrbKernel
     nil
   end
 
+  # The remote shell's session opened or ended (doc/remote_shell): the
+  # desktop shows its mark on the menu bar while one is open.
+  def note_rshell_state(pid, on)
+    adopt_transfer(pid) if @xfer_pid < 0
+    return nil if pid != @xfer_pid
+    tell_rshell_state(on)
+    nil
+  end
+
+  def tell_rshell_state(on)
+    @rshell_open = on
+    Log.info("Remote shell session #{on ? 'open' : 'closed'}")
+    return nil unless @desktop_pid
+    fwd = { "cmd" => "rshell_state", "on" => on }
+    _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, MessagePack.pack(fwd))
+    nil
+  end
+
   def note_transfer_down(pid, reason)
     return nil if pid != @xfer_pid
     @xfer_ready = false
@@ -1261,6 +1287,7 @@ class FmrbKernelImpl < FmrbKernel
       @xfer_pid = -1
       @xfer_ready = false
       @xfer_reason = "the transfer app ended"
+      tell_rshell_state(false) if @rshell_open
       st = @mv_stage
       if @mv_pid >= 0 && st != MV_NONE && st != MV_WRITE && st != MV_SEND
         move_over(false, "the transfer app ended", -1, "")

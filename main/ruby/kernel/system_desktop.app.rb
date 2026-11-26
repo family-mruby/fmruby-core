@@ -350,6 +350,10 @@ class SystemDesktopApp < FmrbApp
     # appears after you have already found another way in is no use.
     @kana_mode = 0
 
+    # A remote shell session is open (doc/remote_shell): its mark is on the
+    # menu bar, left of the kana cell, and the cells left of it move over.
+    @rshell_on = false
+
     # Boot animation state
     @boot_anim_state = :init  # :init -> :revealing -> :done (or :skip -> :done)
     @boot_t0 = 0       # Machine.board_millis at the first tick (0 = not yet)
@@ -1049,6 +1053,7 @@ class SystemDesktopApp < FmrbApp
     draw_battery
     draw_ble_icon
     draw_kana_icon
+    draw_rshell_icon
     draw_sound_icon
     draw_power_icon
     @gfx.draw_line(0, MENU_BAR_HEIGHT - 1, @window_width, MENU_BAR_HEIGHT - 1, FmrbConst::THEME_BORDER)
@@ -1286,7 +1291,8 @@ class SystemDesktopApp < FmrbApp
     # so the cell would sit there reading "---KB" for ever. An empty slot is
     # better than a broken-looking one.
     return if ON_WEB
-    x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W - 4 - MEMINFO_W
+    x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W - 4 - MEMINFO_W -
+        rshell_pad
     paint_bar(x, MEMINFO_W)
     @gfx.draw_free_iram(x, 2, FmrbGfx::WHITE, -1)
   end
@@ -1302,7 +1308,7 @@ class SystemDesktopApp < FmrbApp
     level = FmrbApp.battery_level
     return unless level
     x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W - 4 -
-        MEMINFO_W - 4 - BATTERY_W
+        MEMINFO_W - 4 - BATTERY_W - rshell_pad
     paint_bar(x, BATTERY_W)
     @gfx.draw_rect(x, 3, 9, 6, FmrbGfx::WHITE)
     @gfx.fill_rect(x + 9, 5, 1, 2, FmrbGfx::WHITE)
@@ -1370,6 +1376,24 @@ class SystemDesktopApp < FmrbApp
     # clickable control in either mode. The glyph alone carries the mode.
     @gfx.fill_rect(x, 1, KANA_CELL_W, 10, FmrbGfx::WHITE)
     @gfx.draw_text(x + 1, 2, KANA_LABELS[@kana_mode] || "A", MENU_BG, FmrbGfx::WHITE, mixed: true)
+  end
+
+  # The remote shell's mark (doc/remote_shell), left of the kana cell, only
+  # while a session is open: "RS" on the theme's highlight. Not clickable
+  # (ending a session from here is not decided). Without it the bar is as it
+  # was; with it the RAM readout and the battery move left by rshell_pad,
+  # and the taskbar stops that much sooner. The cell is 14 px and 4 px of
+  # gap (literals, not a constant: on Spinel a constant is a static in
+  # internal RAM).
+  def rshell_pad
+    @rshell_on ? 18 : 0
+  end
+
+  def draw_rshell_icon
+    return unless @rshell_on
+    x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W - 4 - 14
+    @gfx.fill_rect(x, 1, 14, 10, FmrbConst::THEME_HIGHLIGHT)
+    @gfx.draw_text(x + 1, 2, "RS", FmrbGfx::WHITE, FmrbConst::THEME_HIGHLIGHT)
   end
 
   # Click the indicator to step off -> hiragana -> katakana -> off ("漢", the
@@ -2051,6 +2075,14 @@ class SystemDesktopApp < FmrbApp
       # here put the menu bar and taskbar on screen before the logo appeared.
       rebuilt = update_taskbar_apps
       draw_foreground if rebuilt && @boot_anim_state == :done && !@direct_boot
+    elsif msg["cmd"] == "rshell_state"
+      # A remote shell session opened or ended (the transfer app, through
+      # the kernel): the mark goes up or down and the bar is drawn again.
+      on = msg["on"] == true
+      if on != @rshell_on
+        @rshell_on = on
+        draw_foreground if @boot_anim_state == :done && !@direct_boot
+      end
     elsif msg["cmd"] == "apps_installed"
       # An app came over Asterism and was placed in /app/usr (doc/wasm_apps
       # W6): the launcher reads /app again, now when it is open, else the

@@ -288,5 +288,28 @@ check("a list without rshell (an older console) writes an empty one",
 check("read back empty", C.senders("rshell")["managed"], [])
 both_rshell("the switch is kept", true)
 
+puts "the remote shell switch written (R2)"
+reset(user: "enabled = true\n\n[file]\nfrom = [\"pc\"]\n")
+check("rshell on: written", C.set_rshell_enabled(true), true)
+both_rshell("after set_rshell_enabled(true)", true)
+check("receiving kept", C.enabled?, true)
+check("rshell on again: not written", C.set_rshell_enabled(true), false)
+check("view", [C.view["rshell_enabled"], C.view["rshell"]["hand"]], [true, nil])
+check("rshell off: written", C.set_rshell_enabled(false), true)
+both_rshell("after set_rshell_enabled(false)", false)
+check("the line says false", File.read(USER).include?("rshell_enabled = false"), true)
+raises("allow rshell: not from areceive", "not a kind: rshell") { C.allow("rshell", "pc") }
+check("allow rshell from the Receiving app", C.allow("rshell", "pc", true), true)
+check("its list", [C.senders("rshell")["hand"], C.view["rshell"]["hand"]], [["pc"], ["pc"]])
+check("the file list kept", C.senders("file")["hand"], ["pc"])
+check("deny rshell", C.deny("rshell", "pc", true), true)
+check("its list empty", C.view["rshell"]["hand"], [])
+check("areceive's lines do not name rshell", C.lines.any? { |l| l.start_with?("rshell") }, false)
+check("rshell_uncertified: no line", C.rshell_uncertified?, false)
+reset(user: "rshell_enabled = true\nrshell_uncertified = true\n")
+check("rshell_uncertified = true", C.rshell_uncertified?, true)
+reset(user: "rshell_enabled = true\nrshell_uncertified = \"yes\"\n")
+check("rshell_uncertified not true", C.rshell_uncertified?, false)
+
 puts(Check.failed.zero? ? "receive_conf: all ok" : "receive_conf: #{Check.failed} FAILED")
 exit(Check.failed.zero? ? 0 : 1)

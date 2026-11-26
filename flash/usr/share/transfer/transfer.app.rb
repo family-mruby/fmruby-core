@@ -202,7 +202,10 @@
 #                            are checked ones
 #
 # The remote shell (rshell_enabled, doc/remote_shell): rshell.rb, read only
-# while it is on, keeps the app up as the other switches do.
+# while it is on, keeps the app up as the other switches do. Its kill and
+# open hear the kernel's answers (kill_result, spawn_result, spawn_failed,
+# app/died) through on_control; while a session is open the desktop shows
+# a mark, which the kernel is told of (rshell_state).
 #
 # One request at a time, with the kernel's, in the order they come.
 #
@@ -358,6 +361,8 @@ class TransferApp < FmrbApp
   def on_control(data)
     cmd = data["cmd"].to_s
     asked_spawned(data) if cmd == "spawn_result"
+    # the kernel's answers to the remote shell's kill and open
+    @rshell.note(data) if @rshell && (cmd == "kill_result" || cmd == "spawn_result" || cmd == "spawn_failed")
     @jobs << data if cmd == "move_check" || cmd == "move_send" || cmd == "move_cancel"
     stop_move(data["to"].to_s) if cmd == "move_stop"
     if cmd == "peers_to"
@@ -454,6 +459,7 @@ class TransferApp < FmrbApp
     return unless d.is_a?(Hash)
     @asked.delete(d["pid"])
     @inbox.ask_gone(d["pid"])
+    @rshell.note({ "cmd" => "died", "pid" => d["pid"] }) if @rshell
   end
 
   # ---- installing an app here: the owner's question (doc/wasm_apps W6) ----
