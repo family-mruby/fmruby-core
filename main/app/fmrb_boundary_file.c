@@ -23,6 +23,7 @@
 #include "fmrb_app.h"
 #include "fmrb_err.h"
 #include "fmrb_hal.h"
+#include "fmrb_secret_path.h"
 #include "fmrb_tmpfs.h"
 
 #define ERR_FAILED FMRB_BOUNDARY_ERR_FAILED
@@ -220,6 +221,19 @@ int32_t fmrb_bnd_file_path_read_only(const char *path, int32_t path_len)
         return ERR_ARG;
     }
     return fmrb_hal_file_entry_is_read_only(p) ? 1 : 0;
+}
+
+// Kept from remote reading by the rules devctl and the BLE console share
+// (fmrb_secret_path.c): the WiFi password, the API keys and everything in
+// /home/asterism (the directory and its config.toml too). The path is taken
+// as the file HAL resolves it ("/flash/..." is the root; ".." is a secret).
+int32_t fmrb_bnd_file_secret_path(const char *path, int32_t path_len)
+{
+    char p[FMRB_MAX_PATH_LEN];
+    if (!path_copy(p, path, path_len)) {
+        return ERR_ARG;
+    }
+    return fmrb_path_classify(p) == FMRB_PATH_PLAIN ? 0 : 1;
 }
 
 // /tmp from the RAM filesystem's own count (statfs there would answer for

@@ -263,6 +263,14 @@ module FmrbFile
   def self.mkdir(p) = (File.directory?(p) || (Dir.mkdir(p) && true))
   def self.list_raw(d) = (File.directory?(d) ? Dir.children(d).map { |n| File.directory?(File.join(d, n)) ? "#{n}/\n" : "#{n}\n" }.join : nil)
   def self.path_read_only?(_p) = false
+  # fmrb_secret_path.c's rule, short: /home/asterism and the two password files
+  def self.secret_path?(p)
+    s = p.to_s.split("/").reject { |x| x.empty? || x == "." }
+    s.shift if s[0] == "flash"
+    return true if s.include?("..")
+    return true if s[0] == "home" && s[1] == "asterism"
+    s.size == 2 && %w[home etc].include?(s[0]) && (s[1].start_with?("wifi.toml") || s[1].start_with?("secrets.toml"))
+  end
   def self.free_bytes(_p) = 1_000_000
 end
 
