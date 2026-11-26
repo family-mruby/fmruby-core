@@ -16,6 +16,9 @@
 #include "fmrb_log.h"
 #include "fmrb_app.h"
 #include "fmrb_app_uart.h"
+#if !defined(FMRB_PLATFORM_HOSTED)
+#include "fmrb_midi_serial.h"
+#endif
 #include "fmrb_mem.h"
 /* The Spinel runtime component is in every build (the sample gems always use
    it), so the header is too: the gem release on app exit needs it whatever
@@ -1802,6 +1805,12 @@ cleanup:
 
     // The app's UARTs (every target: the sim has a stand-in for them).
     fmrb_uart_release_owner((void *)fmrb_task_get_current());
+#if !defined(FMRB_PLATFORM_HOSTED)
+    // The serial MIDI output, when this app was the last that had asked for
+    // it: its UART and pin go back (after the VM, whose MIDI gem ended the
+    // app's notes on its way out).
+    fmrb_midi_serial_release_owner((void *)fmrb_task_get_current(), (uint8_t)ctx->app_id);
+#endif
 #ifndef CONFIG_IDF_TARGET_LINUX
     // Release HW resources (I2C, RMT, GPIO pins)
     hw_proxy_release_resources((hw_proxy_task_handle_t)fmrb_task_get_current());
@@ -2450,6 +2459,9 @@ static void force_release_resources(fmrb_app_task_context_t* ctx,
     // The handle is only a lookup key in the resource tables, so releasing
     // after the delete is fine and it is the only order available here.
     fmrb_uart_release_owner((void *)task);
+#if !defined(FMRB_PLATFORM_HOSTED)
+    fmrb_midi_serial_release_owner((void *)task, (uint8_t)ctx->app_id);
+#endif
 #ifndef CONFIG_IDF_TARGET_LINUX
     hw_proxy_release_resources((hw_proxy_task_handle_t)task);
 #endif

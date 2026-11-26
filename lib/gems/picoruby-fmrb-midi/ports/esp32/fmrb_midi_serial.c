@@ -7,7 +7,10 @@
  */
 
 #include "fmrb_midi_serial.h"
+#include "fmrb_midi_sched.h"
 #include "fmrb_hal_uart.h"
+#include "fmrb_attr.h"
+#include "fmrb_limits.h"
 #include "fmrb_log.h"
 
 #include "freertos/FreeRTOS.h"
@@ -41,6 +44,50 @@ static const char *TAG = "midi_serial";
 static fmrb_uart_handle_t s_uart = NULL;
 static SemaphoreHandle_t s_lock = NULL;
 static fmrb_midi_serial_config_t s_config;
+/* The app tasks that opened the port while it was open. The port is closed
+ * when the last of them ends (fmrb_midi_serial_release_owner), so the UART
+ * and its pin are free for an app's UART again (doc/app_uart plan 7.3).
+ * In PSRAM: only app tasks and the kernel's clean-up touch it. */
+FMRB_EXT_RAM_BSS_ATTR static void *s_owners[FMRB_MAX_APPS];
+
+/* Under s_lock. */
+static void add_owner(void *owner)
+{
+    int free_slot = -1;
+    for (int i = 0; i < FMRB_MAX_APPS; i++) {
+        if (s_owners[i] == owner) {
+            return;
+        }
+        if (s_owners[i] == NULL && free_slot < 0) {
+            free_slot = i;
+        }
+    }
+    if (free_slot >= 0) {
+        s_owners[free_slot] = owner;
+    }
+}
+
+/* Under s_lock. */
+static int find_owner(void *owner)
+{
+    for (int i = 0; i < FMRB_MAX_APPS; i++) {
+        if (s_owners[i] == owner) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* Under s_lock. */
+static bool has_owner(void)
+{
+    for (int i = 0; i < FMRB_MAX_APPS; i++) {
+        if (s_owners[i] != NULL) {
+            return true;
+        }
+    }
+    return false;
+}
 
 static bool ensure_lock(void)
 {
@@ -126,9 +173,10 @@ fmrb_err_t fmrb_midi_serial_open(const fmrb_midi_serial_config_t *config)
 
     xSemaphoreTake(s_lock, portMAX_DELAY);
 
-    /* Already open: share it. Apps come and go; the port belongs to the
-     * system, not to whoever asked first. */
+    /* Already open: share it. Apps come and go; the port stays open while
+     * any app that asked for it is running. */
     if (s_uart != NULL) {
+        add_owner((void *)xTaskGetCurrentTaskHandle());
         xSemaphoreGive(s_lock);
         return FMRB_OK;
     }
@@ -171,11 +219,27 @@ fmrb_err_t fmrb_midi_serial_open(const fmrb_midi_serial_config_t *config)
     }
 
     s_config = cfg;
+    memset(s_owners, 0, sizeof(s_owners));
+    add_owner((void *)xTaskGetCurrentTaskHandle());
     FMRB_LOGI(TAG, "MIDI serial out ready (path=%s uart=%d tx=%d baud=%lu)",
               cfg.device_path ? cfg.device_path : "-", cfg.uart_num, cfg.tx_pin,
               (unsigned long)cfg.baud_rate);
     xSemaphoreGive(s_lock);
     return FMRB_OK;
+}
+
+/* Under s_lock (or for an ended app that died holding it). */
+static void close_port(void)
+{
+    if (s_uart != NULL) {
+        fmrb_hal_uart_close(s_uart);
+        s_uart = NULL;
+#ifndef CONFIG_IDF_TARGET_LINUX
+        release_pins(&s_config);
+#endif
+        FMRB_LOGI(TAG, "MIDI serial out closed");
+    }
+    memset(s_owners, 0, sizeof(s_owners));
 }
 
 fmrb_err_t fmrb_midi_serial_close(void)
@@ -185,16 +249,46 @@ fmrb_err_t fmrb_midi_serial_close(void)
     }
 
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    if (s_uart != NULL) {
-        fmrb_hal_uart_close(s_uart);
-        s_uart = NULL;
-#ifndef CONFIG_IDF_TARGET_LINUX
-        release_pins(&s_config);
-#endif
-        FMRB_LOGI(TAG, "MIDI serial out closed");
-    }
+    close_port();
     xSemaphoreGive(s_lock);
     return FMRB_OK;
+}
+
+void fmrb_midi_serial_release_owner(void *owner, uint8_t app_id)
+{
+    if (owner == NULL || s_lock == NULL) {
+        return;  // the port has not been opened since the machine started
+    }
+    // A forced kill can leave the lock with the task that died holding it
+    // (in the middle of a write): go on without it, as the UART's clean-up
+    // does. Nothing else is writing for an app that is gone.
+    bool locked = xSemaphoreTake(s_lock, pdMS_TO_TICKS(200)) == pdTRUE;
+    bool held = s_uart != NULL && find_owner(owner) >= 0;
+    if (locked) {
+        xSemaphoreGive(s_lock);
+    }
+    if (!held) {
+        return;
+    }
+    // What the app still has queued goes first, while the port is open: the
+    // queue ends the notes it was due to end (all notes off on its channels).
+    // A VM that closed normally did this in the gem's final hook and this
+    // finds nothing; a killed app's VM never ran it. It writes, so the lock
+    // is not held here.
+    if (locked) {
+        fmrb_midi_sched_clear_pid(app_id);
+        locked = xSemaphoreTake(s_lock, pdMS_TO_TICKS(200)) == pdTRUE;
+    }
+    int i = find_owner(owner);
+    if (i >= 0) {
+        s_owners[i] = NULL;
+        if (!has_owner()) {
+            close_port();
+        }
+    }
+    if (locked) {
+        xSemaphoreGive(s_lock);
+    }
 }
 
 bool fmrb_midi_serial_is_open(void)

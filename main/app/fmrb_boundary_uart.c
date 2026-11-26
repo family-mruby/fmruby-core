@@ -140,8 +140,9 @@ static void close_slot(int unit, uart_slot_t *s, int keep_a, int keep_b)
 }
 
 #if !defined(FMRB_PLATFORM_HOSTED)
-// The serial MIDI output keeps its unit and its TX pin from the first open
-// until the machine restarts (fmrb_midi_serial.c; doc/app_uart plan 7.3).
+// The serial MIDI output keeps its unit and its TX pin while an app that
+// asked for it runs; the last one ending gives them back
+// (fmrb_midi_serial_release_owner; doc/app_uart plan 7.3).
 static bool midi_holds_unit(int32_t unit)
 {
     if (unit != MIDI_UNIT || !fmrb_midi_serial_is_open()) {
