@@ -1,6 +1,6 @@
 # Console から端末に入るリモートシェル
 
-> 状態: 進行中 | 更新: 2026-11-26 | asterism-console の Terminal から、Asterism 越しに Family mruby の端末 (Tab5・P4-Nano・ブラウザ版) に入り、行ごとのコマンドでファイルの確認・出し入れとアプリの一覧・起動・停止をする。遠くにいる利用者のサポート用。段は R0〜R6、R0〜R2 済 (端末の側: 見る・変えるコマンド、補完、スイッチ、印。sim で確認、ESP32 のビルドまで)・R3 (console) に着手
+> 状態: 進行中 | 更新: 2026-11-26 | asterism-console の Terminal から、Asterism 越しに Family mruby の端末 (Tab5・P4-Nano・ブラウザ版) に入り、行ごとのコマンドでファイルの確認・出し入れとアプリの一覧・起動・停止をする。遠くにいる利用者のサポート用。段は R0〜R6、R0〜R3 済 (端末の側と console の側。sim・ネイティブ版と本物どうしで通した)。次は R4 (get・put)、未着手
 
 ## 1. 目的
 
@@ -80,7 +80,7 @@
 | R0 (済) | **調査**: (a) 端末の側をどこに置くか。新しい画面なしのアプリにするか、既に Asterism のセッションを持つ転送のアプリに足すか (Asterism 入りの VM は大きい方のプールを使う。Tab5・P4-Nano で麻雀などと同時に動かせるかを `regress:run` の数で見る)。(b) シェルのコマンドを画面なしで動かす切り出し方 (`ShellCommandsMixin` を分けるか、要るコマンドだけ小さく書き直すか)。(c) 1 回の呼び出しで運べる大きさと、長い出力の分け方。(d) bridge に「入っている間は行を端末へ渡す」状態を持たせる方法。(e) 端末から console へファイルを送る向き (`get`) が今の転送でそのまま通るか。(f) ブラウザ版で同じ物が動くか。結果を report/r0.md に書き、仮決めを決定に変える | 済 (report/r0.md) |
 | R1 (済) | **端末: 見るコマンド**。画面なしの実行部と `rshell` のオブジェクト (`open`・`exec`・`more`・`complete`・`close`)、見るコマンド、鍵を読ませない線引き。sim で asterism の CLI (`call`) から呼んで確認する。ホストの試験を足す | 済 (report/r1.md。sim で確認、ESP32 は R2 の検収で) |
 | R2 (済) | **端末: 変えるコマンドと許可**。`cp`・`mv`・`rm`・`mkdir`・`kill`・`open`、Config の「リモートシェル」(既定は切)、入ってよいノードの確認、入られている間の印、切のときは常駐しないこと。sig と F1 のヘルプは、アプリが呼ぶ API を足したときだけ | 済 (report/r2.md。sim で確認、ESP32 の S3・P4 のビルドが通る、内蔵 RAM の増分なし) |
-| R3 | **console: Terminal から入る**。`remote <node>`・プロンプト・`exit`・Tab の補完 (端末の `complete` を呼ぶ)・履歴、権限の 2 段、Call log、入れない理由 (切・許されていない・端末がいない) を分かる言葉で返す。入れる端末の一覧。console の試験 | 未着手 |
+| R3 (済) | **console: Terminal から入る**。`remote <node>`・プロンプト・`exit`・Tab の補完 (端末の `complete` を呼ぶ)・履歴、権限の 2 段、Call log、入れない理由 (切・許されていない・端末がいない) を分かる言葉で返す。入れる端末の一覧。console の試験 | 済 (asterism-console のブランチ remote-shell、同 docs/remote_shell_r3.md。本物の端末との通しは report/r3.md: sim と、TLS のルータ + ネイティブ版) |
 | R4 | **ファイルの出し入れ**。`get`・`put` (ブラウザとの間)、大きいファイルの進み具合の表示、途中で切れたときの続き。Files ページから「端末の中を見て選ぶ」画面を足すかは、ここで決める (未確定 2) | 未着手 |
 | R5 | **通しと公開**。sim・ブラウザ版・ESP32 (Tab5・P4-Nano) で通す。重い回帰 (`regress:run`・`regress:size`・`regress:screens`) をここで 1 回。console の版を上げて VPS を更新、ブラウザ版の配置、文書 (console の docs、端末の利用者向けの説明) | 未着手 |
 | R6 | **構想 (この計画では作らない)**: 文字ごとの対話 (less・irb)、任意の Ruby の実行 (`run`) を別の許可で、Family mruby の端末から別の端末へ入るアプリ、CRuby の Linux GUI アプリ、落ちたときのログを端末の中に残して取れるようにする | 構想 |
@@ -141,6 +141,13 @@ S3 の端末 (NARYA v3・StickS3・AtomS3R) はこの計画の対象にしない
 20. (R2 の後) `kill`・`open` の答えは `"wait" => true` で、結果は `more` で取る (5 秒届かなければ「返事なし」)。
 21. (R2 の後) 印はメニューバーの「RS」(かなのセルの左)。受け取りのアプリの種類の名前は Shell。
 22. (R2 の後) 転送のアプリの受ける側は `transfer_inbox.rb` に出した (台本は上限まで約 19 KB 空き、VM は約 41 KB 減った)。
+23. (R3 の後) 1 つの端末に同時に入れるのは console の 1 ページ (端末から見た呼び手はいつも console なので、console が守る)。
+    ページを閉じた後は、bridge が閉じるまで約 27 秒、同じ端末に入り直せない。
+24. (R3 の後) ルータの ACL は、console 以外のノードから `transfer/rshell` を呼べなくする。持ち主が手で一覧に書いた
+    ノードも、ルータ経由では入れない (R6 の「端末から端末へ」を作るときに開け方を決める)。
+25. (R3 の後) 汎用の `call` (Terminal・図のページ) からは `transfer/rshell` を呼べない。
+26. (R3 の後) sim の zenoh-pico には TLS が無いので、sim では確かめられた接続の道を通せない (`rshell_uncertified` を使う)。
+    TLS の道はネイティブ版で通す。
 
 ## 8. 未確定事項
 
