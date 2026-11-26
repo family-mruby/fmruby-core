@@ -1,0 +1,7 @@
+app_screen_name = "Serial Terminal"
+app_screen_name_ja = "シリアルターミナル"
+default_window_mode = "window"
+default_window_width = 316
+default_window_height = 210
+default_window_pos_x = 2
+default_window_pos_y = 16

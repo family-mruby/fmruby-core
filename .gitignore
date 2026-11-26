@@ -88,6 +88,9 @@ sdkconfig.*.saved
 # Development FIFO for the simulator's MIDI out (tools/fmrb_midi_monitor.rb
 # creates it; see doc/midi/report/p5s.md).
 midi_out.fifo
+# the sim's stand-in UARTs (fmrb_hal_uart.h, doc/app_uart)
+uart*_in.fifo
+uart*_out.fifo
 flash/etc/system_conf.factory.toml
 
 # /tmp RAM FS: the Linux dev build backs it with this directory and empties
