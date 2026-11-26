@@ -118,6 +118,18 @@ if(NOT FMRB_BUILD_IS_MODERN)
          ${CMAKE_CURRENT_LIST_DIR}/ruby/default_app/services.app.rb)
 endif()
 
+# The remote shell's mark on the menu bar is for Modern (and the browser
+# build, which builds its own bytecode): doc/remote_shell. A Retro desktop
+# (S3 and the Retro sim) takes the stand-in that draws nothing, so its VM
+# pool does not carry the mark's code. generate_ruby_bytecode_commands reads
+# FMRB_MIXIN_EXCLUDE_<app> / FMRB_MIXIN_EXTRA_<app> for an app's subdirectory.
+if(NOT FMRB_BUILD_IS_MODERN)
+    set(FMRB_MIXIN_EXCLUDE_system_desktop
+        ${CMAKE_CURRENT_LIST_DIR}/ruby/kernel/system_desktop/rshell_mark.rb)
+    set(FMRB_MIXIN_EXTRA_system_desktop
+        ${CMAKE_CURRENT_LIST_DIR}/ruby/kernel/system_desktop_retro/rshell_mark.rb)
+endif()
+
 # The editor (default/editor, default/editor_fs) is not in an ESP32 firmware
 # built with FMRB_EDITOR=0 (the AtomS3R's and StickS3's default; the
 # Rakefile): no bytecode here, no Spinel editor below, and FMRB_NO_EDITOR

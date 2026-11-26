@@ -6,6 +6,9 @@
 #   system_desktop.app.rb), all .rb files in that subdirectory are prepended
 #   to the main file before compilation. This allows splitting large scripts
 #   into modules while keeping single-file picorbc compilation.
+#   FMRB_MIXIN_EXCLUDE_<base> / FMRB_MIXIN_EXTRA_<base> (set by the caller)
+#   take parts out of that list and add stand-ins for them, for a part one
+#   family of machines leaves out.
 #
 # An app (*.app.rb) gets autostart.rb after it: the call that starts the
 # FmrbApp subclass it defines (app files do not end with MyApp.new.start).
@@ -57,6 +60,15 @@ function(generate_ruby_bytecode_commands RUBY_FILES_VAR OUTPUT_DIR)
     if(IS_DIRECTORY ${SUBDIR})
       file(GLOB SUB_RB_FILES ${SUBDIR}/*.rb)
       list(SORT SUB_RB_FILES)  # Deterministic order
+      # A part this build leaves out, and what stands in for it (after the
+      # subdirectory's own files, still before the main file): set by the
+      # caller as FMRB_MIXIN_EXCLUDE_<base> / FMRB_MIXIN_EXTRA_<base>.
+      if(FMRB_MIXIN_EXCLUDE_${RB_BASE})
+        list(REMOVE_ITEM SUB_RB_FILES ${FMRB_MIXIN_EXCLUDE_${RB_BASE}})
+      endif()
+      if(FMRB_MIXIN_EXTRA_${RB_BASE})
+        list(APPEND SUB_RB_FILES ${FMRB_MIXIN_EXTRA_${RB_BASE}})
+      endif()
     endif()
     set(TAIL_RB_FILES "")
     if(RB_FILE MATCHES "\\.app\\.rb$")
