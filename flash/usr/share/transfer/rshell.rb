@@ -1058,7 +1058,12 @@ module RShell
       # a character cut in two at the end goes with the next piece (or,
       # at the limit, is left out)
       k = RShell.utf8_whole(s) if pos + k < @src_size
-      k = s.bytesize if k == 0
+      # only the first bytes of a character: left out at the limit (they
+      # would reach the caller as a broken one), else sent as they are (a
+      # broken sequence, so that the pieces go on)
+      if k == 0
+        k = pos + s.bytesize >= limit ? 0 : s.bytesize
+      end
       out = s.byteslice(0, k).to_s
       nxt = pos + k
       return [out, nxt] if nxt < limit && pos + s.bytesize < limit

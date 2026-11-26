@@ -311,6 +311,15 @@ a = run("cat many_kana.txt")
 w = whole(a, ->(p) { S.more(p) })
 check("kana past 64 KB: whole characters", w[1].all? { |s| s.dup.force_encoding("UTF-8").valid_encoding? }, true)
 check("kana past 64 KB: cut", [w[2]["cut"], w[0].bytesize <= 65536 + 40], [true, true])
+# 64 KB falls inside a character after a whole piece (the pieces of this
+# text end at 65534, and its byte 65534 starts a 3-byte one): its first
+# bytes are left out, not sent before the note as a broken character
+put("/home/long_kana.txt", "\u3044\u308d\u306f\u306b\u307b\u3078\u3068 \u3061\u308a\u306c\u308b\u3092 \u308f\u304b\u3088\u305f\u308c\u305d \u3064\u306d\u306a\u3089\u3080\n" * 1500)
+a = run("cat long_kana.txt")
+w = whole(a, ->(p) { S.more(p) })
+check("kana cut inside a character: whole characters", w[1].all? { |s| s.dup.force_encoding("UTF-8").valid_encoding? }, true)
+check("kana cut inside a character: the note right after the last whole one",
+      w[0].dup.force_encoding("UTF-8").then { _1.valid_encoding? && _1.bytesize == 65534 + 30 && _1.end_with?("\u308c\n(the output is cut at 64 KB)\n") }, true)
 a = run("ls many")
 w = whole(a, ->(p) { S.more(p) })
 check("a long ls in pieces", w[0].split("\n").size, 300)
