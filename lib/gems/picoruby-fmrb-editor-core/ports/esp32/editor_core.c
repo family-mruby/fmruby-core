@@ -904,8 +904,10 @@ const char *ec_insert_multiline(int slot, int y, int x, const char *s, int len,
 
 /* Read the open file into d, which doc_reset has emptied, in chunks, appending
    lines as they complete: peak memory is the document itself -- not the
-   document plus a whole-file copy. On an error d holds what was read so far. */
-static int doc_read(ed_doc_t *d, fmrb_file_t f)
+   document plus a whole-file copy. On an error d holds what was read so far.
+   limit < 0 reads to the end of the file; otherwise at most limit bytes are
+   read from where the file stands. */
+static int doc_read(ed_doc_t *d, fmrb_file_t f, int32_t limit)
 {
     char *chunk = (char *)ed_alloc(ED_IO_CHUNK);
     if (!chunk) return EC_ERR_NOMEM;
@@ -913,9 +915,15 @@ static int doc_read(ed_doc_t *d, fmrb_file_t f)
     int32_t cur = 0;
     int rc = 0;
     for (;;) {
+        size_t want = ED_IO_CHUNK;
+        if (limit >= 0) {
+            if (limit == 0) break;
+            if ((int32_t)want > limit) want = (size_t)limit;
+        }
         size_t got = 0;
-        if (fmrb_hal_file_read(f, chunk, ED_IO_CHUNK, &got) != FMRB_OK) { rc = EC_ERR_IO; break; }
+        if (fmrb_hal_file_read(f, chunk, want, &got) != FMRB_OK) { rc = EC_ERR_IO; break; }
         if (got == 0) break;
+        if (limit >= 0) limit -= (int32_t)got;
         int32_t start = 0;
         for (size_t i = 0; i < got; i++) {
             if (chunk[i] == '\n') {
@@ -956,11 +964,39 @@ int ec_load_file(int slot, const char *path)
     if (fmrb_hal_file_open(path, FMRB_O_RDONLY, &f) != FMRB_OK) return EC_ERR_IO;
     int rc = doc_reset(d);
     doc_touch(d);
-    if (rc >= 0) rc = doc_read(d, f);
+    if (rc >= 0) rc = doc_read(d, f, -1);
     fmrb_hal_file_close(f);
 
     if (rc < 0) {
         doc_reset(d);   /* leave a usable empty buffer, not a half-read one */
+        return rc;
+    }
+    return rc;
+}
+
+/* Like ec_load_file, but only length bytes starting at offset: one section of
+   a file that holds many (the F1 help keeps every class of a language in one
+   file, so that littlefs spends a block per language rather than per class).
+   Seeking here, in C, because the Ruby side has no seek. */
+int ec_load_range(int slot, const char *path, int offset, int length)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return EC_ERR_NOMEM;
+    if (offset < 0 || length < 0) return EC_ERR_IO;
+
+    fmrb_file_t f = NULL;
+    if (fmrb_hal_file_open(path, FMRB_O_RDONLY, &f) != FMRB_OK) return EC_ERR_IO;
+    if (fmrb_hal_file_seek(f, offset, FMRB_SEEK_SET) != FMRB_OK) {
+        fmrb_hal_file_close(f);
+        return EC_ERR_IO;
+    }
+    int rc = doc_reset(d);
+    doc_touch(d);
+    if (rc >= 0) rc = doc_read(d, f, length);
+    fmrb_hal_file_close(f);
+
+    if (rc < 0) {
+        doc_reset(d);
         return rc;
     }
     return rc;
@@ -982,7 +1018,7 @@ int ec_replace_file(int slot, const char *path)
     tmp.used = 1;
     tmp.hl_on = d->hl_on;
     int rc = doc_reset(&tmp);
-    if (rc >= 0) rc = doc_read(&tmp, f);
+    if (rc >= 0) rc = doc_read(&tmp, f, -1);
     fmrb_hal_file_close(f);
     if (rc < 0) {
         doc_clear(&tmp);

@@ -93,6 +93,8 @@ const char *ec_insert_multiline(int slot, int y, int x, const char *s, int len,
 
 /* File I/O */
 int  ec_load_file(int slot, const char *path);
+/* Load length bytes of path from offset (one section of a bigger file). */
+int  ec_load_range(int slot, const char *path, int offset, int length);
 int  ec_save_file(int slot, const char *path);
 /* Load path in place of the document only when all of it could be read; on
    an error the document is unchanged. Answers the line count or EC_ERR_*. */
