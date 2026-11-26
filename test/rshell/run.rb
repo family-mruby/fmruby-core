@@ -11,7 +11,10 @@
 # the menu bar's mark). R2: the commands that change the machine (cp, mv,
 # rm, mkdir with the secrets kept out as source and destination, kill and
 # open with the kernel's answers coming through more) and exec_read
-# refusing them.
+# refusing them. R4: put's write_begin / write_chunk / write_end into a
+# hidden piece file (pieces again, out of order, past the size, the
+# refusals, cancel, close, another begin, the idle time), get's read of a
+# binary file, and the long cp and mv a piece at a time (progress, stop).
 #
 # rshell.rb runs here as it ships, in a module whose File, FmrbFile, FmrbApp,
 # FmrbConst, Machine and Log are stand-ins over a temporary directory (the
@@ -162,9 +165,16 @@ module Box
 
   module Machine
     @now = 1000
-    def self.board_millis = @now
+    @auto = 0
+    # auto: the clock goes on by this much on every reading (a long cp's
+    # steps)
+    def self.board_millis = (@now += @auto)
     def self.now=(v)
       @now = v
+    end
+
+    def self.auto=(v)
+      @auto = v
     end
   end
 end
@@ -386,7 +396,8 @@ raises("on, nobody listed", "from pc") { D.open(from: "pc") }
 conf("rshell_enabled = true\n[rshell]\nfrom = [\"pc\"]\n")
 o = D.open(from: "pc")
 check("the mark goes up", APP.sent, [{ "cmd" => "rshell_state", "on" => true }])
-check("open", [o["id"], o["cwd"], o["commands"]["cat"], o["version"]["rshell"], o["out_max"]], [1, "/home", "read", 2, 8192])
+check("open", [o["id"], o["cwd"], o["commands"]["cat"], o["version"]["rshell"], o["out_max"]], [1, "/home", "read", 3, 8192])
+check("open: get and put are the console's words", [o["commands"].key?("get"), o["commands"].key?("put")], [false, false])
 check("exec_read", D.exec_read(1, "pwd", from: "pc")["out"], "/home\n")
 check("exec_write runs a look", D.exec_write(1, "pwd", from: "pc")["out"], "/home\n")
 raises("a node not let in", "lets no remote shell in from other") { D.exec_read(1, "pwd", from: "other") }
@@ -552,6 +563,109 @@ check("open: folders and apps only", X.complete("open ", nil)["items"].sort,
       ["a.txt", "apps/", "big.bin", "big2.bin", "c.txt", "docs2/", "game.app.rb", "tool.app.wasm"].select { |n| n.end_with?("/") || n.include?(".app.") })
 check("open: in a folder", X.complete("open apps/", nil)["items"], ["apps/x.app.rb"])
 check("cp: every name", X.complete("cp a", nil)["items"], ["a.txt", "apps/"])
+
+puts "put: write_begin, write_chunk, write_end (R4)"
+P = R::Session.new(40, "pc", 0, APP)
+P.exec("cd /home/w", false)
+bin = (0..255).map(&:chr).join.b * 100                        # 25600 bytes, every byte
+b = P.write_begin("up.bin", bin.bytesize, false)
+check("write_begin", [b["path"], b["size"], b["pos"], b["piece"], ex?("/home/w/.up.bin.part"), ex?("/home/w/up.bin")],
+      ["/home/w/up.bin", 25600, 0, 8192, true, false])
+check("write_chunk", P.write_chunk(0, bin.byteslice(0, 8192)), 8192)
+check("a piece asked again is read past", P.write_chunk(0, bin.byteslice(0, 8192)), 8192)
+check("a piece after the position is not taken", P.write_chunk(16384, bin.byteslice(16384, 8192)), 8192)
+check("a piece over the position: its tail", P.write_chunk(4096, bin.byteslice(4096, 8192)), 12288)
+raises("write_end before all is in", "12288 of 25600 bytes are in") { P.write_end }
+check("the rest", [P.write_chunk(12288, bin.byteslice(12288, 8192)), P.write_chunk(20480, bin.byteslice(20480, 5120))], [20480, 25600])
+check("not there before the end", ex?("/home/w/up.bin"), false)
+e = P.write_end
+check("write_end", [e, File.binread(Box.real("/home/w/up.bin")) == bin, ex?("/home/w/.up.bin.part")],
+      [{ "path" => "/home/w/up.bin", "size" => 25600 }, true, false])
+raises("write_chunk with none begun", "no file is coming in") { P.write_chunk(0, "x") }
+raises("one there, no overwrite", "already there") { P.write_begin("up.bin", 3, false) }
+P.write_begin("up.bin", 3, true)
+P.write_chunk(0, "new")
+P.write_end
+check("overwrite", File.binread(Box.real("/home/w/up.bin")), "new")
+P.write_begin("empty.txt", 0, false)
+check("an empty file", [P.write_end["size"], File.size(Box.real("/home/w/empty.txt"))], [0, 0])
+P.write_begin("かな.txt", 6, true)
+P.write_chunk(0, "かな")
+check("a UTF-8 name", [P.write_end["path"], File.read(Box.real("/home/w/かな.txt"))], ["/home/w/かな.txt", "かな"])
+raises("a piece too large", "at most 8192 bytes") { P.write_begin("x.bin", 9000, false); P.write_chunk(0, "x" * 8193) }
+raises("past the size", "goes past 9000 bytes") { P.write_chunk(0, "x" * 8000); P.write_chunk(8000, "x" * 1001) }
+check("past the size: the piece file goes", ex?("/home/w/.x.bin.part"), false)
+raises("a secret", "kept from") { P.write_begin("/home/asterism/k", 1, true) }
+raises("a secret by ..", "kept from") { P.write_begin("../asterism/config.toml", 1, true) }
+raises("wifi.toml", "kept from") { P.write_begin("/home/wifi.toml", 1, true) }
+raises("/home itself", "kept from") { P.write_begin("/home", 1, true) }
+raises("read-only", "read-only") { P.write_begin("/ro/x", 1, false) }
+raises("a directory there", "a directory there") { P.write_begin("/home/w/apps", 1, true) }
+raises("no such folder", "no such directory") { P.write_begin("/nowhere/x", 1, false) }
+raises("does not fit", "do not fit") { P.write_begin("/tmp/x", 200_000, false) }
+raises("not a size", "not a size") { P.write_begin("y", -1, false) }
+P.write_begin("c1.bin", 10, false)
+P.write_chunk(0, "12345")
+check("write_cancel: the piece file goes", [P.write_cancel, ex?("/home/w/.c1.bin.part"), ex?("/home/w/c1.bin")], [true, false, false])
+P.write_begin("c2.bin", 10, false)
+P.write_begin("c3.bin", 10, false)
+check("another write_begin: the first goes", [ex?("/home/w/.c2.bin.part"), ex?("/home/w/.c3.bin.part")], [false, true])
+P.close
+check("close: the piece file goes", ex?("/home/w/.c3.bin.part"), false)
+Box::Machine.now = 50_000_000
+P.write_begin("c4.bin", 10, false)
+P.write_tick(50_000_000 + R::WRITE_IDLE_MS - 1)
+check("kept while it may go on", ex?("/home/w/.c4.bin.part"), true)
+P.write_tick(50_000_000 + R::WRITE_IDLE_MS)
+check("not gone on with: it goes", ex?("/home/w/.c4.bin.part"), false)
+
+puts "a long cp, a piece at a time (R4)"
+put("/home/w/large.bin", (0..255).map(&:chr).join.b * 1024)   # 256 KB
+Box::Machine.auto = 10
+a = w("cp large.bin large2.bin")
+check("cp large: asked", [a["code"], a["wait"], a["out"]], [0, true, "cp: /home/w/large.bin -> /home/w/large2.bin: copying 256 KB\n"])
+m = X.more(a["more"])
+check("cp large: nothing yet, progress", [m["out"], m["wait"], m["progress"]], ["", true, { "done" => 0, "total" => 262144 }])
+steps = 0
+steps += 1 while X.step(Box::Machine.board_millis) && steps < 1000
+check("cp large: in several steps", steps > 1, true)
+check("cp large: hidden while it copies, gone after", ex?("/home/w/.large2.bin.part"), false)
+m = X.more(a["more"])
+check("cp large: done", [m["out"], m["wait"], m["code"], m["more"]], ["cp: /home/w/large.bin -> /home/w/large2.bin (262144 bytes)\n", false, 0, nil])
+check("cp large: the same bytes", File.binread(Box.real("/home/w/large2.bin")) == File.binread(Box.real("/home/w/large.bin")), true)
+check("cp large: one there, no -f", w("cp large.bin large2.bin")["code"], 1)
+a = w("cp -f large.bin large2.bin")
+X.step(Box::Machine.board_millis)
+check("cp large: under way", [ex?("/home/w/.large2.bin.part"), X.more(a["more"])["progress"]["done"] > 0], [true, true])
+X.stop
+m = X.more(a["more"])
+check("cp large: stopped", [m["out"].include?("stopped"), m["code"], ex?("/home/w/.large2.bin.part")], [true, 1, false])
+a = w("cp large.bin large3.bin")
+X.step(Box::Machine.board_millis)
+check("another command stops the copy", [w("pwd")["out"], ex?("/home/w/.large3.bin.part"), ex?("/home/w/large3.bin")], ["/home/w\n", false, false])
+a = w("cp large.bin large3.bin")
+X.close
+check("close stops the copy", [ex?("/home/w/.large3.bin.part"), ex?("/home/w/large3.bin")], [false, false])
+put("/home/w/large.bin", (0..255).map(&:chr).join.b * 1024)
+a = w("mv large.bin /sd/inbox/large.bin")
+check("mv large to another storage: copied a piece at a time", a["wait"], true)
+nil while X.step(Box::Machine.board_millis)
+m = X.more(a["more"])
+check("mv large: done", [m["out"], m["code"], ex?("/home/w/large.bin"), File.size(Box.real("/sd/inbox/large.bin"))],
+      ["mv: /home/w/large.bin -> /sd/inbox/large.bin\n", 0, false, 262144])
+check("get: a binary file through read", P.read("/home/w/large2.bin", 0, 8192)["data"].b == ((0..255).map(&:chr).join.b * 32), true)
+check("small cp still in the call", w("cp a.txt a2.txt")["wait"], nil)
+Box::Machine.auto = 0
+conf("rshell_enabled = true\n[rshell]\nfrom = [\"pc\"]\n")
+d = D.open(from: "pc")
+check("door: tick is busy just after a call", D.tick(Box::Machine.board_millis), true)
+check("door: tick is idle later", D.tick(Box::Machine.board_millis + R::BUSY_FOR_MS), false)
+D.write_begin(d["id"], "door.txt", 2, false, from: "pc")
+D.write_chunk(d["id"], 0, "ok", from: "pc")
+check("door: put", [D.write_end(d["id"], from: "pc")["path"], File.read(Box.real("/home/door.txt"))], ["/home/door.txt", "ok"])
+check("door: write_cancel, stop", [D.write_cancel(d["id"], from: "pc"), D.stop(d["id"], from: "pc")], [true, true])
+raises("door: a node not let in writes nothing", "lets no remote shell in from other") { D.write_begin(d["id"], "x", 1, false, from: "other") }
+D.drop("test")
 
 check("METHODS: the door's arguments",
       R::METHODS.map { |m, h| [m, h[:args].size] },

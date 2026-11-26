@@ -380,7 +380,7 @@ class TransferApp < FmrbApp
     @inbox.tick
     @inbox.install_step
     now = Machine.board_millis
-    @rshell.tick(now) if @rshell
+    rs_busy = @rshell ? @rshell.tick(now) : false
     if now - @checked_at >= RECHECK_MS
       @checked_at = now
       check_receiving
@@ -398,7 +398,7 @@ class TransferApp < FmrbApp
     else
       give_up_unlinked
     end
-    (@job || @inbox.busy?) ? BUSY_MS : IDLE_MS
+    (@job || @inbox.busy? || rs_busy) ? BUSY_MS : IDLE_MS
   end
 
   def on_destroy

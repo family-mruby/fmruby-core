@@ -33,8 +33,31 @@
 #                           the word under pos (pos and word count
 #                           characters; pos nil or past the end: the end)
 #   read(id, path, pos, len)-> {"data", "pos", "size"}: up to READ_MAX bytes
-#                           of a file from pos (get, doc/remote_shell R4)
+#                           of a file from pos, as they are (the console's
+#                           get, doc/remote_shell R4)
+#   write_begin(id, path, size, overwrite)
+#                           -> {"path", "size", "pos" => 0, "piece"}: a file
+#                           of size bytes to come (the console's put) into a
+#                           hidden ".<name>.part" beside path; a file there
+#                           is written over only when overwrite is true
+#   write_chunk(id, pos, data) -> the position held now: data is taken at
+#                           that position only (a piece asked again before
+#                           it is read past, one after it is not taken)
+#   write_end(id)           -> {"path", "size"}: all bytes are in; the piece
+#                           file gets its name
+#   write_cancel(id)        -> true: the piece file goes (also on close, on
+#                           another write_begin and after WRITE_IDLE_MS
+#                           without a chunk)
+#   stop(id)                -> true: a command still at work (a long cp) or
+#                           waited for (kill, open) stops (Ctrl-C)
 #   close(id)               -> true
+#
+# The writes are changes: write_begin refuses the secrets, read-only places
+# and a file that does not fit, as cp does. A cp or mv of a file larger than
+# COPY_SMALL answers that it started ("wait" => true, as kill and open do)
+# and copies a piece at a time from the app's update; more says how far it
+# is ("progress" => {"done", "total"}) and then how it ended. The copy goes
+# into a hidden ".<name>.part" too, renamed when whole.
 #
 # Refusals (the switch off, a connection that is not checked, a node not
 # let in, another session, no such session) are raised: the caller sees an error with the reason. A command
@@ -54,7 +77,7 @@
 # neither the source nor the destination of cp and mv, and rm and mv refuse
 # a folder that holds one ("/", /home, /etc, /home/asterism).
 module RShell
-  PROTO = 2
+  PROTO = 3
   OUT_MAX = 8192
   TOTAL_MAX = 65536
   READ_MAX = 8192
@@ -68,6 +91,16 @@ module RShell
   LINES_DEFAULT = 10
   # cp copies this much at a time
   COPY_CHUNK = 8192
+  # cp and mv copy a file up to this size within the call; a larger one a
+  # piece at a time from the app's update, for at most STEP_MS an update
+  COPY_SMALL = 65536
+  STEP_MS = 30
+  # put: the largest piece of a write_chunk, and how long a write that stops
+  # coming is kept
+  WRITE_MAX = 8192
+  WRITE_IDLE_MS = 60000
+  # the app's update comes quickly for this long after a call
+  BUSY_FOR_MS = 2000
   # kill and open: how long the kernel's answer is waited for
   WAIT_MS = 5000
   # FmrbApp.ps's type of an app that may be ended
@@ -109,6 +142,11 @@ module RShell
     "more" => { args: ["id", "pos"], doc: "the output from pos on (the more of the last answer; wait: ask again)" },
     "complete" => { args: ["id", "line", "pos"], doc: "what may stand for the word under pos -> word, items, cut" },
     "read" => { args: ["id", "path", "pos", "len"], doc: "up to 8 KB of a file from pos -> data, pos, size" },
+    "write_begin" => { args: ["id", "path", "size", "overwrite"], doc: "a file to come in pieces -> path, size, pos, piece" },
+    "write_chunk" => { args: ["id", "pos", "data"], doc: "a piece at pos -> the position held now" },
+    "write_end" => { args: ["id"], doc: "all of it is in: the file gets its name -> path, size" },
+    "write_cancel" => { args: ["id"], doc: "the file coming in is dropped" },
+    "stop" => { args: ["id"], doc: "stops a command at work or waited for (a long cp, kill, open)" },
     "close" => { args: ["id"], doc: "ends the session" }
   }
   # FmrbApp.ps's numbers, as the shell names them
@@ -273,6 +311,28 @@ module RShell
     path.byteslice(0, i).to_s
   end
 
+  # The hidden file a file is written into before it gets its name:
+  # ".<name>.part" beside it.
+  def self.part(path)
+    join(dir(path), ".#{base(path)}.part")
+  end
+
+  # The piece file part gets the name dst (written over). nil when it did,
+  # else why not.
+  def self.place(part, dst)
+    begin
+      File.rename(part, dst)
+    rescue StandardError
+      nil
+    end
+    return nil if File.exist?(dst) && !File.exist?(part)
+    File.delete(dst) if File.exist?(dst) && !File.directory?(dst)
+    File.rename(part, dst)
+    File.exist?(dst) && !File.exist?(part) ? nil : "could not be renamed from #{part}"
+  rescue StandardError => e
+    e.message.to_s
+  end
+
   # ---- cutting the output ----
 
   # The bytes of s to send when at most n may go: n, or less so that the
@@ -348,8 +408,10 @@ module RShell
       @rd = nil         # the File kept open while the reads follow on
       @rd_path = nil
       @rd_pos = 0
-      @wait = nil       # kill / open: {"what", "pid", "name", "path", "at", "stage"}
+      @wait = nil       # kill / open: {"what", "pid", "name", "path", "at", "stage"};
+                        # a long cp: {"what" => "copy", "src", "dst", "part", "pos", "size", ...}
       @code = nil       # ... and the code of its result once it is in
+      @w = nil          # put: {"path", "part", "size", "pos", "file", "at"}
     end
 
     # ---- the calls ----
@@ -357,6 +419,7 @@ module RShell
     # A line. write: whether the commands that change the machine are
     # taken (exec_write).
     def exec(line, write)
+      copy_end("another command came", 1) if copying?
       @text = nil
       @src = nil
       @cut = false
@@ -391,9 +454,12 @@ module RShell
         page = ["", nil]
       end
       if @wait && page[1].nil?
-        # the kernel's answer is not in yet: ask again from the end
+        # the kernel's answer (or the copy's end) is not in yet: ask again
+        # from the end
         n = @text.to_s.bytesize
-        return { "out" => page[0], "more" => p > n ? p : n, "cut" => false, "wait" => true, "code" => nil }
+        a = { "out" => page[0], "more" => p > n ? p : n, "cut" => false, "wait" => true, "code" => nil }
+        a["progress"] = { "done" => @wait["pos"], "total" => @wait["size"] } if copying?
+        return a
       end
       { "out" => page[0], "more" => page[1], "cut" => @cut && page[1].nil?, "wait" => false, "code" => @code }
     end
@@ -472,9 +538,209 @@ module RShell
 
     def close
       close_reader
+      write_drop("the session ends")
+      copy_end("the session ends", 1) if copying?
       @text = nil
       @src = nil
       @wait = nil
+      nil
+    end
+
+    # Ctrl-C: a long cp stops (what it wrote goes), kill and open are no
+    # longer waited for.
+    def stop
+      w = @wait
+      return true unless w
+      if copying?
+        copy_end("stopped (what was copied is deleted)", 1)
+      else
+        done("#{w['what']}: no longer waited for (stopped; the kernel may still do it)\n", 1)
+      end
+      true
+    end
+
+    # ---- put: a file coming in pieces ----
+
+    def write_begin(path, size, overwrite)
+      write_drop("another write_begin")
+      p = RShell.resolve(@cwd, path)
+      raise ArgumentError, "size: #{size.inspect} is not a size" unless size.is_a?(Integer) && size >= 0
+      if RShell.secret?(p) || RShell.holds_secret?(p)
+        raise ArgumentError, "#{p}: kept from the remote shell (keys and passwords)"
+      end
+      d = RShell.dir(p)
+      raise ArgumentError, "#{d}: no such directory" unless File.directory?(d)
+      raise ArgumentError, "#{p}: a directory there" if File.directory?(p)
+      raise ArgumentError, "#{p}: read-only here" if FmrbFile.path_read_only?(p)
+      old = 0
+      if File.exist?(p)
+        raise ArgumentError, "#{p}: already there (overwrite to write over it)" unless overwrite == true
+        old = FmrbFile.size(p).to_i
+      end
+      free = FmrbFile.free_bytes(d)
+      if free && size > free + old
+        raise ArgumentError, "#{p}: #{size} bytes do not fit (#{free} bytes free)"
+      end
+      part = RShell.part(p)
+      f = File.open(part, "w")
+      @w = { "path" => p, "part" => part, "size" => size, "pos" => 0, "file" => f, "at" => RShell.now_ms }
+      Log.info("rshell: put #{p} (#{size} bytes) begins")
+      { "path" => p, "size" => size, "pos" => 0, "piece" => WRITE_MAX }
+    end
+
+    def write_chunk(pos, data)
+      w = writing
+      raise ArgumentError, "pos: #{pos.inspect} is not a position" unless pos.is_a?(Integer) && pos >= 0
+      s = data.to_s
+      raise ArgumentError, "a piece is at most #{WRITE_MAX} bytes" if s.bytesize > WRITE_MAX
+      cur = w["pos"]
+      w["at"] = RShell.now_ms
+      # a piece after the position (one went missing), or one already in
+      return cur if pos > cur || pos + s.bytesize <= cur
+      s = s.byteslice(cur - pos, s.bytesize - (cur - pos)).to_s if pos < cur
+      if cur + s.bytesize > w["size"]
+        write_drop("a piece past its size")
+        raise ArgumentError, "#{w['path']}: the piece goes past #{w['size']} bytes"
+      end
+      begin
+        w["file"].write(s)
+      rescue StandardError => e
+        write_drop("cannot write")
+        raise ArgumentError, "#{w['path']}: cannot write at #{cur} (#{e.message})"
+      end
+      w["pos"] = cur + s.bytesize
+    end
+
+    def write_end
+      w = writing
+      p = w["path"]
+      raise ArgumentError, "#{p}: #{w['pos']} of #{w['size']} bytes are in" if w["pos"] != w["size"]
+      f = w["file"]
+      w["file"] = nil
+      f.close
+      got = FmrbFile.size(w["part"]).to_i
+      if got != w["size"]
+        write_drop("the size does not match")
+        raise ArgumentError, "#{p}: #{got} bytes were written, not #{w['size']}"
+      end
+      why = RShell.place(w["part"], p)
+      @w = nil
+      if why
+        File.delete(w["part"]) if File.exist?(w["part"])
+        raise ArgumentError, "#{p}: #{why}"
+      end
+      Log.info("rshell: put #{p} (#{got} bytes)")
+      { "path" => p, "size" => got }
+    end
+
+    def write_cancel
+      write_drop("cancelled")
+      true
+    end
+
+    # A put not gone on with for WRITE_IDLE_MS goes.
+    def write_tick(now)
+      w = @w
+      write_drop("no piece for #{WRITE_IDLE_MS / 1000} s") if w && now - w["at"] >= WRITE_IDLE_MS
+    end
+
+    def writing
+      w = @w
+      raise ArgumentError, "no file is coming in (write_begin first; it may have been dropped)" unless w
+      w
+    end
+
+    def write_drop(why)
+      w = @w
+      return unless w
+      @w = nil
+      begin
+        w["file"].close if w["file"]
+      rescue StandardError
+        nil
+      end
+      File.delete(w["part"]) if File.exist?(w["part"])
+      Log.info("rshell: put #{w['path']} dropped at #{w['pos']} of #{w['size']} bytes (#{why})")
+    rescue StandardError => e
+      Log.warn("rshell: #{e.message}")
+    end
+
+    # ---- a long cp, a piece at a time ----
+
+    def copying?
+      w = @wait
+      w ? w["what"] == "copy" : false
+    end
+
+    # Copies for at most STEP_MS (the app's update). True while it goes on.
+    def step(now)
+      return false unless copying?
+      w = @wait
+      t0 = RShell.now_ms
+      while w["pos"] < w["size"]
+        s = w["in"].read(COPY_CHUNK)
+        break if s.nil? || s.empty?
+        w["out"].write(s)
+        w["pos"] += s.bytesize
+        break if RShell.now_ms - t0 >= STEP_MS
+      end
+      return true if w["pos"] < w["size"] && RShell.now_ms - t0 >= STEP_MS
+      copy_finish
+      false
+    rescue StandardError => e
+      copy_end(e.message.to_s, 1) if copying?
+      false
+    end
+
+    def copy_start(src, dst, move, size)
+      part = RShell.part(dst)
+      i = File.open(src, "r")
+      begin
+        o = File.open(part, "w")
+      rescue StandardError => e
+        i.close
+        raise e
+      end
+      name = move ? "mv" : "cp"
+      @wait = { "what" => "copy", "name" => name, "src" => src, "dst" => dst, "part" => part, "pos" => 0,
+                "size" => size, "in" => i, "out" => o, "move" => move }
+      waiting("#{name}: #{src} -> #{dst}: copying #{RShell.kb(size)}\n")
+    end
+
+    def copy_finish
+      w = @wait
+      copy_close(w)
+      got = FmrbFile.size(w["part"]).to_i
+      return copy_end("#{got} bytes were copied, not #{w['size']}", 1) if got != w["size"]
+      why = RShell.place(w["part"], w["dst"])
+      return copy_end(why, 1) if why
+      if w["move"]
+        File.delete(w["src"])
+        return done("mv: #{w['src']} -> #{w['dst']}: copied, but #{w['src']} could not be deleted\n", 1) if File.exist?(w["src"])
+        return done("mv: #{w['src']} -> #{w['dst']}\n", 0)
+      end
+      done("cp: #{w['src']} -> #{w['dst']} (#{got} bytes)\n", 0)
+    end
+
+    # The copy ends without its file (why), its piece file deleted.
+    def copy_end(why, code)
+      w = @wait
+      copy_close(w)
+      File.delete(w["part"]) if File.exist?(w["part"])
+      done("#{w['name']}: #{w['src']} -> #{w['dst']}: #{why}\n", code)
+    rescue StandardError => e
+      @wait = nil
+      Log.warn("rshell: #{e.message}")
+    end
+
+    def copy_close(w)
+      f = w["out"]
+      w["out"] = nil
+      f.close if f
+      f = w["in"]
+      w["in"] = nil
+      f.close if f
+    rescue StandardError
       nil
     end
 
@@ -741,20 +1007,24 @@ module RShell
         return answer("#{name}: #{dst}: a directory there\n", 1) if File.directory?(dst)
         return answer("#{name}: #{dst}: already there (-f to write over it)\n", 1) unless force
       end
+      size = dir ? 0 : FmrbFile.size(src).to_i
       if move
-        why = move_path(src, dst, dir)
+        why = move_path(src, dst, dir, size)
+        return copy_start(src, dst, true, size) if why == :copy
         return answer("mv: #{src} -> #{dst}: #{why}\n", 1) if why
         Log.info("rshell: mv #{src} #{dst}")
         return answer("mv: #{src} -> #{dst}\n", 0)
       end
+      return copy_start(src, dst, false, size) if size > COPY_SMALL
       n = copy_file(src, dst)
       return answer("cp: #{src} -> #{dst}: #{n}\n", 1) if n.is_a?(String)
       Log.info("rshell: cp #{src} #{dst} (#{n} bytes)")
       answer("cp: #{src} -> #{dst} (#{n} bytes)\n", 0)
     end
 
-    # nil when it moved, else why not.
-    def move_path(src, dst, dir)
+    # nil when it moved, :copy when it is to be copied a piece at a time
+    # (a large file on another storage), else why not.
+    def move_path(src, dst, dir, size)
       File.delete(dst) if File.exist?(dst)
       ok = begin
         File.rename(src, dst)
@@ -764,6 +1034,7 @@ module RShell
       end
       return nil if ok
       return "cannot be renamed there" if dir
+      return :copy if size > COPY_SMALL
       # another storage (/home and the SD card): copied, then deleted
       n = copy_file(src, dst)
       return n if n.is_a?(String)
@@ -969,10 +1240,10 @@ module RShell
       { "out" => text, "code" => 0, "cwd" => @cwd, "more" => text.bytesize, "cut" => false, "wait" => true }
     end
 
-    # WAIT_MS gone without the kernel's answer
+    # WAIT_MS gone without the kernel's answer (a copy is not timed)
     def waited(now)
       w = @wait
-      return if now - w["at"] < WAIT_MS
+      return if w["what"] == "copy" || now - w["at"] < WAIT_MS
       s = WAIT_MS / 1000
       if w["what"] == "kill" && w["stage"] == "asked"
         done("kill: PID #{w['pid']} (#{w['name']}) was asked to end and has not in #{s} s (ps)\n", 1)
@@ -1320,6 +1591,26 @@ module RShell
       session(id, from).read(path, pos, len)
     end
 
+    def write_begin(id, path, size, overwrite, from: nil)
+      session(id, from).write_begin(path, size, overwrite)
+    end
+
+    def write_chunk(id, pos, data, from: nil)
+      session(id, from).write_chunk(pos, data)
+    end
+
+    def write_end(id, from: nil)
+      session(id, from).write_end
+    end
+
+    def write_cancel(id, from: nil)
+      session(id, from).write_cancel
+    end
+
+    def stop(id, from: nil)
+      session(id, from).stop
+    end
+
     def close(id, from: nil)
       s = @s
       return false unless s && s.id == id && s.from == from.to_s
@@ -1347,10 +1638,17 @@ module RShell
     end
 
     # Called from the app's update: a session not called for IDLE_MS
-    # closes.
+    # closes, a put that stopped coming goes, a long cp goes on. True while
+    # the update should come quickly (a copy at work, a call a moment ago).
     def tick(now)
       s = @s
-      drop("not called for #{IDLE_MS / 1000} s") if s && now - s.at >= IDLE_MS
+      return false unless s
+      if now - s.at >= IDLE_MS
+        drop("not called for #{IDLE_MS / 1000} s")
+        return false
+      end
+      s.write_tick(now)
+      s.step(now) || now - s.at < BUSY_FOR_MS
     end
 
     def drop(why)
