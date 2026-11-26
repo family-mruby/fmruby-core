@@ -95,25 +95,12 @@
 #
 #   enabled = true
 #
-# then a table per kind; a kind with no table is not taken:
-#
-#   [checkpoint]
-#   from = ["fmruby-abcdef", "wasm-123456"]   # may move apps here
-#
-#   [file]
-#   from = ["fmruby-abcdef", "pc-desk"]       # may put files in /home/inbox
-#
-#   [app]
-#   from = ["pc-desk"]                        # may install apps here
-#   install = "ask"                           # "auto": without asking
-#
-# The older form, a from at the top with no table, is read as the
-# checkpoint's (it was written when apps were all that came):
-#
-#   from = ["fmruby-abcdef"]                  # = [checkpoint] from
-#
-# (with both, either list lets a node move apps here). "*" allows every
-# node the router lets in, "fmruby-*" every node whose ID starts so.
+# then a table per kind, from = [nodes]; a kind with no table is not
+# taken: [checkpoint] (may move apps here; the older top-level from is
+# read as its list too), [file] (may put files in /home/inbox), [app] (may
+# install apps here; install = "ask" or "auto"). "*" allows every node the
+# router lets in, "fmruby-*" every node whose ID starts so (receive_conf.rb
+# shows the whole file).
 #
 # Below a mark, the file has a part the console writes (T6,
 # /usr/share/transfer/receive_conf.rb): the senders chosen for this machine
@@ -213,6 +200,9 @@
 #                            apps. verified: the router binds every node ID
 #                            to its certificate (a tls/ router), so the names
 #                            are checked ones
+#
+# The remote shell (rshell_enabled, doc/remote_shell): rshell.rb, read only
+# while it is on, keeps the app up as the other switches do.
 #
 # One request at a time, with the kernel's, in the order they come.
 #
@@ -830,6 +820,7 @@ class TransferApp < FmrbApp
     p = ::FmrbReceiveConf.parts
     @receiving = ::FmrbReceiveConf.enabled?(p)
     @sending = ::FmrbReceiveConf.send_enabled?(p)
+    @rshell_on = ::FmrbReceiveConf.rshell_enabled?(p)
     @closing = false
     @close_why = ""
     @peers = []       # the machines on the network while sending is on
@@ -882,7 +873,19 @@ class TransferApp < FmrbApp
                      methods: { "check" => 2, "begin" => 2, "chunk" => 3, "commit" => 1, "status" => 1,
                                  "cancel" => 1, "policy_set" => 1 },
                      caller: :from, doc: "files from other machines (doc/asterism_file_transfer)")
+    rshell(true) if @rshell_on
     tell_kernel({ "cmd" => "transfer_ready", "node" => link.node })
+  end
+
+  # The remote shell on or off (RShell::Door#switch).
+  def rshell(on)
+    @rshell_on = on
+    return unless on || @rshell
+    unless @rshell
+      require "/usr/share/transfer/rshell"
+      @rshell = ::RShell::Door.new(self)
+    end
+    @rshell.switch(on, @link)
   end
 
   def link_down(link)
@@ -909,6 +912,7 @@ class TransferApp < FmrbApp
     @inbox.tick
     @inbox.install_step
     now = Machine.board_millis
+    @rshell.tick(now) if @rshell
     if now - @checked_at >= RECHECK_MS
       @checked_at = now
       check_receiving
@@ -930,6 +934,7 @@ class TransferApp < FmrbApp
   end
 
   def on_destroy
+    @rshell.drop("the app ends") if @rshell
     @inbox.close
     @link.close
     unsubscribe(CTL_TOPIC)
@@ -1078,9 +1083,17 @@ class TransferApp < FmrbApp
     p = ::FmrbReceiveConf.parts
     on = ::FmrbReceiveConf.enabled?(p)
     snd = ::FmrbReceiveConf.send_enabled?(p)
+    rs = ::FmrbReceiveConf.rshell_enabled?(p)
+    if rs != @rshell_on
+      rshell(rs)
+      if !(rs || on || snd || @closing)
+        @closing = true
+        @close_why = "the remote shell is off"
+      end
+    end
     if @receiving && !on
-      if snd
-        Log.info("transfer: receiving is off; new files are refused (sending keeps the app on the network)")
+      if snd || rs
+        Log.info("transfer: receiving is off; new files are refused (another switch keeps the app on the network)")
       elsif !@closing
         Log.info("transfer: receiving is off; new files are refused, and the app ends when what is coming in is in")
         @closing = true
@@ -1090,8 +1103,8 @@ class TransferApp < FmrbApp
     if @sending && !snd
       @peers = []
       @peers_at = 0
-      if on
-        Log.info("transfer: sending is off (receiving keeps the app on the network)")
+      if on || rs
+        Log.info("transfer: sending is off (another switch keeps the app on the network)")
       elsif !@closing
         Log.info("transfer: sending is off; the app ends when what is coming in is in")
         @closing = true
@@ -1099,7 +1112,7 @@ class TransferApp < FmrbApp
       end
     end
     Log.info("transfer: sending is on; keeping the machines on the network") if snd && !@sending
-    if (on || snd) && @closing
+    if (on || snd || rs) && @closing
       Log.info("transfer: #{on ? 'receiving' : 'sending'} is on again")
       @closing = false
     end

@@ -61,7 +61,7 @@ class KernelStandIn
   RECEIVE_CONF = "#{HOME}/receive.toml"
   RECEIVE_CONF_SYS = "#{ETC}/receive.toml"
 end
-["receiving_enabled\\?", "sending_enabled\\?", "transfer_conf_path", "transfer_conf_on\\?\\(key\\)"].each do |name|
+["receiving_enabled\\?", "sending_enabled\\?", "rshell_enabled\\?", "transfer_conf_path", "transfer_conf_on\\?\\(key\\)"].each do |name|
   body = kernel[/^  def #{name}\n.*?^  end\n/m] or abort "no #{name} in fmrb_kernel.rb"
   KernelStandIn.class_eval(body)
 end
@@ -265,6 +265,28 @@ text = File.read(USER)
 check("the part by hand is the shipped copy (off)", text.start_with?(SHIPPED), true)
 both("still off", false)
 check("again: not written", C.write_managed("console", "2026-11-10T00:00:00Z", { "file" => ["a"], "checkpoint" => [] }), false)
+
+puts "the remote shell switch (doc/remote_shell)"
+def both_rshell(what, want)
+  check("#{what}: FmrbReceiveConf (rshell)", C.rshell_enabled?, want)
+  check("#{what}: the kernel (rshell)", KERNEL.rshell_enabled?, want)
+end
+reset
+both_rshell("the shipped copy (no line)", false)
+reset(user: "rshell_enabled = true # support\n\n[rshell]\nfrom = [\"pc\"]\n")
+both_rshell("rshell_enabled = true", true)
+both("receiving stays off beside it", false)
+check("its hand list", C.senders("rshell")["hand"], ["pc"])
+reset(user: "[rshell]\nrshell_enabled = true\n")
+both_rshell("rshell_enabled inside a table", false)
+reset(user: "rshell_enabled = true\n")
+check("the console's rshell list is written",
+      C.write_managed("console", "2026-11-26T00:00:00Z", { "file" => [], "checkpoint" => [], "rshell" => ["pc-*"] }), true)
+check("and read back", C.senders("rshell")["managed"], ["pc-*"])
+check("a list without rshell (an older console) writes an empty one",
+      C.write_managed("console", "2026-11-26T00:00:01Z", { "file" => [], "checkpoint" => [] }), true)
+check("read back empty", C.senders("rshell")["managed"], [])
+both_rshell("the switch is kept", true)
 
 puts(Check.failed.zero? ? "receive_conf: all ok" : "receive_conf: #{Check.failed} FAILED")
 exit(Check.failed.zero? ? 0 : 1)

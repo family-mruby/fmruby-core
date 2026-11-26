@@ -15,6 +15,8 @@
 #   enabled = true                  # receive at all (T7; no line: off)
 #   send_enabled = true             # keep the list of the machines to send
 #                                   # to (doc/window_menu M2; no line: off)
+#   rshell_enabled = true           # let the remote shell in (doc/remote_shell;
+#                                   # no line: off), from the rshell kind
 #
 #   [file]
 #   from = ["pc-desk"]
@@ -41,6 +43,9 @@
 #   from = ["fmruby-aaaaaa", "fmruby-*"]
 #
 #   [managed.checkpoint]
+#   from = []
+#
+#   [managed.rshell]
 #   from = []
 #
 # Nothing is taken unless enabled = true is in the part by hand: a file
@@ -76,8 +81,9 @@ module FmrbReceiveConf
   TMP_PATH = "/home/asterism/.receive.toml.new"
   MARK = "# ---- managed by the console"
   MARK_LINE = "# ---- managed by the console (below this line; edit above it) ----"
-  # The kinds the console's list carries (T6: Admin > Members, policy_set).
-  KINDS = ["file", "checkpoint"]
+  # The kinds the console's list carries (T6: Admin > Members, policy_set;
+  # rshell: who may open the remote shell, doc/remote_shell).
+  KINDS = ["file", "checkpoint", "rshell"]
   # The kinds written by hand: those, and apps to install (doc/wasm_apps
   # W6), which the console does not list yet (a list of its own by hand).
   HAND_KINDS = ["file", "checkpoint", "app"]
@@ -144,6 +150,14 @@ module FmrbReceiveConf
   def self.send_enabled?(p = parts)
     h = hand(p)
     h.is_a?(Hash) && h["send_enabled"] == true
+  end
+
+  # The remote shell is on: rshell_enabled = true in the part by hand
+  # (doc/remote_shell; the same rules as enabled). Who may open it is the
+  # rshell kind: [rshell] from by hand, and the console's [managed.rshell].
+  def self.rshell_enabled?(p = parts)
+    h = hand(p)
+    h.is_a?(Hash) && h["rshell_enabled"] == true
   end
 
   # How an app sent here is installed (doc/wasm_apps W6): "auto" when the
@@ -330,7 +344,7 @@ module FmrbReceiveConf
     i = 0
     while i < KINDS.size
       k = KINDS[i]
-      s << "\n[managed.#{k}]\nfrom = [#{quoted(lists[k])}]\n"
+      s << "\n[managed.#{k}]\nfrom = [#{quoted(lists[k] || [])}]\n"
       i += 1
     end
     s

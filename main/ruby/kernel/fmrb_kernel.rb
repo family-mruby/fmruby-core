@@ -987,11 +987,13 @@ class FmrbKernelImpl < FmrbKernel
   # file being there (doc/asterism_file_transfer T7): enabled = true. The
   # other switch, send_enabled = true (doc/window_menu M2), keeps it up as
   # well: then it holds the list of the machines on the network for the
-  # window menu's Send to.
+  # window menu's Send to. The third, rshell_enabled = true
+  # (doc/remote_shell), keeps it up for the remote shell it holds.
   def spawn_transfer_if_receiving
     recv = receiving_enabled?
     snd = sending_enabled?
-    return nil unless recv || snd
+    rsh = rshell_enabled?
+    return nil unless recv || snd || rsh
     start_transfer
     nil
   end
@@ -1007,6 +1009,13 @@ class FmrbKernelImpl < FmrbKernel
   def sending_enabled?
     on = transfer_conf_on?("send_enabled")
     Log.info("Transfer: sending is #{on ? 'on' : 'off'} (#{transfer_conf_path})")
+    on
+  end
+
+  # rshell_enabled = true in receive.toml (doc/remote_shell).
+  def rshell_enabled?
+    on = transfer_conf_on?("rshell_enabled")
+    Log.info("Transfer: remote shell is #{on ? 'on' : 'off'} (#{transfer_conf_path})")
     on
   end
 
