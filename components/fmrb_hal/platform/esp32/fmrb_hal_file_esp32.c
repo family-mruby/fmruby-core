@@ -1005,12 +1005,11 @@ fmrb_err_t fmrb_hal_file_readdir(fmrb_dir_t handle, fmrb_file_info_t *info) {
 
     memset(info, 0, sizeof(fmrb_file_info_t));
     snprintf(info->name, sizeof(info->name), "%s", entry->d_name);
-    info->is_dir = (entry->d_type == DT_DIR);
     info->size = 0;
     info->mtime = 0;
 
-    // POSIX readdir() does not return size/mtime; stat() the entry here
-    // so callers (BLE LS, picoruby Dir.read) get real values.
+    // POSIX readdir() does not return mode/size/mtime; stat() the entry here
+    // so callers (BLE LS, picoruby Dir.read, FmrbFile.list) get real values.
     // Still under the lock: stat() takes the filesystem's own mutex, and
     // every such call has to be inside it (see fmrb_hal_file_lock).
     char entry_path[MAX_PATH_LEN + 1 + sizeof(info->name)];
@@ -1021,9 +1020,16 @@ fmrb_err_t fmrb_hal_file_readdir(fmrb_dir_t handle, fmrb_file_info_t *info) {
     }
     struct stat st;
     if (stat(entry_path, &st) == 0) {
+        info->mode = st.st_mode;
         info->size = (uint32_t)st.st_size;
         info->mtime = (uint32_t)st.st_mtime;
+    } else if (entry->d_type == DT_DIR) {
+        info->mode = FMRB_S_IFDIR;
+    } else if (entry->d_type == DT_REG) {
+        info->mode = FMRB_S_IFREG;
     }
+    // is_dir follows mode so callers reading either one agree.
+    info->is_dir = FMRB_S_ISDIR(info->mode);
 
     UNLOCK();
     return FMRB_OK;
