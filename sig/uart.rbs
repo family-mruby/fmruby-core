@@ -1,0 +1,623 @@
+# UART (シリアル) とその境界の関数 FmrbUart。doc/app_uart。
+# UART は lib/gems/picoruby-fmrb-app/mrblib/fmrb-uart.rb (上流 picoruby-uart と同じ書き方の Ruby の包み)、
+# FmrbUart は本体の C (main/app/fmrb_boundary_uart.c、ピンの台帳は
+# components/fmrb_hal/platform/*/fmrb_hal_pin_manager_*.c、開くときの答えの番号は
+# components/fmrb_common/include/fmrb_app_uart.h)。上流の gem picoruby-uart はビルドに入れない。
+# FmrbUart はモジュールごと本体との境界に載る (%a{fmrb.boundary}、doc/app_boundary)。
+
+# シリアル (UART) で外の機器とやりとりする <<en>> Talk to a device over a serial line (UART)
+#
+# 上流の PicoRuby と同じ書き方のクラス。`UART.new` で開き、`puts`・`write` で送り、
+# `gets`・`read` で受ける。**読む側は待たない**: まだ届いていなければ nil を返すので、
+# `on_update` の中で毎回呼ぶ。`write` だけは送り終わるまで待つ。
+#
+# 開ける番号 (`unit:`) とピンは機種で違う (番号は `UART0` などの数字):
+#
+# | 機種 | アプリが開ける番号 | 端子の例 |
+# |---|---|---|
+# | Tab5 | 1・2・3・4 | Grove の G53・G54 |
+# | NARYA v4 (P4-Nano) | 1・2・3・4 | 拡張のピンヘッダ |
+# | AtomS3R・StickS3 | 1・2 | Grove |
+# | NARYA v3 | 2 | GROVE 2 の 47・48 |
+# | Linux sim | 2 (偽物) | 47・48 など |
+#
+# UART0 (コンソール) と NARYA v3 の UART1 (描画側とのリンク) は本体の物で、開くと IOError。
+# ブラウザ版・ネイティブ版には UART が無く、開くと IOError ("not available in this environment")。
+# ピンは GPIO と同じ表で守る: システムのピン・ほかのアプリや I2C が使っているピンは IOError。
+# **シリアルの MIDI 出力と同時には使えない** (MIDI は一度開くと再起動まで UART2 と TX のピンを
+# 持つ)。アプリが終わると本体が閉じる。
+#
+# Linux sim の UART は偽物: 書いた物がそのまま読める (ループバック)。プロジェクトの直下に
+# `uart2_in.fifo`・`uart2_out.fifo` があれば、そちらから読み、そちらへ書く。
+# ```ruby
+# # 番号とピンは例 (Tab5 の Grove)
+# u = UART.new(unit: 1, txd_pin: 53,
+#   rxd_pin: 54, baudrate: 115200)
+# u.puts "hello"
+# line = u.gets   # 来ていなければ nil
+# ```
+# <<en>>
+# Written the way upstream PicoRuby's class is. Open with `UART.new`, send with
+# `puts` and `write`, receive with `gets` and `read`. **Reading never waits**: it
+# gives nil until something has arrived, so call it in every `on_update`. Only
+# `write` waits until the bytes are on their way.
+#
+# The units (`unit:`) and the pins depend on the board (a unit is the number of
+# `UART0` and so on):
+#
+# | Board | Units an app may open | Example pins |
+# |---|---|---|
+# | Tab5 | 1, 2, 3, 4 | the Grove port, G53 and G54 |
+# | NARYA v4 (P4-Nano) | 1, 2, 3, 4 | the expansion header |
+# | AtomS3R, StickS3 | 1, 2 | Grove |
+# | NARYA v3 | 2 | GROVE 2, 47 and 48 |
+# | Linux sim | 2 (a stand-in) | 47, 48 and others |
+#
+# UART0 (the console) and NARYA v3's UART1 (the link to the drawing side) are the
+# system's: opening one is an IOError. The browser and the native build have no
+# UART (IOError "not available in this environment"). Pins are guarded by the same
+# table as GPIO: a system pin, or one another app or I2C holds, is an IOError.
+# **It cannot be used together with the serial MIDI output** (once opened, MIDI keeps
+# UART2 and its TX pin until the machine restarts). The system closes it when the
+# app ends.
+#
+# The Linux sim's UART is a stand-in: what is written comes back to be read (a
+# loopback). With `uart2_in.fifo` and `uart2_out.fifo` in the project directory, it
+# reads from the first and writes to the second.
+# ```ruby
+# # unit and pins are an example
+# u = UART.new(unit: 1, txd_pin: 53,
+#   rxd_pin: 54, baudrate: 115200)
+# u.puts "hello"
+# line = u.gets   # nil if none yet
+# ```
+class UART
+  # パリティ無し <<en>> No parity
+  PARITY_NONE: Integer
+  # 偶数パリティ <<en>> Even parity
+  PARITY_EVEN: Integer
+  # 奇数パリティ <<en>> Odd parity
+  PARITY_ODD: Integer
+  # 流れの制御なし (使えるのはこれだけ) <<en>> No flow control (the only one here)
+  FLOW_CONTROL_NONE: Integer
+  # RTS/CTS の流れの制御 (この端末では使えない) <<en>> RTS/CTS flow control (not here)
+  #
+  # 渡すと `UART.new`・`setmode` が ArgumentError。
+  # <<en>>
+  # `UART.new` and `setmode` raise ArgumentError when given it.
+  FLOW_CONTROL_RTS_CTS: Integer
+  # 1 回の FmrbUart.write の上限 (バイト) <<en>> The most bytes one FmrbUart.write takes
+  #
+  # `write` は長い文字列をこの大きさに分けて送る。
+  # <<en>>
+  # `write` sends a longer string in pieces of this size.
+  WRITE_MAX: Integer
+
+  # UART を開く <<en>> Open a UART
+  #
+  # `unit:` は番号 (`2`) か上流の名前 (`:ESP32_UART2`)。`txd_pin:`・`rxd_pin:` は GPIO の番号で、
+  # 片方だけなら -1 (受けるだけ・送るだけ)。省略したときの値: `baudrate: 9600`、`data_bits: 8`、
+  # `stop_bits: 1`、`parity: PARITY_NONE`、`rx_buffer_size: 4096`。`rts_pin:`・`cts_pin:` は使わない。
+  #
+  # 受けたバイトは開いている間だけ取る受信の箱 (`rx_buffer_size` バイト、16〜16384 の 2 のべき乗、
+  # PSRAM) に入る。箱が一杯のときに届いたバイトは捨て、`dropped` で数える。
+  #
+  # 間違った引数は ArgumentError: 知らない名前 ("unknown unit")、その機種に無い番号・ピン、
+  # ピンが両方 -1、TX と RX が同じ、速さが 300〜5000000 の外、形式の誤り、箱の大きさ、
+  # `FLOW_CONTROL_NONE` 以外。開けないときは IOError で理由が付く: 本体の番号
+  # ("UART0 is used by the system")、ほかのアプリが開いている、MIDI が使っている、
+  # システムのピン、入力だけの線 (チップの割り込みの線) を TX にした、ピンが使用中、
+  # この環境に無い。同じアプリが同じ番号を開き直すと、前の物を閉じてから開く。
+  # ```ruby
+  # # 番号とピンは例
+  # u = UART.new(unit: 2, txd_pin: 47,
+  #   rxd_pin: 48, baudrate: 115200)
+  # ```
+  # <<en>>
+  # `unit:` is a number (`2`) or upstream's name (`:ESP32_UART2`). `txd_pin:` and `rxd_pin:`
+  # are GPIO numbers; -1 for one of them (receive only, send only). When left out:
+  # `baudrate: 9600`, `data_bits: 8`, `stop_bits: 1`, `parity: PARITY_NONE`,
+  # `rx_buffer_size: 4096`. `rts_pin:` and `cts_pin:` are not used.
+  #
+  # Received bytes go into a receive buffer taken while it is open (`rx_buffer_size`
+  # bytes, a power of two from 16 to 16384, in PSRAM). A byte that arrives while it is
+  # full is dropped and counted by `dropped`.
+  #
+  # Wrong arguments are an ArgumentError: an unknown name ("unknown unit"), a unit or pin
+  # this board does not have, both pins -1, TX and RX on one pin, a rate outside
+  # 300-5000000, a wrong format, the buffer size, anything but `FLOW_CONTROL_NONE`. When
+  # it cannot be opened it is an IOError with the reason: the system's unit ("UART0 is
+  # used by the system"), another app has it open, MIDI uses it, a system pin, a line a
+  # chip drives (an interrupt line) as TX, a pin in use, none in this environment. The
+  # same app opening the same unit again closes the one it had first.
+  # ```ruby
+  # # unit and pins are an example
+  # u = UART.new(unit: 2, txd_pin: 47,
+  #   rxd_pin: 48, baudrate: 115200)
+  # ```
+  def self.new: (unit: Integer | Symbol | String, ?txd_pin: Integer, ?rxd_pin: Integer, ?baudrate: Integer, ?data_bits: Integer, ?stop_bits: Integer, ?parity: Integer, ?flow_control: Integer, ?rts_pin: Integer, ?cts_pin: Integer, ?rx_buffer_size: Integer?) -> UART
+
+  # 速さ (ボー) <<en>> The baud rate
+  #
+  # `UART.new` で頼んだ値か、`setmode` で変えた後の値。
+  # ```ruby
+  # u.baudrate   #=> 115200
+  # ```
+  # <<en>>
+  # The rate `UART.new` asked for, or the one after `setmode` changed it.
+  # ```ruby
+  # u.baudrate   #=> 115200
+  # ```
+  def baudrate: () -> Integer
+
+  # puts が足す行末を決める <<en>> Set the line ending puts adds
+  #
+  # `"\n"` (既定)・`"\r\n"`・`"\r"` のどれか。ほかは ArgumentError。`gets` の区切りは
+  # 変わらず `"\n"`。
+  # ```ruby
+  # u.line_ending = "\r\n"
+  # ```
+  # <<en>>
+  # One of `"\n"` (the default), `"\r\n"` and `"\r"`; anything else is an ArgumentError.
+  # `gets` still ends a line at `"\n"`.
+  # ```ruby
+  # u.line_ending = "\r\n"
+  # ```
+  def line_ending=: (String line_ending) -> String
+
+  # 1 行を送る (行末を足す) <<en>> Send a line, adding the line ending
+  #
+  # 文字列が行末 (`line_ending`) で終わっていなければ足す。nil を返す。
+  # ```ruby
+  # u.puts "AT"
+  # ```
+  # <<en>>
+  # Adds the line ending (`line_ending`) unless the string ends with it. Returns nil.
+  # ```ruby
+  # u.puts "AT"
+  # ```
+  def puts: (String str) -> nil
+
+  # 速さと形式をまとめて変える <<en>> Change the rate and the format together
+  #
+  # 渡した物だけを変える。ただし形式 (`data_bits`・`stop_bits`・`parity`) は省くと
+  # 8・1・`PARITY_NONE` に戻る (上流と同じ)。流れの制御は `FLOW_CONTROL_NONE` だけ。
+  # 速さが 300〜5000000 の外なら ArgumentError。
+  # ```ruby
+  # u.setmode(baudrate: 9600)
+  # ```
+  # <<en>>
+  # Changes what is given; but the format (`data_bits`, `stop_bits`, `parity`) goes back
+  # to 8, 1 and `PARITY_NONE` when left out (as upstream). Flow control is
+  # `FLOW_CONTROL_NONE` only. A rate outside 300-5000000 is an ArgumentError.
+  # ```ruby
+  # u.setmode(baudrate: 9600)
+  # ```
+  def setmode: (?baudrate: Integer?, ?data_bits: Integer?, ?stop_bits: Integer?, ?parity: Integer?, ?flow_control: Integer?, ?rts_pin: Integer?, ?cts_pin: Integer?) -> UART
+
+  # 流れの制御を決める (無しだけ) <<en>> Set flow control (none only)
+  #
+  # `FLOW_CONTROL_NONE` のときだけ通る。ほかは ArgumentError。
+  # ```ruby
+  # u.set_flow_control(
+  #   UART::FLOW_CONTROL_NONE, -1, -1)
+  # ```
+  # <<en>>
+  # Only `FLOW_CONTROL_NONE` passes; anything else is an ArgumentError.
+  # ```ruby
+  # u.set_flow_control(
+  #   UART::FLOW_CONTROL_NONE, -1, -1)
+  # ```
+  def set_flow_control: (Integer flow_control, Integer rts_pin, Integer cts_pin) -> nil
+
+  # データ・ストップ・パリティを変える <<en>> Change data bits, stop bits and parity
+  #
+  # `data_bits` は 5〜8、`stop_bits` は 1 か 2、`parity` は `PARITY_*`。3 つとも nil なら
+  # 何もしない (nil を返す)。一部だけ nil・範囲の外は ArgumentError。
+  # ```ruby
+  # u.set_format(8, 1, UART::PARITY_EVEN)
+  # ```
+  # <<en>>
+  # `data_bits` 5-8, `stop_bits` 1 or 2, `parity` one of `PARITY_*`. All three nil does
+  # nothing (returns nil); some nil, or a value out of range, is an ArgumentError.
+  # ```ruby
+  # u.set_format(8, 1, UART::PARITY_EVEN)
+  # ```
+  def set_format: (Integer? data_bits, Integer? stop_bits, Integer? parity) -> UART?
+
+  # 届いたバイトを読む (待たない) <<en>> Read what has arrived, without waiting
+  #
+  # `len` を渡すと、ちょうど `len` バイト。まだそれだけ届いていなければ nil (取らない)。
+  # 省くと届いている分を全部。何も無ければ nil。文字列はバイト列 (`bytesize` で数える)。
+  # ```ruby
+  # head = u.read(4)  # 4 バイトか nil
+  # ```
+  # <<en>>
+  # With `len`, exactly `len` bytes, or nil (taking nothing) while fewer have arrived.
+  # Without it, everything that has arrived; nil when nothing has. The string is bytes
+  # (count it with `bytesize`).
+  # ```ruby
+  # head = u.read(4)  # 4 bytes or nil
+  # ```
+  def read: (?Integer len) -> String?
+
+  # 届いている分を maxlen バイトまで読む <<en>> Read what has arrived, up to maxlen bytes
+  #
+  # 何も無ければ nil。待たない。
+  # ```ruby
+  # s = u.readpartial(256)
+  # ```
+  # <<en>>
+  # nil when nothing has arrived. Does not wait.
+  # ```ruby
+  # s = u.readpartial(256)
+  # ```
+  def readpartial: (Integer maxlen) -> String?
+
+  # 1 バイト読む (無ければ nil) <<en>> Read one byte (nil when none)
+  #
+  # ```ruby
+  # b = u.getbyte
+  # ```
+  def getbyte: () -> Integer?
+
+  # 1 バイトを受信の箱の先頭へ戻す <<en>> Put one byte back in front of the received ones
+  #
+  # 下の 8 ビットだけを戻す。次の `getbyte`・`read` がそれを返す。箱が一杯なら IOError
+  # ("rx buffer is full")。nil を返す。
+  # ```ruby
+  # u.ungetbyte(0x41)
+  # ```
+  # <<en>>
+  # Puts back the low 8 bits; the next `getbyte` or `read` gives it. IOError ("rx buffer is
+  # full") when the buffer is full. Returns nil.
+  # ```ruby
+  # u.ungetbyte(0x41)
+  # ```
+  def ungetbyte: (Integer byte) -> nil
+
+  # 読めるバイト数 <<en>> How many received bytes can be read
+  #
+  # ```ruby
+  # n = u.bytes_available
+  # ```
+  def bytes_available: () -> Integer
+
+  # 1 行読む ("\n" まで、待たない) <<en>> Read one line up to "\n", without waiting
+  #
+  # `"\n"` が届いていれば、それを含めた 1 行。まだなら nil (取らない)。`line_ending` に
+  # よらず区切りは `"\n"`。受信の箱より長い行は返らない (箱が一杯になり、後のバイトが捨てられる)。
+  # ```ruby
+  # line = u.gets
+  # ```
+  # <<en>>
+  # The line with its `"\n"` when one has arrived; nil (taking nothing) until then. The
+  # end is `"\n"` whatever `line_ending` is. A line longer than the receive buffer never
+  # comes (the buffer fills and later bytes are dropped).
+  # ```ruby
+  # line = u.gets
+  # ```
+  def gets: () -> String?
+
+  # バイト列を送る (送り終わるまで待つ) <<en>> Send bytes, waiting until they are handed over
+  #
+  # 送ったバイト数を返す。長い文字列は 4096 バイトずつ分けて送る。
+  # ```ruby
+  # u.write("AT\r\n")
+  # ```
+  # <<en>>
+  # Returns the number of bytes. A long string is sent 4096 bytes at a time.
+  # ```ruby
+  # u.write("AT\r\n")
+  # ```
+  def write: (String str) -> Integer
+
+  # 1 文字か 1 バイトを送る <<en>> Send one character or one byte
+  #
+  # 整数は下の 8 ビット、文字列は最初の 1 文字 (UTF-8 の 1 文字)。渡した物を返す。
+  # ほかの型は TypeError。
+  # ```ruby
+  # u.putc(0x41)   # "A"
+  # ```
+  # <<en>>
+  # An Integer's low 8 bits, or a String's first character (one UTF-8 character).
+  # Returns what was given; another type is a TypeError.
+  # ```ruby
+  # u.putc(0x41)   # "A"
+  # ```
+  def putc: (Integer | String ch) -> (Integer | String)
+
+  # 送った物が出きるまで待つ <<en>> Wait until what was written has gone out
+  #
+  # 長くて 1 秒待つ。
+  # ```ruby
+  # u.flush
+  # ```
+  # <<en>>
+  # Waits one second at most.
+  # ```ruby
+  # u.flush
+  # ```
+  def flush: () -> UART
+
+  # 受信の箱を空にする <<en>> Empty the receive buffer
+  #
+  # ```ruby
+  # u.clear_rx_buffer
+  # ```
+  def clear_rx_buffer: () -> UART
+
+  # 送信の箱を空にする (何もしない) <<en>> Empty the send buffer (does nothing here)
+  #
+  # 一度渡したバイトは取り消せない (上流の ESP32 版と同じ)。
+  # ```ruby
+  # u.clear_tx_buffer
+  # ```
+  # <<en>>
+  # Bytes already handed over cannot be taken back (as upstream's ESP32 port).
+  # ```ruby
+  # u.clear_tx_buffer
+  # ```
+  def clear_tx_buffer: () -> UART
+
+  # ブレークを送る (TX を低く保つ) <<en>> Send a break (hold TX low)
+  #
+  # `time` は Float なら秒、Integer なら ms (上流と同じ)。省くと 100 ms。その間待つ。
+  # 10 秒より長いと ArgumentError、ほかの型は TypeError。Linux sim では何もしない。
+  # ```ruby
+  # u.break(0.05)   # 50 ms
+  # ```
+  # <<en>>
+  # `time` is seconds as a Float, ms as an Integer (as upstream); 100 ms when left out.
+  # Waits that long. Over 10 seconds is an ArgumentError, another type a TypeError. Does
+  # nothing on the Linux sim.
+  # ```ruby
+  # u.break(0.05)   # 50 ms
+  # ```
+  def break: (?(Float | Integer) time) -> UART
+
+  # 受信の箱が一杯で捨てたバイト数 <<en>> Bytes dropped while the receive buffer was full
+  #
+  # 開いてからの合計。増えるなら、もっと頻繁に読むか `rx_buffer_size` を大きくする。
+  # ```ruby
+  # lost = u.dropped
+  # ```
+  # <<en>>
+  # The total since it was opened. If it grows, read more often or give a larger
+  # `rx_buffer_size`.
+  # ```ruby
+  # lost = u.dropped
+  # ```
+  def dropped: () -> Integer
+
+  # 閉じてピンを返す <<en>> Close it and give the pins back
+  #
+  # 2 回目からは何もしない。閉じた後の読み書きは IOError ("closed")。閉じなくても
+  # アプリが終われば本体が閉じる。
+  # ```ruby
+  # u.close
+  # ```
+  # <<en>>
+  # Does nothing the second time. Reading or writing after it is an IOError ("closed").
+  # The system closes it when the app ends even without this.
+  # ```ruby
+  # u.close
+  # ```
+  def close: () -> nil
+
+  # 閉じたか <<en>> Whether it is closed
+  #
+  # ```ruby
+  # u.closed?   #=> false
+  # ```
+  def closed?: () -> bool
+end
+
+# アプリの UART の境界の関数 <<en>> The app boundary's UART functions
+#
+# `UART` クラスの下の層。番号 (`unit`) で呼び、開いたアプリだけが使える (ほかのアプリの
+# 番号は RuntimeError)。Ruby のアプリはふつう `UART` を使う。ほかの言語 (C・Lua・
+# MicroPython・wasm) はこの形がそのまま見える。読む関数は待たない。`unit_mask` で
+# その端末が開ける番号を先に確かめられる (ブラウザ版・ネイティブ版は 0)。
+# ```ruby
+# r = FmrbUart.open(2, 47, 48, 115200,
+#                   8, 1, 0, 4096)
+# FmrbUart.write(2, "hi\n") if r == 0
+# ```
+# <<en>>
+# The layer under the `UART` class. Called by unit number; only the app that opened a
+# unit may use it (another app's unit is a RuntimeError). A Ruby app normally uses
+# `UART`; the other languages (C, Lua, MicroPython, wasm) see this shape as it is. The
+# reading functions never wait. `unit_mask` tells beforehand which units this machine
+# offers (0 in the browser and the native build).
+# ```ruby
+# r = FmrbUart.open(2, 47, 48, 115200,
+#                   8, 1, 0, 4096)
+# FmrbUart.write(2, "hi\n") if r == 0
+# ```
+%a{fmrb.boundary}
+module FmrbUart
+  # UART を開く (0 で成功、ほかは理由の番号) <<en>> Open a UART: 0 when opened, else why not
+  #
+  # 引数は全部要る (`parity` は 0 無し・1 偶数・2 奇数、`rx_buffer_size` は 16〜16384 の
+  # 2 のべき乗)。ピンの片方は -1 でよい。答えの番号 (下位 8 ビット): 1 番号が無い・2 ピンが無い・
+  # 3 ピンが両方 -1・4 TX と RX が同じ・5 速さ・6 形式・7 箱の大きさ (ここまで引数の誤り)、
+  # 8 本体の番号・9 ほかのアプリが使用中・10 MIDI が使用中・11 システムのピン・12 入力だけの線を
+  # TX に・13 ピンが使用中・14 開けなかった・15 この環境に無い。ピンについての答えは次の
+  # バイトにどちらか (1 TX、2 RX) が入る (`r >> 8`)。
+  # ```ruby
+  # r = FmrbUart.open(2, 47, 48, 9600,
+  #                   8, 1, 0, 4096)
+  # ```
+  # <<en>>
+  # Every argument is needed (`parity` 0 none, 1 even, 2 odd; `rx_buffer_size` a power of
+  # two from 16 to 16384); one pin may be -1. The answer (its low 8 bits): 1 no such unit,
+  # 2 no such pin, 3 both pins -1, 4 TX and RX on one pin, 5 the rate, 6 the format, 7 the
+  # buffer size (so far the caller's mistakes), 8 the system's unit, 9 another app has it,
+  # 10 MIDI has it, 11 a system pin, 12 a line a chip drives as TX, 13 a pin in use, 14 it
+  # did not open, 15 none in this environment. An answer about a pin has which one in the
+  # next byte (1 TX, 2 RX; `r >> 8`).
+  # ```ruby
+  # r = FmrbUart.open(2, 47, 48, 9600,
+  #                   8, 1, 0, 4096)
+  # ```
+  def self.open: (Integer unit, Integer txd_pin, Integer rxd_pin, Integer baudrate, Integer data_bits, Integer stop_bits, Integer parity, Integer rx_buffer_size) -> Integer
+
+  # 閉じてピンを返す (閉じたら true) <<en>> Close it and give the pins back (true if closed)
+  #
+  # 自分が開いていない番号なら false。
+  # ```ruby
+  # FmrbUart.close(2)
+  # ```
+  # <<en>>
+  # false for a unit this app has not opened.
+  # ```ruby
+  # FmrbUart.close(2)
+  # ```
+  def self.close: (Integer unit) -> bool
+
+  # 届いた分を max バイトまで読む (待たない) <<en>> Read up to max received bytes, never waiting
+  #
+  # 無ければ空の文字列。C などで呼ぶ側の箱が答えより小さいと、何も取らずに全体の長さを返し、
+  # 次にその長さの箱で呼ぶと同じバイトを取る。
+  # ```ruby
+  # s = FmrbUart.read(2, 64)
+  # ```
+  # <<en>>
+  # An empty string when nothing has arrived. When a caller's buffer (C and the like) is
+  # smaller than the answer, nothing is taken and the whole length is returned; the next
+  # call with a buffer that long takes those same bytes.
+  # ```ruby
+  # s = FmrbUart.read(2, 64)
+  # ```
+  def self.read: (Integer unit, Integer max) -> bin
+
+  # "\n" まで 1 行読む (無ければ nil) <<en>> Read one line up to "\n" (nil when none)
+  #
+  # `"\n"` を含めて返す。まだ届いていなければ nil で、何も取らない。
+  # ```ruby
+  # line = FmrbUart.read_line(2)
+  # ```
+  # <<en>>
+  # Returns it with its `"\n"`; nil, taking nothing, while none has arrived.
+  # ```ruby
+  # line = FmrbUart.read_line(2)
+  # ```
+  def self.read_line: (Integer unit) -> bin?
+
+  # 送る (4096 バイトまで、待つ) <<en>> Send bytes (4096 at most), waiting
+  #
+  # 送ったバイト数を返す。4096 バイトより長いと ArgumentError (`UART#write` は分けて送る)。
+  # ```ruby
+  # FmrbUart.write(2, "AT\r\n")
+  # ```
+  # <<en>>
+  # Returns the number of bytes. Longer than 4096 bytes is an ArgumentError
+  # (`UART#write` sends in pieces).
+  # ```ruby
+  # FmrbUart.write(2, "AT\r\n")
+  # ```
+  def self.write: (Integer unit, bin data) -> Integer
+
+  # 読めるバイト数 <<en>> How many received bytes can be read
+  #
+  # ```ruby
+  # n = FmrbUart.bytes_available(2)
+  # ```
+  def self.bytes_available: (Integer unit) -> Integer
+
+  # 1 バイトを先頭へ戻す (一杯なら false) <<en>> Put one byte back in front (false when full)
+  #
+  # ```ruby
+  # FmrbUart.unget(2, 0x41)
+  # ```
+  def self.unget: (Integer unit, Integer byte) -> bool
+
+  # 送った物が出きるまで待つ (1 秒まで) <<en>> Wait until what was sent has gone out (1 s at most)
+  #
+  # 出きったら true、待ちきれなければ false。
+  # ```ruby
+  # FmrbUart.flush(2)
+  # ```
+  # <<en>>
+  # true when it has, false when the wait ran out.
+  # ```ruby
+  # FmrbUart.flush(2)
+  # ```
+  def self.flush: (Integer unit) -> bool
+
+  # 受信の箱を空にする <<en>> Empty the receive buffer
+  #
+  # ```ruby
+  # FmrbUart.clear_rx(2)
+  # ```
+  def self.clear_rx: (Integer unit) -> void
+
+  # 送信の箱を空にする (何もしない) <<en>> Empty the send buffer (does nothing here)
+  #
+  # ```ruby
+  # FmrbUart.clear_tx(2)
+  # ```
+  def self.clear_tx: (Integer unit) -> void
+
+  # ブレークを ms ミリ秒送る <<en>> Send a break for ms milliseconds
+  #
+  # 0〜10000。その間待つ。Linux sim では何もしない。
+  # ```ruby
+  # FmrbUart.send_break(2, 100)
+  # ```
+  # <<en>>
+  # 0-10000; waits that long. Does nothing on the Linux sim.
+  # ```ruby
+  # FmrbUart.send_break(2, 100)
+  # ```
+  def self.send_break: (Integer unit, Integer ms) -> void
+
+  # 速さを変える (実際の速さを返す) <<en>> Change the baud rate; returns the actual rate
+  #
+  # 300〜5000000 の外は ArgumentError。
+  # ```ruby
+  # FmrbUart.set_baudrate(2, 9600)
+  # ```
+  # <<en>>
+  # Outside 300-5000000 is an ArgumentError.
+  # ```ruby
+  # FmrbUart.set_baudrate(2, 9600)
+  # ```
+  def self.set_baudrate: (Integer unit, Integer baudrate) -> Integer
+
+  # データ・ストップ・パリティを変える <<en>> Change data bits, stop bits and parity
+  #
+  # 範囲の外は ArgumentError。
+  # ```ruby
+  # FmrbUart.set_format(2, 8, 1, 0)
+  # ```
+  # <<en>>
+  # A value out of range is an ArgumentError.
+  # ```ruby
+  # FmrbUart.set_format(2, 8, 1, 0)
+  # ```
+  def self.set_format: (Integer unit, Integer data_bits, Integer stop_bits, Integer parity) -> bool
+
+  # 受信の箱が一杯で捨てたバイト数 <<en>> Bytes dropped while the receive buffer was full
+  #
+  # ```ruby
+  # FmrbUart.dropped(2)
+  # ```
+  def self.dropped: (Integer unit) -> Integer
+
+  # アプリが開ける番号 (1 ビットずつ) <<en>> The units an app may open, one bit each
+  #
+  # ビット n が立っていれば `UARTn` を開ける。ブラウザ版・ネイティブ版は 0。
+  # ```ruby
+  # m = FmrbUart.unit_mask
+  # ok = (m >> 2) & 1 == 1   # UART2
+  # ```
+  # <<en>>
+  # Bit n set means `UARTn` can be opened. 0 in the browser and the native build.
+  # ```ruby
+  # m = FmrbUart.unit_mask
+  # ok = (m >> 2) & 1 == 1   # UART2
+  # ```
+  def self.unit_mask: () -> Integer
+end

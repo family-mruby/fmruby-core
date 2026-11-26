@@ -51,7 +51,7 @@ extern "C" {
  * refuses an app that imports a function it lacks, before the app starts.
  */
 /** Hash of the function list and records; changes whenever one of them changes. */
-#define FMRB_ABI_HASH 0x0eaa155du
+#define FMRB_ABI_HASH 0x6c83d35fu
 
 #define FMRB_BOUNDARY_ERR_FAILED (-1)
 #define FMRB_BOUNDARY_ERR_ARG    (-2)
@@ -1610,6 +1610,154 @@ int32_t fmrb_log_warn_raw(const char *msg, int32_t msg_len);
  */
 FMRB_IMPORT("log_error_raw")
 int32_t fmrb_log_error_raw(const char *msg, int32_t msg_len);
+
+/**
+ * UART を開く (0 で成功、ほかは理由の番号)
+ * Open a UART: 0 when opened, else why not
+ *
+ * Ruby: FmrbUart.open(unit, txd_pin, rxd_pin, baudrate, data_bits, stop_bits, parity, rx_buffer_size)
+ * @return the value
+ */
+FMRB_IMPORT("uart_open")
+int32_t fmrb_uart_open(int32_t unit, int32_t txd_pin, int32_t rxd_pin, int32_t baudrate, int32_t data_bits, int32_t stop_bits, int32_t parity, int32_t rx_buffer_size);
+
+/**
+ * 閉じてピンを返す (閉じたら true)
+ * Close it and give the pins back (true if closed)
+ *
+ * Ruby: FmrbUart.close(unit)
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("uart_close")
+int32_t fmrb_uart_close(int32_t unit);
+
+/**
+ * 届いた分を max バイトまで読む (待たない)
+ * Read up to max received bytes, never waiting
+ *
+ * Ruby: FmrbUart.read(unit, max)
+ * @return the full length of the result (more than out_size: cut short)
+ */
+FMRB_IMPORT("uart_read")
+int32_t fmrb_uart_read(int32_t unit, int32_t max, uint8_t *out, int32_t out_size);
+
+/**
+ * "\n" まで 1 行読む (無ければ nil)
+ * Read one line up to "\n" (nil when none)
+ *
+ * Ruby: FmrbUart.read_line(unit)
+ * @return the full length of the result (more than out_size: cut short)
+ *         FMRB_BOUNDARY_NONE for none (nil in Ruby)
+ */
+FMRB_IMPORT("uart_read_line")
+int32_t fmrb_uart_read_line(int32_t unit, uint8_t *out, int32_t out_size);
+
+/**
+ * 送る (4096 バイトまで、待つ)
+ * Send bytes (4096 at most), waiting
+ *
+ * Ruby: FmrbUart.write(unit, data)
+ * @return the value
+ */
+FMRB_IMPORT("uart_write")
+int32_t fmrb_uart_write(int32_t unit, const uint8_t *data, int32_t data_len);
+
+/**
+ * 読めるバイト数
+ * How many received bytes can be read
+ *
+ * Ruby: FmrbUart.bytes_available(unit)
+ * @return the value
+ */
+FMRB_IMPORT("uart_bytes_available")
+int32_t fmrb_uart_bytes_available(int32_t unit);
+
+/**
+ * 1 バイトを先頭へ戻す (一杯なら false)
+ * Put one byte back in front (false when full)
+ *
+ * Ruby: FmrbUart.unget(unit, byte)
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("uart_unget")
+int32_t fmrb_uart_unget(int32_t unit, int32_t byte);
+
+/**
+ * 送った物が出きるまで待つ (1 秒まで)
+ * Wait until what was sent has gone out (1 s at most)
+ *
+ * Ruby: FmrbUart.flush(unit)
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("uart_flush")
+int32_t fmrb_uart_flush(int32_t unit);
+
+/**
+ * 受信の箱を空にする
+ * Empty the receive buffer
+ *
+ * Ruby: FmrbUart.clear_rx(unit)
+ */
+FMRB_IMPORT("uart_clear_rx")
+int32_t fmrb_uart_clear_rx(int32_t unit);
+
+/**
+ * 送信の箱を空にする (何もしない)
+ * Empty the send buffer (does nothing here)
+ *
+ * Ruby: FmrbUart.clear_tx(unit)
+ */
+FMRB_IMPORT("uart_clear_tx")
+int32_t fmrb_uart_clear_tx(int32_t unit);
+
+/**
+ * ブレークを ms ミリ秒送る
+ * Send a break for ms milliseconds
+ *
+ * Ruby: FmrbUart.send_break(unit, ms)
+ */
+FMRB_IMPORT("uart_send_break")
+int32_t fmrb_uart_send_break(int32_t unit, int32_t ms);
+
+/**
+ * 速さを変える (実際の速さを返す)
+ * Change the baud rate; returns the actual rate
+ *
+ * Ruby: FmrbUart.set_baudrate(unit, baudrate)
+ * @return the value
+ */
+FMRB_IMPORT("uart_set_baudrate")
+int32_t fmrb_uart_set_baudrate(int32_t unit, int32_t baudrate);
+
+/**
+ * データ・ストップ・パリティを変える
+ * Change data bits, stop bits and parity
+ *
+ * Ruby: FmrbUart.set_format(unit, data_bits, stop_bits, parity)
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("uart_set_format")
+int32_t fmrb_uart_set_format(int32_t unit, int32_t data_bits, int32_t stop_bits, int32_t parity);
+
+/**
+ * 受信の箱が一杯で捨てたバイト数
+ * Bytes dropped while the receive buffer was full
+ *
+ * Ruby: FmrbUart.dropped(unit)
+ * @return the value
+ */
+FMRB_IMPORT("uart_dropped")
+int32_t fmrb_uart_dropped(int32_t unit);
+
+/**
+ * アプリが開ける番号 (1 ビットずつ)
+ * The units an app may open, one bit each
+ *
+ * Ruby: FmrbUart.unit_mask()
+ * @return the value
+ */
+FMRB_IMPORT("uart_unit_mask")
+int32_t fmrb_uart_unit_mask(void);
 
 /* ---- what the app exports (the hooks; the firmware calls them) ----------
  *

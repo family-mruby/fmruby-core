@@ -13,6 +13,7 @@
 #include <mruby/gc.h>
 
 #include "fmrb_app.h"
+#include "fmrb_app_uart.h"
 #include "fmrb_hal.h"
 #include "fmrb_tmpfs.h"
 #include "fmrb_rtos.h"
@@ -792,6 +793,8 @@ static mrb_value mrb_fmrb_app_cleanup(mrb_state *mrb, mrb_value self)
                  ctx->app_name, ret);
     }
 
+    // The app's UARTs (every target: the sim has a stand-in for them).
+    fmrb_uart_release_owner((void *)fmrb_task_get_current());
 #ifndef CONFIG_IDF_TARGET_LINUX
     // Release HW resources owned by this task (I2C buses, RMT channels, etc.)
     hw_proxy_release_resources((hw_proxy_task_handle_t)fmrb_task_get_current());
@@ -2436,6 +2439,7 @@ static int32_t fmrb_mrb_recv_audio(mrb_state *mrb, mrb_value self)
 #define FMRB_GEN_MRB_FmrbApp
 #define FMRB_GEN_MRB_FmrbAudio
 #define FMRB_GEN_MRB_FmrbFile
+#define FMRB_GEN_MRB_FmrbUart
 #include "fmrb_gen/fmrb_boundary_mrb.inc"
 
 void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
@@ -2461,6 +2465,9 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     // FmrbFile: whole files by path (list's wrapper is mrblib/fmrb-file.rb).
     struct RClass *file_module = mrb_define_module(mrb, "FmrbFile");
     FMRB_GEN_MRB_DEFINE_FmrbFile(mrb, file_module);
+    // FmrbUart: an app's UART (the class UART over it is mrblib/fmrb-uart.rb).
+    struct RClass *uart_module = mrb_define_module(mrb, "FmrbUart");
+    FMRB_GEN_MRB_DEFINE_FmrbUart(mrb, uart_module);
 
     // Instance methods (called from Ruby instances)
     mrb_define_method(mrb, app_class, "_init", mrb_fmrb_app_init, MRB_ARGS_NONE());

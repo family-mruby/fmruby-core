@@ -18,6 +18,7 @@ set(COMPONENT_SRCS
     "app/fmrb_boundary_app.c"
     "app/fmrb_boundary_file.c"
     "app/fmrb_boundary_log.c"
+    "app/fmrb_boundary_uart.c"
     "app/fmrb_app_checkpoint.c"
     "app/fmrb_app_transfer.c"
     "kernel/fmrb_kernel.c"

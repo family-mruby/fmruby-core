@@ -14,6 +14,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include "fmrb_app.h"
+#include "fmrb_app_uart.h"
 #include "fmrb_gfx.h"
 #include "fmrb_app_canvas.h"
 #include "fmrb_err.h"
@@ -188,6 +189,7 @@ int fmrb_spx_app_cleanup(void)
     fmrb_app_canvas_release_all(ctx);
     fmrb_msg_delete_queue(ctx->app_id);
 
+    fmrb_uart_release_owner((void *)fmrb_task_get_current());
 #ifndef CONFIG_IDF_TARGET_LINUX
     hw_proxy_release_resources((hw_proxy_task_handle_t)fmrb_task_get_current());
 #endif

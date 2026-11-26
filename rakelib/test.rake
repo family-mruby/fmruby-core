@@ -18,9 +18,9 @@
 # The ROS 2 message type tests moved to the asterism repository with the
 # code they test (rake asterism:test runs them on the pinned checkout); they
 # live there with the code they test.
-desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + receive.toml + the remote shell + the app package (W6) + the kernel's msgpack + services + assoc + desktop icons + Asterism link and table client + WAV + the sprite editor's PNG + NSF end of a song + tts + native backends + secret files + saved Wi-Fi networks + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + the kanji dictionary + the font partition image + the shared wire headers + no FmrbSystem call left on FmrbApp + the sig coverage tool + the API fixes found while writing sig (File.path, JSON, MIDI) + the ESP32 build option guard + picoruby-ti + BASIC + MicroPython)"
+desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + receive.toml + the remote shell + the app package (W6) + the kernel's msgpack + services + assoc + desktop icons + Asterism link and table client + WAV + the sprite editor's PNG + NSF end of a song + tts + native backends + secret files + saved Wi-Fi networks + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + the kanji dictionary + the font partition image + the shared wire headers + no FmrbSystem call left on FmrbApp + the sig coverage tool + the API fixes found while writing sig (File.path, JSON, MIDI) + an app's UART (ring, pins, the UART class) + the ESP32 build option guard + picoruby-ti + BASIC + MicroPython)"
 task :test => ["ui:test", "text:test", "toml:test", "receive_conf:test", "rshell:test", "app_package:test", "msgpack:test", "services:test", "assoc:test", "desktop_icons:test", "asterism:link_test", "asterism:table_test", "wav:test", "png332:test", "nsf:test", "tts:test", "native:test",
-               "secret:test", "remote_guard:test", "wificonf:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "kanji:test", "font_ja:test", "wire:check", "system:check", "boundary:check", "sig:test", "api_fixes:test", "build_options:test", "ti:site:test", "ti:test", "basic:test", "micropython:smoke"]
+               "secret:test", "remote_guard:test", "wificonf:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "kanji:test", "font_ja:test", "wire:check", "system:check", "boundary:check", "sig:test", "api_fixes:test", "app_uart:test", "build_options:test", "ti:site:test", "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :rshell do
   # The remote shell's machine side (flash/usr/share/transfer/rshell.rb,
@@ -39,6 +39,16 @@ namespace :api_fixes do
   desc "API fixes found while writing sig: File.path, JSON, MIDI (host Ruby, no docker)"
   task :test do
     sh "ruby test/api_fixes/run.rb"
+  end
+end
+
+namespace :app_uart do
+  # An app's UART (doc/app_uart): the receive ring and the pin table's UART
+  # rule per board (C, gcc), the class UART over a stand-in for FmrbUart and
+  # upstream picoruby-uart's test (host Ruby, no docker).
+  desc "App UART: ring, pin table per board, the UART class (host, no docker)"
+  task :test do
+    sh "ruby test/app_uart/run.rb"
   end
 end
 

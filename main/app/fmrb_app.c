@@ -15,6 +15,7 @@
 #include "fmrb_rtos.h"
 #include "fmrb_log.h"
 #include "fmrb_app.h"
+#include "fmrb_app_uart.h"
 #include "fmrb_mem.h"
 /* The Spinel runtime component is in every build (the sample gems always use
    it), so the header is too: the gem release on app exit needs it whatever
@@ -1799,6 +1800,8 @@ cleanup:
     // Delete message queue
     fmrb_msg_delete_queue(ctx->app_id);
 
+    // The app's UARTs (every target: the sim has a stand-in for them).
+    fmrb_uart_release_owner((void *)fmrb_task_get_current());
 #ifndef CONFIG_IDF_TARGET_LINUX
     // Release HW resources (I2C, RMT, GPIO pins)
     hw_proxy_release_resources((hw_proxy_task_handle_t)fmrb_task_get_current());
@@ -1901,6 +1904,18 @@ static int cwd_slot_of_current(void) {
         return -1;
     }
     return (int)ctx->app_id;
+}
+
+fmrb_semaphore_t fmrb_app_mutex_once(fmrb_semaphore_t* slot) {
+    if (*slot != NULL || g_ctx_lock == NULL) {
+        return *slot;
+    }
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    if (*slot == NULL) {
+        *slot = fmrb_semaphore_create_mutex();
+    }
+    fmrb_semaphore_give(g_ctx_lock);
+    return *slot;
 }
 
 bool fmrb_app_init(void) {
@@ -2432,12 +2447,11 @@ static void force_release_resources(fmrb_app_task_context_t* ctx,
 
     fmrb_msg_delete_queue(ctx->app_id);
 
-#ifndef CONFIG_IDF_TARGET_LINUX
-    // The handle is only a lookup key in the resource table, so releasing
+    // The handle is only a lookup key in the resource tables, so releasing
     // after the delete is fine and it is the only order available here.
+    fmrb_uart_release_owner((void *)task);
+#ifndef CONFIG_IDF_TARGET_LINUX
     hw_proxy_release_resources((hw_proxy_task_handle_t)task);
-#else
-    (void)task;
 #endif
 
     if (ctx->mem_handle >= 0) {
