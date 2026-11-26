@@ -199,10 +199,11 @@ namespace :flash do
     Rake::Task["flash:app"].invoke
     t1 = Time.now
     conf = ENV['CONF'] == "1" ? ["--conf"] : []
-    # Files of the system's part (/usr, /help, /etc, /lib, /boot, /bin,
+    # Files of the system's part (/usr, /help, /lib, /boot, /bin,
     # /cache, the /app folders the image has) that the new image does not
     # have are listed at the end; PRUNE=1 deletes them. /home, /app/usr,
-    # /app/test, /mnt, /tmp and /var are never touched (../tools/fmrb_rd_fs.rb).
+    # /app/test, /mnt, /tmp, /var, /etc and what config/storage_exclude_*.txt
+    # leaves out are never touched (../tools/fmrb_rd_fs.rb).
     prune = ENV['PRUNE'] == "1" ? ["--prune"] : []
     flash_keep_tool("sync", host, "--storage-root", FLASH_KEEP_ROOT,
                     *(name ? ["--name", name] : []), *conf, *prune)
