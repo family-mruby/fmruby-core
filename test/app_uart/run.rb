@@ -248,6 +248,33 @@ check("close", [u2.closed?, u2.close, u2.closed?, u2.close], [false, nil, true, 
 check("closed read", raised { u2.read }, ["IOError", "UART: closed"])
 check("closed write", raised { u2.write("x") }, ["IOError", "UART: closed"])
 
+# Opening a unit again: the object from before is closed, and touches the
+# new port neither by reading, writing nor closing (doc/release_3_1 r1).
+FmrbUart.reset
+a = UART.new(unit: 2, txd_pin: 47, rxd_pin: 48)
+check("first open", a.closed?, false)
+b = UART.new(unit: 2, txd_pin: 47, rxd_pin: 48)
+check("reopened: the old one is closed", [a.closed?, b.closed?], [true, false])
+check("reopened: old write", raised { a.write("x") }, ["IOError", "UART: closed"])
+check("reopened: old read", raised { a.read }, ["IOError", "UART: closed"])
+check("reopened: old gets", raised { a.gets }, ["IOError", "UART: closed"])
+check("reopened: old bytes_available", raised { a.bytes_available }, ["IOError", "UART: closed"])
+check("reopened: old setmode", raised { a.setmode(baudrate: 9600) }, ["IOError", "UART: closed"])
+check("reopened: old dropped", raised { a.dropped }, ["IOError", "UART: closed"])
+FmrbUart.calls.clear
+check("reopened: old close", [a.close, a.closed?], [nil, true])
+check("reopened: old close leaves the port", [FmrbUart.calls, b.closed?], [[], false])
+b.puts("new")
+check("reopened: the new one works", b.gets, "new\n")
+# A refused reopen leaves the one there is open (the C side keeps it).
+check("refused reopen", raised { UART.new(unit: 2, txd_pin: 47, rxd_pin: 43) }[0], "IOError")
+check("refused reopen keeps the open one", [b.closed?, b.bytes_available], [false, 0])
+b.close
+c = UART.new(unit: 2, txd_pin: 47, rxd_pin: 48)
+check("closed, opened again", [b.closed?, c.closed?], [true, false])
+check("closing the closed one again", [b.close, c.closed?], [nil, false])
+c.close
+
 # The answers of open as exceptions (fmrb_app_uart.h).
 FmrbUart.reset
 check("unknown name", raised { UART.new(unit: :RP2040_UART0, txd_pin: 1) },

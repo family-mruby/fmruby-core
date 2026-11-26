@@ -14,6 +14,13 @@ class UART
   # The longest FmrbUart.write (FMRB_UART_WRITE_MAX).
   WRITE_MAX = 4096
 
+  # How many times this app has opened each unit (0-4, the most any chip
+  # has). The firmware knows a unit by its number and its owner only, so
+  # when the app opens a unit again (the firmware closes the one it had), a
+  # UART object from before would reach the new port. Each object keeps the
+  # count it was opened at; one that no longer matches is closed.
+  GENERATIONS = [0, 0, 0, 0, 0]
+
   def initialize(
         unit:,
         txd_pin: -1,
@@ -32,6 +39,8 @@ class UART
     r = FmrbUart.open(n, txd_pin, rxd_pin, baudrate, data_bits, stop_bits, parity, size)
     UART._refuse(r, n, txd_pin, rxd_pin) if r != 0
     @unit_num = n
+    @generation = GENERATIONS[n] + 1
+    GENERATIONS[n] = @generation
     @baudrate = baudrate
     @line_ending = "\n"
     @closed = false
@@ -264,21 +273,23 @@ class UART
     FmrbUart.dropped(@unit_num)
   end
 
+  # An object the app has since opened the unit again over is closed
+  # already; closing it leaves the new one open.
   def close
     return nil if @closed
-    FmrbUart.close(@unit_num)
+    FmrbUart.close(@unit_num) if GENERATIONS[@unit_num] == @generation
     @closed = true
     nil
   end
 
   def closed?
-    @closed
+    @closed || GENERATIONS[@unit_num] != @generation
   end
 
   private
 
   def check_open
-    raise IOError.new("UART: closed") if @closed
+    raise IOError.new("UART: closed") if closed?
   end
 
   # n bytes the ring is known to hold, in as many calls as the glue needs.

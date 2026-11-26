@@ -107,7 +107,8 @@ class UART
   # `FLOW_CONTROL_NONE` 以外。開けないときは IOError で理由が付く: 本体の番号
   # ("UART0 is used by the system")、ほかのアプリが開いている、MIDI が使っている、
   # システムのピン、入力だけの線 (チップの割り込みの線) を TX にした、ピンが使用中、
-  # この環境に無い。同じアプリが同じ番号を開き直すと、前の物を閉じてから開く。
+  # この環境に無い。同じアプリが同じ番号を開き直すと、前の物を閉じてから開く (前の物は閉じた
+  # 物になり、読み書きは IOError ("closed"))。
   # ```ruby
   # # 番号とピンは例
   # u = UART.new(unit: 2, txd_pin: 47,
@@ -129,7 +130,8 @@ class UART
   # it cannot be opened it is an IOError with the reason: the system's unit ("UART0 is
   # used by the system"), another app has it open, MIDI uses it, a system pin, a line a
   # chip drives (an interrupt line) as TX, a pin in use, none in this environment. The
-  # same app opening the same unit again closes the one it had first.
+  # same app opening the same unit again closes the one it had first (that object is
+  # closed: reading or writing it is an IOError ("closed")).
   # ```ruby
   # # unit and pins are an example
   # u = UART.new(unit: 2, txd_pin: 47,
