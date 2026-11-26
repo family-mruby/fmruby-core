@@ -1,6 +1,6 @@
 # アプリのメモリ (VM プール)
 
-> 状態: 完了 | 更新: 2026-11-07 | mruby アプリの VM プールの大きさ (機種別)、`.app.toml` の `large_memory`、何が尽きると NoMemoryError になるか (総量ではなく一続きの空き)、ログでの見方、コンパイルの山の実測 (麻雀の卓)
+> 状態: 完了 | 更新: 2026-11-26 | mruby アプリの VM プールの大きさ (機種別)、`.app.toml` の `large_memory`、何が尽きると NoMemoryError になるか (総量ではなく一続きの空き)、ログでの見方、コンパイルの山の実測 (麻雀の卓)
 
 この文書は mruby で動くユーザアプリの VM プールを扱う。GC の観測と調整は
 [gc_monitoring.md](gc_monitoring.md)、内蔵 RAM (タスクのスタックなど) は
@@ -34,9 +34,14 @@ mruby のヒープ、コンパイラ、`require` したファイルの中身は�
   (2026-11-07、doc/checkpoint/report/s3_board.md)。
 - **それ以外 (Modern・sim・ブラウザ版・ネイティブ版)**: 通常のプールはアプリの
   枠ごとに 1 つ (先頭 3 つは静的、残りは初めて使うときに PSRAM から取って、
-  そのあと持ち続ける)。`large_memory = 1` のプールは**1 つだけで、同時に
-  1 アプリしか使えない**。2 本目はログに `No free LARGE memory pool` を出して
-  起動を断られる。
+  そのあと持ち続ける)。`large_memory = 1` のプールは **Modern と sim で 2 つ**
+  (1 つ目は静的、2 つ目は初めて 2 本が並んだときに PSRAM (sim はホスト) から
+  取って持ち続ける)。受け取り・送信・リモートシェルのどれかが有効な端末は
+  転送のアプリが起動から大きい方を 1 つ持つので、もう 1 つを麻雀などが使う。
+  3 本目はログに `No free LARGE memory pool` を出して起動を断られる。
+  ブラウザ版・ネイティブ版はアプリの枠ごとに大きい方を持てる
+  (`FMRB_PLATFORM_HOSTED`)。 (2026-11-24 に 1 つから 2 つへ。
+  doc/remote_shell/report/r0.md 2 章)
 - `large_memory = 1` を使っているアプリ: shooter, raycaster, rpg_demo,
   othello, picoruby, picorabbit, smf_player, json_probe, midi_bench, mahjong、
   転送のアプリ (transfer)。
@@ -142,8 +147,9 @@ fmrb_app: [Mahjong] VM pool at NoMemoryError: total=1572864 used=626856 free=945
 
 - 起動で NoMemoryError になったら、まず 4 章の 2 行を見る。
 - 本体が大きいアプリ (目安: 32 ビットで山が通常プールの 7 割を超える。
-  Modern なら本体 40 KB 前後から) は `large_memory = 1`。ただし同時に 1 本
-  (S3 は 2 本)。
+  Modern なら本体 40 KB 前後から) は `large_memory = 1`。ただし同時に 2 本
+  (Modern・sim・S3。転送のアプリが動いている端末では、そのうち 1 つを
+  転送のアプリが持つ)。
 - 本体を増やすより、`require` するファイルに分ける方が山が低い
   (ファイルごとにコンパイルし、終わった分の一時領域は返る)。
 - ブラウザ版だけで確かめない (1 章)。sim か実機でも起動する。
