@@ -1,11 +1,9 @@
 # TransferInbox: the transfer app's receiving side (transfer.app.rb, whose
-# head says the calls and the rules). Kept in its own file so that the app's
-# script stays well under the loader's 64 KB (main/app/fmrb_app.c
-# MAX_SCRIPT_FILE_SIZE); read once by the app at its start.
-
-require "/usr/share/asterism/transfer/transfer"
-require "/usr/share/transfer/receive_conf"
-require "/usr/share/transfer/app_package"
+# head says the calls and the rules). One of the parts the build puts in
+# front of the app (main/ruby/default_app/transfer/, after the shared parts
+# its "# combine:" line names: Asterism::Transfer and FmrbReceiveConf), so
+# Asterism::Transfer::Inbox and FmrbAppPackage are defined by the time this
+# is read.
 
 # The receiving side: Asterism::Transfer::Inbox (begin / chunk / commit /
 # cancel, resending from the receiver's position, the sha256 of the whole,

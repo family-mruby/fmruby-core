@@ -10,9 +10,15 @@
 # example. That part has no reason to sit in flash as a string table, so it is
 # written out as ordinary files under flash/help instead:
 #
-#   flash/help/<Class>/<method>.md   the signature, then the long text
-#   flash/help/<Class>/index.md      a class comment, when it has one
-#   flash/help/index.txt             "<name>\t<path>" per entry, for lookups
+#   flash/help/ja.md, en.md     every class's page in that language, one after
+#                               another (a page is "# Class", then "# Class#m"
+#                               sections)
+#   flash/help/ja.idx, en.idx   "<Class>\t<offset>\t<length>" per class: where
+#                               its page sits in the .md, in bytes
+#   flash/help/index.txt        "<name>\t<Class>" per entry, for lookups
+#
+# The editor reads index.txt and the .idx of its language, then asks
+# EditorCore.load_range for the bytes of the one page -- never the whole .md.
 #
 # Generated at build time (rake setup) and not committed, like the type
 # database itself.
@@ -44,6 +50,11 @@ module TiHelp
     ">=" => "ge", ">>" => "shr", "[]" => "aref", "[]=" => "aset",
     "^" => "xor", "|" => "or", "~" => "invert", "->" => "arrow",
   }.freeze
+
+  # The class comment's page. No method's file is named so (file_name_for
+  # makes only letters, digits, "_" and "op_<word>"): a method called
+  # index once took the name "index.md" and overwrote the class's page.
+  CLASS_PAGE = "@class.md"
 
   def self.file_name_for(method_name)
     name = method_name.to_s
@@ -109,8 +120,8 @@ module TiHelp
 
         class_long = long_form(declaration.comment)
         if class_long
-          pages["#{dir}/index.md"] = "# #{class_name}\n\n#{class_long}\n"
-          index << [class_name, "#{dir}/index.md"]
+          pages["#{dir}/#{CLASS_PAGE}"] = "# #{class_name}\n\n#{class_long}\n"
+          index << [class_name, "#{dir}/#{CLASS_PAGE}"]
         end
 
         declaration.members.each do |member|
@@ -182,25 +193,23 @@ module TiHelp
     (head + body_rest).join
   end
 
-  # Class files, not one file per method.
+  # One page per class, one file per language.
   #
   # littlefs gives every file a 4KB block, so 573 pages of a few hundred bytes
-  # each cost 2.3MB of an 8MB partition to carry 270KB of text. Grouped by
-  # class it is twenty-odd files and the block waste goes with them. The pages
-  # are already headed "# Class#method", so a class file is its methods
-  # concatenated, and the index says which heading to jump to.
+  # each once cost 2.3MB of an 8MB partition to carry 270KB of text. Grouped
+  # by class it was 268 files and 1.5MB; with every class of a language in one
+  # file it is five files and the block waste goes with them. A page is its
+  # methods concatenated -- they are already headed "# Class#method" -- and
+  # the index says which heading to jump to.
   #
-  # The languages are split here as well, into <Class>.ja.md and <Class>.en.md.
-  # The editor then picks a file instead of deleting half the lines of the one
-  # it opened -- with many methods in a file, that filtering would have had to
-  # learn about sections.
-  def self.generate(sig_dir:, out_dir:)
+  # The languages are split here, so the editor picks a file instead of
+  # deleting half the lines of the page it opened.
+  #
+  # Returns the pages as {lang => [[Class, text], ...]} in file order.
+  def self.class_pages(sig_dir:)
     pages, index = build(sig_dir: sig_dir)
 
-    FileUtils.rm_rf(out_dir)
-    FileUtils.mkdir_p(out_dir)
-
-    # path is "<Class>/<method>.md" (or "<Class>/index.md" for the class
+    # path is "<Class>/<method>.md" (or "<Class>/@class.md" for the class
     # comment), and the class comment sorts first inside its class.
     by_class = {}
     pages.each do |path, body|
@@ -208,31 +217,50 @@ module TiHelp
       (by_class[cls] ||= []) << [file, body]
     end
 
-    written = 0
+    out = { "ja" => [], "en" => [] }
     by_class.each do |cls, entries|
-      entries.sort_by! { |file, _| [file == "index.md" ? 0 : 1, file] }
+      entries.sort_by! { |file, _| [file == CLASS_PAGE ? 0 : 1, file] }
       %w[ja en].each do |lang|
         text = entries.map { |file, body|
           # A class page is "# Class" and a blank line; a method page adds the
           # signature and the summary with their blanks.
-          pick_lang(body, lang, file == "index.md" ? 2 : 6)
+          pick_lang(body, lang, file == CLASS_PAGE ? 2 : 6)
         }.join("\n")
-        File.write(File.join(out_dir, "#{cls}.#{lang}.md"), text)
-        written += 1
+        out[lang] << [cls, text]
       end
     end
+    [out, index]
+  end
 
-    # name and the class file it lives in -- two columns, as before. The
-    # heading to scroll to is derived from the two: a section starts with
-    # "# Class#method" or "# Class.method", which the editor can build itself.
-    # Carrying it as a third column meant splitting a line at a tab in the
-    # editor, and that is one string operation more than Spinel could be
-    # trusted with here.
+  def self.generate(sig_dir:, out_dir:)
+    by_lang, index = class_pages(sig_dir: sig_dir)
+
+    FileUtils.rm_rf(out_dir)
+    FileUtils.mkdir_p(out_dir)
+
+    written = 0
+    by_lang.each do |lang, list|
+      body = "".b
+      toc = []
+      list.each do |cls, text|
+        bytes = text.b
+        toc << "#{cls}\t#{body.bytesize}\t#{bytes.bytesize}\n"
+        body << bytes
+      end
+      File.binwrite(File.join(out_dir, "#{lang}.md"), body)
+      File.write(File.join(out_dir, "#{lang}.idx"), toc.join)
+      written += 2
+    end
+
+    # name and the class it lives in -- two columns, as before. The heading to
+    # scroll to is derived from the two: a section starts with "# Class#method"
+    # or "# Class.method", which the editor can build itself.
     lines = index.map do |name, path|
       cls, _ = path.split("/", 2)
       "#{name}\t#{cls}\n"
     end
     File.write(File.join(out_dir, "index.txt"), lines.join)
+    written += 1
 
     [written, index.size]
   end

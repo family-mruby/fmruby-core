@@ -303,6 +303,9 @@ const char *fmrb_spx_app_info_snapshot(int pid)
     spx_pack_name(buf + 4, 32, ctx->app_name);    /* name */
     if (ctx->load_mode == FMRB_LOAD_MODE_FILE && ctx->load_data) {
         spx_pack_name(buf + 36, 128, (const char *)ctx->load_data);  /* path */
+    } else if (ctx->load_mode == FMRB_LOAD_MODE_BYTECODE && ctx->filepath[0] != '\0') {
+        /* a built-in app's builtin_path (default/transfer) */
+        spx_pack_name(buf + 36, 128, ctx->filepath);
     }
     buf[164] = ctx->fullscreen_switchable ? 1 : 0;
     /* headless (default_window_mode = "background"): no canvas, so no

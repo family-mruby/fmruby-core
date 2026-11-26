@@ -11,7 +11,18 @@ module EditorFileRun
   # return means the file could not be read or the arena is full -- the editor
   # says so and keeps the buffer it had. True when the file was read.
   def load_file(path)
-    n = EditorCore.load_file(path)
+    load_done(path, EditorCore.load_file(path))
+  end
+
+  # One section of a bigger file -- length bytes of src from offset -- shown
+  # under the name `name` (the F1 help: every class of a language lives in one
+  # file, and the status line still names the class's page).
+  def load_section(src, offset, length, name)
+    load_done(name, EditorCore.load_range(src, offset, length))
+  end
+
+  # What follows a load, n being what EditorCore answered (lines, or < 0).
+  def load_done(path, n)
     if n < 0
       if n == -2
         flash_status(FmrbI18n.t(:b_too_large).to_s)
@@ -52,6 +63,12 @@ module EditorFileRun
   end
 
   def save_file
+    # A help page is not a file of its own (it is a section of /help/<lang>.md
+    # under its class's name), so writing it would leave a stray file behind.
+    if @help_open
+      flash_status(FmrbI18n.t(:b_readonly).to_s)
+      return
+    end
     unless @current_file
       # A buffer with no name yet (the editor started empty): ask for one rather
       # than failing silently. Ctrl-S used to do nothing at all here, so the only

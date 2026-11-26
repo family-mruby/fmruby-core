@@ -59,7 +59,7 @@ module TiSite
     ["Files and time", "ファイルと時刻", %w[fmrb_file dir io time]],
     ["Data", "データ", %w[json message_pack digest]],
     ["Network", "ネットワーク", %w[fmrb_asterism fmrb_table_client asterism_ros fmrb_net]],
-    ["Machine and devices", "本体と機器", %w[machine gc rng math fmrb_hw i2c gpio]],
+    ["Machine and devices", "本体と機器", %w[machine gc rng math fmrb_hw i2c gpio uart]],
     ["Ruby core", "Ruby の基本クラス",
      %w[object kernel class enumerable string symbol integer float array hash range proc
         nil_class true_class false_class exception untyped]],
@@ -85,7 +85,7 @@ module TiSite
     ["pubsub", "Inter-App Messaging", "アプリ間通信", %w[FmrbApp]],
     ["filesystem", "Files & I/O", "ファイル・I/O", %w[File Dir IO FmrbFile]],
     ["log", "Logging", "ログ", %w[Log]],
-    ["peripherals", "Hardware Control", "ハードウェア制御", %w[GPIO I2C FmrbHw]],
+    ["peripherals", "Hardware Control", "ハードウェア制御", %w[GPIO I2C UART FmrbUart FmrbHw]],
     ["utilities", "Utilities", "ユーティリティ", %w[JSON MessagePack BMP332 Fmrb::Fft]],
     ["const", "Constants & System Info", "定数・システム情報", %w[FmrbConst FmrbHw]],
     ["system", "Tasks & Timing", "タスク・時間", %w[Machine]],

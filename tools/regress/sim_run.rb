@@ -116,7 +116,7 @@ module Regress
         /app/game/flappy.app.rb
       ]],
       ["running_transfer", %w[
-        /usr/share/transfer/transfer.app.rb
+        default/transfer
       ]]
     ].map { |pt, apps| [pt, apps.freeze].freeze }.freeze
     # The screen each family's sim comes up at. Modern's is the resolution

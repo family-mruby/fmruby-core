@@ -169,6 +169,12 @@ static const luaL_Reg file_functions[] = {
     {NULL, NULL}
 };
 
+// FmrbUart (generated): FmrbUart.open(unit, ...) ..., an app's UART (sig/uart.rbs).
+static const luaL_Reg uart_functions[] = {
+    FMRB_GEN_LUA_FmrbUart_FUNCTIONS
+    {NULL, NULL}
+};
+
 /**
  * Register FmrbGfx module to Lua state
  */
@@ -278,13 +284,17 @@ void fmrb_lua_register_gfx(lua_State* L) {
     luaL_setfuncs(L, file_functions, 0);
     lua_setglobal(L, "FmrbFile");
 
+    lua_newtable(L);
+    luaL_setfuncs(L, uart_functions, 0);
+    lua_setglobal(L, "FmrbUart");
+
     if (luaL_loadbufferx(L, app_prelude, sizeof(app_prelude) - 1, "=fmrb_app", "t") != LUA_OK ||
         lua_pcall(L, 0, 0, 0) != LUA_OK) {
         FMRB_LOGE(TAG, "app prelude: %s", lua_tostring(L, -1));
         lua_pop(L, 1);
     }
 
-    FMRB_LOGI(TAG, "FmrbGfx, FmrbApp, FmrbAudio, FmrbFile and Log registered to Lua");
+    FMRB_LOGI(TAG, "FmrbGfx, FmrbApp, FmrbAudio, FmrbFile, FmrbUart and Log registered to Lua");
 }
 
 void fmrb_lua_gfx_layout(lua_State* L, const fmrb_shell_layout_t* layout)

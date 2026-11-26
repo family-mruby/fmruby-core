@@ -221,6 +221,15 @@ static mrb_value m_load_file(mrb_state *mrb, mrb_value self)
     return mrb_fixnum_value(ec_load_file(slot_of(mrb), RSTRING_CSTR(mrb, path)));
 }
 
+static mrb_value m_load_range(mrb_state *mrb, mrb_value self)
+{
+    mrb_value path;
+    mrb_int offset, length;
+    mrb_get_args(mrb, "Sii", &path, &offset, &length);
+    return mrb_fixnum_value(ec_load_range(slot_of(mrb), RSTRING_CSTR(mrb, path),
+                                          (int)offset, (int)length));
+}
+
 static mrb_value m_save_file(mrb_state *mrb, mrb_value self)
 {
     mrb_value path;
@@ -423,6 +432,7 @@ void mrb_picoruby_fmrb_editor_core_init_impl(mrb_state *mrb)
     mrb_define_module_function(mrb, mod, "insert_multiline", m_insert_multiline, MRB_ARGS_REQ(3));
 
     mrb_define_module_function(mrb, mod, "load_file",    m_load_file,    MRB_ARGS_REQ(1));
+    mrb_define_module_function(mrb, mod, "load_range",   m_load_range,   MRB_ARGS_REQ(3));
     mrb_define_module_function(mrb, mod, "save_file",    m_save_file,    MRB_ARGS_REQ(1));
     mrb_define_module_function(mrb, mod, "replace_file", m_replace_file, MRB_ARGS_REQ(1));
     mrb_define_module_function(mrb, mod, "doc_version",  m_doc_version,  MRB_ARGS_NONE());

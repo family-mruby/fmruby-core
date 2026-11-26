@@ -389,6 +389,74 @@ fmrb_pin_status_t fmrb_pin_manager_get_app_status(int pin)
     return st;
 }
 
+// ---- UART units (doc/app_uart plan 4.6) -----------------------------------
+//
+// UART0 is the console on every board, and NARYA v3 links to its drawing side
+// on UART1 (fmrb_hal_link_uart_esp32.c). The ESP32-P4's units 1-4 and the
+// small S3 boards' 1-2 are left to apps; the P4's LP UART is not offered. The
+// chip's count is SOC_UART_HP_NUM (P4: 5, S3: 3).
+#if defined(CONFIG_IDF_TARGET_ESP32P4)
+#define UART_UNIT_COUNT   5
+#define UART_APP_UNITS    0x1Eu  // 1, 2, 3, 4
+#elif defined(FMRB_HW_ATOMS3R) || defined(FMRB_HW_STICKS3)
+#define UART_UNIT_COUNT   3
+#define UART_APP_UNITS    0x06u  // 1, 2
+#else
+#define UART_UNIT_COUNT   3
+#define UART_APP_UNITS    0x04u  // 2 (UART1 is the link to the drawing side)
+#endif
+
+fmrb_pin_uart_unit_t fmrb_pin_manager_uart_unit(int unit)
+{
+    if (unit < 0 || unit >= UART_UNIT_COUNT) {
+        return FMRB_PIN_UART_UNIT_NONE;
+    }
+    return ((UART_APP_UNITS >> unit) & 1u) ? FMRB_PIN_UART_UNIT_APP : FMRB_PIN_UART_UNIT_SYSTEM;
+}
+
+uint32_t fmrb_pin_manager_uart_app_units(void)
+{
+    return UART_APP_UNITS;
+}
+
+static fmrb_pin_uart_verdict_t judge_uart_pin(int pin, bool tx, void *caller)
+{
+    if (pin < 0 || pin >= FMRB_PIN_MAX) {
+        return FMRB_PIN_UART_NO_RANGE;
+    }
+    return fmrb_pin_uart_judge(s_pins[pin], fmrb_pin_manager_is_gpio_reserved(pin),
+                               is_input_only_line(pin), tx, caller);
+}
+
+fmrb_pin_uart_verdict_t fmrb_pin_manager_claim_uart(int tx, int rx, void *caller, int *which)
+{
+    fmrb_pin_uart_verdict_t v = FMRB_PIN_UART_OK;
+    int bad = 0;
+    if (tx >= 0 || tx < -1) {
+        v = judge_uart_pin(tx, true, caller);
+        bad = FMRB_PIN_UART_WHICH_TX;
+    }
+    if (v == FMRB_PIN_UART_OK && (rx >= 0 || rx < -1)) {
+        v = judge_uart_pin(rx, false, caller);
+        bad = FMRB_PIN_UART_WHICH_RX;
+    }
+    if (v != FMRB_PIN_UART_OK) {
+        if (which) {
+            *which = bad;
+        }
+        return v;
+    }
+    if (tx >= 0) {
+        s_pins[tx].usage = FMRB_PIN_USER_UART;
+        s_pins[tx].owner = caller;
+    }
+    if (rx >= 0) {
+        s_pins[rx].usage = FMRB_PIN_USER_UART;
+        s_pins[rx].owner = caller;
+    }
+    return FMRB_PIN_UART_OK;
+}
+
 fmrb_pin_gpio_verdict_t fmrb_pin_manager_claim_gpio(int pin, fmrb_pin_gpio_use_t use,
                                                     void *caller)
 {

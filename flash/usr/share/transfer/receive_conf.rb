@@ -101,7 +101,7 @@ module FmrbReceiveConf
   AT_MAX = 40
   # The transfer app (started when receiving is turned on, told when it is
   # turned off: it ends once what is coming in is in).
-  TRANSFER_APP = "/usr/share/transfer/transfer.app.rb"
+  TRANSFER_APP = "default/transfer"
   TRANSFER_NAME = "Transfer"
   CTL_TOPIC = "transfer/ctl"
 

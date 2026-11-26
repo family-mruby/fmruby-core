@@ -385,9 +385,11 @@ module EditorTiUi
   # ---- Help (F1) ----
   #
   # The long half of the doc comments in sig/, generated into /help at build
-  # time. index.txt maps a method name to a file; the file is opened in the
-  # same buffer, read-only, and the buffer being edited is put aside in /tmp
-  # so nothing is lost -- including changes that were never saved.
+  # time (tools/ti/gen_help.rb). index.txt maps a method name to its class;
+  # <lang>.idx says where that class's page sits in <lang>.md, and only those
+  # bytes are read (EditorCore.load_range). The page is opened in the same
+  # buffer, read-only, and the buffer being edited is put aside in /tmp so
+  # nothing is lost -- including changes that were never saved.
 
   HELP_INDEX = "/help/index.txt"
   HELP_DIR   = "/help/"
@@ -457,10 +459,11 @@ module EditorTiUi
   end
 
   # The class of whatever the method is being called on, spelled the way the
-  # index spells it (FmrbUI::Widget is written FmrbUI__Widget, since the
-  # class name is also a file name). nil when the line does not say -- there
-  # is no dot in front of the name, the engine cannot type the receiver, or
-  # the method was inherited and is filed under a parent class instead.
+  # index spells it (FmrbUI::Widget is written FmrbUI__Widget, the spelling
+  # the pages had when each was a file of its own). nil when the line does
+  # not say -- there is no dot in front of the name, the engine cannot type
+  # the receiver, or the method was inherited and is filed under a parent
+  # class instead.
   def help_receiver_class
     x0 = @cx
     x0 -= 1 while x0 > 0 && comp_name_byte_at?(@cy, x0 - 1)
@@ -499,16 +502,81 @@ module EditorTiUi
     out
   end
 
-  # The file for a class, in the reader's language. Both are written at build
-  # time; if one is missing the other is what there is.
+  # The reader's language, as the help files name it.
+  def help_lang
+    FmrbI18n.lang == "en" ? "en" : "ja"
+  end
+
+  # The name a class's page is shown under: the status line reads
+  # "[Help] Dir.en.md", as it did when every page was a file of its own.
   def help_file_for(cls)
     # Interpolation, not a chain of +. `HELP_DIR + cls + ".en.md"` produced
     # exactly "/help/FmrbApp" under Spinel: the first + returns a value whose
     # type it can no longer prove, and the second one then dispatches to a
-    # default that hands back its receiver -- silently, as usual. The result
-    # is a path that names a directory, and a load that fails with I/O.
-    return "#{HELP_DIR}#{cls}.en.md" if FmrbI18n.lang == "en"
-    "#{HELP_DIR}#{cls}.ja.md"
+    # default that hands back its receiver -- silently, as usual.
+    "#{HELP_DIR}#{cls}.#{help_lang}.md"
+  end
+
+  # "<offset>\t<length>" of a class's page in /help/<lang>.md, from the line
+  # "<Class>\t<offset>\t<length>" of /help/<lang>.idx; nil when the class has
+  # no page. Searched like the index (help_index_classes), not split.
+  def help_section(cls)
+    begin
+      f = File.open("#{HELP_DIR}#{help_lang}.idx", "r")
+      text = f.read
+      f.close
+    rescue => e
+      Log.info("help toc unavailable: #{e.message}")
+      return nil
+    end
+    return nil if text.nil?
+    # The first line has no newline before it; looked at on its own rather
+    # than by searching a copy with one put in front.
+    head = "#{cls}\t"
+    if text.length >= head.length && text[0, head.length] == head
+      from = head.length
+    else
+      needle = "\n#{head}"
+      at = text.index(needle)
+      return nil if at.nil?
+      from = at + needle.length
+    end
+    eol = text.index("\n", from)
+    eol = text.length if eol.nil?
+    text[from, eol - from].to_s
+  end
+
+  # The field'th number (0 or 1) of "<offset>\t<length>"; -1 when it is not
+  # there. Walked byte by byte: no split, no to_i on a slice.
+  def help_section_field(sec, field)
+    i = 0
+    n = sec.bytesize
+    k = 0
+    while k < field
+      i += 1 while i < n && sec.getbyte(i) != 9
+      return -1 if i >= n
+      i += 1
+      k += 1
+    end
+    v = 0
+    digits = 0
+    while i < n
+      b = sec.getbyte(i)
+      break if b < 48 || b > 57
+      v = v * 10 + (b - 48)
+      digits += 1
+      i += 1
+    end
+    digits > 0 ? v : -1
+  end
+
+  # Read a class's page (sec from help_section) into the buffer under its page
+  # name. False when it could not be read.
+  def load_help_page(sec, name)
+    off = help_section_field(sec, 0)
+    len = help_section_field(sec, 1)
+    return false if off < 0 || len < 0
+    load_section("#{HELP_DIR}#{help_lang}.md", off, len, name)
   end
 
   # Put the cursor on the heading that starts this method's section. The two
@@ -516,8 +584,11 @@ module EditorTiUi
   # method is written "# Class#name", a singleton one "# Class.name".
   # Scanning by length first, so only a line that could be one is read.
   def help_jump_to(cls, name)
-    a = "# " + cls + "#" + name
-    b = "# " + cls + "." + name
+    # The index names a nested class with "__" (a file-name form); its
+    # page's headings name it as Ruby does ("# Asterism::Proxy#call").
+    shown = help_class_name(cls)
+    a = "# #{shown}##{name}"
+    b = "# #{shown}.#{name}"
     y = 0
     n = EditorCore.line_count
     while y < n
@@ -537,6 +608,24 @@ module EditorTiUi
       end
       y += 1
     end
+  end
+
+  # "Asterism__Proxy" -> "Asterism::Proxy". Byte by byte and with
+  # interpolation only, which Spinel types the same way as mruby.
+  def help_class_name(cls)
+    out = ""
+    i = 0
+    n = cls.bytesize
+    while i < n
+      if i + 1 < n && cls.getbyte(i) == 95 && cls.getbyte(i + 1) == 95
+        out = "#{out}::"
+        i += 2
+      else
+        out = "#{out}#{cls.byteslice(i, 1)}"
+        i += 1
+      end
+    end
+    out
   end
 
   # The word the help is asked for: the selected candidate when the list is
@@ -569,7 +658,11 @@ module EditorTiUi
     topic = help_topic
     entry = help_path_for(topic)
     t_index = Machine.uptime_us
-    if entry.nil?
+    # Where the class's page is, asked before anything is put aside: a class
+    # the index names but the page table does not is "no help", as before.
+    sec = nil
+    sec = help_section(entry) unless entry.nil?
+    if sec.nil?
       flash_status(FmrbI18n.t(:b_no_help).to_s)
       return
     end
@@ -585,30 +678,33 @@ module EditorTiUi
     @help_return_hl = @hl_enabled
     @help_return_hl_manual = @hl_manual
     full = help_file_for(entry)
-    load_file(full)
-    t_load = Machine.uptime_us
-    # Only touch the buffer when the page really was read: load_file leaves the
-    # previous document in place (and says so) when it fails.
-    if @current_file == full
-      help_jump_to(entry, topic)
-      t_jump = Machine.uptime_us
-      help_markdown_hl
-      t_hl = Machine.uptime_us
-      # F1 is a keypress the reader waits on, so where its time goes is worth
-      # a line -- the same reason ti_lat and edit_lat report at info.
-      Log.info("help_lat: #{(t_hl - t0) / 1000} ms " \
-               "(index #{(t_index - t0) / 1000}, load #{(t_load - t_index) / 1000}, " \
-               "jump #{(t_jump - t_load) / 1000}, hl #{(t_hl - t_jump) / 1000}; " \
-               "#{EditorCore.line_count} lines)")
+    unless load_help_page(sec, full)
+      # The page could not be read: bring back what was being edited (from
+      # the stash) rather than leave a help pane with nothing in it.
+      Log.info("help: page for #{entry} could not be read")
+      close_help
+      flash_status(FmrbI18n.t(:b_no_help).to_s)
+      return
     end
+    t_load = Machine.uptime_us
+    help_jump_to(entry, topic)
+    t_jump = Machine.uptime_us
+    help_markdown_hl
+    t_hl = Machine.uptime_us
+    # F1 is a keypress the reader waits on, so where its time goes is worth
+    # a line -- the same reason ti_lat and edit_lat report at info.
+    Log.info("help_lat: #{(t_hl - t0) / 1000} ms " \
+             "(index #{(t_index - t0) / 1000}, load #{(t_load - t_index) / 1000}, " \
+             "jump #{(t_jump - t_load) / 1000}, hl #{(t_hl - t_jump) / 1000}; " \
+             "#{EditorCore.line_count} lines)")
     @modified = false
     @need_redraw = true
   end
 
   # ---- Help pages: one language, chosen at build time ----
   #
-  # gen_help writes <Class>.ja.md and <Class>.en.md, each holding every method
-  # of the class with the other language's half already gone. The editor used
+  # gen_help writes a page per class into ja.md and en.md, each holding every
+  # method of the class with the other language's half already gone. The editor used
   # to open one page and delete half its lines; with a whole class in a file
   # that filtering would have had to learn where each method's section began
   # and ended, so it moved to the generator, where the halves are still

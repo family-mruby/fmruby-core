@@ -26,6 +26,7 @@ class SystemDesktopApp < FmrbApp
   include TbdDialogMixin
   include NoticesMixin
   include WindowMenuMixin
+  include RshellMarkMixin
 
   MENU_BAR_HEIGHT = 13
   # Max cursor travel (virtual px) between mouse_down and mouse_up for the
@@ -351,7 +352,8 @@ class SystemDesktopApp < FmrbApp
     @kana_mode = 0
 
     # A remote shell session is open (doc/remote_shell): its mark is on the
-    # menu bar, left of the kana cell, and the cells left of it move over.
+    # menu bar, left of the kana cell, and the cells left of it move over
+    # (rshell_mark.rb; a Retro desktop has no mark).
     @rshell_on = false
 
     # Boot animation state
@@ -1378,24 +1380,6 @@ class SystemDesktopApp < FmrbApp
     @gfx.draw_text(x + 1, 2, KANA_LABELS[@kana_mode] || "A", MENU_BG, FmrbGfx::WHITE, mixed: true)
   end
 
-  # The remote shell's mark (doc/remote_shell), left of the kana cell, only
-  # while a session is open: "RS" on the theme's highlight. Not clickable
-  # (ending a session from here is not decided). Without it the bar is as it
-  # was; with it the RAM readout and the battery move left by rshell_pad,
-  # and the taskbar stops that much sooner. The cell is 14 px and 4 px of
-  # gap (literals, not a constant: on Spinel a constant is a static in
-  # internal RAM).
-  def rshell_pad
-    @rshell_on ? 18 : 0
-  end
-
-  def draw_rshell_icon
-    return unless @rshell_on
-    x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W - 4 - 14
-    @gfx.fill_rect(x, 1, 14, 10, FmrbConst::THEME_HIGHLIGHT)
-    @gfx.draw_text(x + 1, 2, "RS", FmrbGfx::WHITE, FmrbConst::THEME_HIGHLIGHT)
-  end
-
   # Click the indicator to step off -> hiragana -> katakana -> off ("漢", the
   # IME's mark, steps to hiragana like off does). The host
   # owns the mode, so this only asks; the indicator redraws when the answer
@@ -2076,13 +2060,7 @@ class SystemDesktopApp < FmrbApp
       rebuilt = update_taskbar_apps
       draw_foreground if rebuilt && @boot_anim_state == :done && !@direct_boot
     elsif msg["cmd"] == "rshell_state"
-      # A remote shell session opened or ended (the transfer app, through
-      # the kernel): the mark goes up or down and the bar is drawn again.
-      on = msg["on"] == true
-      if on != @rshell_on
-        @rshell_on = on
-        draw_foreground if @boot_anim_state == :done && !@direct_boot
-      end
+      rshell_state_changed(msg)  # the remote shell's mark (rshell_mark.rb)
     elsif msg["cmd"] == "apps_installed"
       # An app came over Asterism and was placed in /app/usr (doc/wasm_apps
       # W6): the launcher reads /app again, now when it is open, else the

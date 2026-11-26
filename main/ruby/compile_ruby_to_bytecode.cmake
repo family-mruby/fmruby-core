@@ -6,6 +6,15 @@
 #   system_desktop.app.rb), all .rb files in that subdirectory are prepended
 #   to the main file before compilation. This allows splitting large scripts
 #   into modules while keeping single-file picorbc compilation.
+#   FMRB_MIXIN_EXCLUDE_<base> / FMRB_MIXIN_EXTRA_<base> (set by the caller)
+#   take parts out of that list and add stand-ins for them, for a part one
+#   family of machines leaves out.
+#
+# Supports parts from elsewhere in the tree:
+#   The first "# combine: a.rb b/c.rb" line of the file names files (relative to the file's directory) that go in front of the
+#   subdirectory's files, in the order written. For a part another program
+#   or the storage shares (the transfer app takes FmrbReceiveConf from
+#   flash/usr/share/transfer/). rakelib/hosted.rake reads the same line.
 #
 # An app (*.app.rb) gets autostart.rb after it: the call that starts the
 # FmrbApp subclass it defines (app files do not end with MyApp.new.start).
@@ -57,6 +66,32 @@ function(generate_ruby_bytecode_commands RUBY_FILES_VAR OUTPUT_DIR)
     if(IS_DIRECTORY ${SUBDIR})
       file(GLOB SUB_RB_FILES ${SUBDIR}/*.rb)
       list(SORT SUB_RB_FILES)  # Deterministic order
+      # A part this build leaves out, and what stands in for it (after the
+      # subdirectory's own files, still before the main file): set by the
+      # caller as FMRB_MIXIN_EXCLUDE_<base> / FMRB_MIXIN_EXTRA_<base>.
+      if(FMRB_MIXIN_EXCLUDE_${RB_BASE})
+        list(REMOVE_ITEM SUB_RB_FILES ${FMRB_MIXIN_EXCLUDE_${RB_BASE}})
+      endif()
+      if(FMRB_MIXIN_EXTRA_${RB_BASE})
+        list(APPEND SUB_RB_FILES ${FMRB_MIXIN_EXTRA_${RB_BASE}})
+      endif()
+    endif()
+    # "# combine:" parts, in front of everything else
+    set(COMBINE_RB_FILES "")
+    file(STRINGS ${RB_FILE} COMBINE_LINE LIMIT_COUNT 80 REGEX "^# combine:")
+    if(COMBINE_LINE)
+      list(GET COMBINE_LINE 0 COMBINE_LINE)
+      string(REGEX REPLACE "^# combine:[ \t]*" "" COMBINE_LINE "${COMBINE_LINE}")
+      separate_arguments(COMBINE_NAMES UNIX_COMMAND "${COMBINE_LINE}")
+      foreach(CN ${COMBINE_NAMES})
+        get_filename_component(CP ${CN} ABSOLUTE BASE_DIR ${RB_DIR})
+        if(NOT EXISTS ${CP})
+          message(FATAL_ERROR "${RB_FILE}: its \"# combine:\" part ${CP} is missing "
+                              "(a part rake setup copies from the asterism checkout? run rake setup)")
+        endif()
+        list(APPEND COMBINE_RB_FILES ${CP})
+      endforeach()
+      list(PREPEND SUB_RB_FILES ${COMBINE_RB_FILES})
     endif()
     set(TAIL_RB_FILES "")
     if(RB_FILE MATCHES "\\.app\\.rb$")

@@ -131,6 +131,70 @@ bool fmrb_pin_manager_is_gpio_reserved(int pin);
 fmrb_pin_gpio_verdict_t fmrb_pin_manager_claim_gpio(int pin, fmrb_pin_gpio_use_t use,
                                                     void *caller);
 
+// ---- What an app may do with a UART (the UART class, sig/uart.rbs) --------
+//
+// The pins are guarded by the same rule as GPIO's: a system pin (the
+// build-time table fmrb_pin_manager_is_gpio_reserved() reads, or one the
+// table holds for the system, the buttons included) is refused, and a line a
+// chip on the board drives (an interrupt output) can be RX only. The owner is
+// the app (its task), as for GPIO. Which UART units an app may open is a
+// build-time choice per board.
+
+// A UART unit, as an app sees it.
+typedef enum {
+    FMRB_PIN_UART_UNIT_NONE   = 0,  // no such unit on this chip
+    FMRB_PIN_UART_UNIT_APP    = 1,  // left to apps
+    FMRB_PIN_UART_UNIT_SYSTEM = 2,  // the system's (the console, the link to the drawing side)
+} fmrb_pin_uart_unit_t;
+
+// The answer for the pins. A refusal leaves the table as it was.
+typedef enum {
+    FMRB_PIN_UART_OK            = 0,  // the caller owns the pins (taken now or before)
+    FMRB_PIN_UART_NO_RANGE      = 1,  // no such pin on this chip
+    FMRB_PIN_UART_NO_SYSTEM     = 2,  // a pin the system uses
+    FMRB_PIN_UART_NO_INPUT_ONLY = 3,  // a line a chip drives, asked for TX
+    FMRB_PIN_UART_NO_IN_USE     = 4,  // held by another app, or for another use (I2C, MIDI ...)
+} fmrb_pin_uart_verdict_t;
+
+// Which pin of the two a refusal is about.
+#define FMRB_PIN_UART_WHICH_TX 1
+#define FMRB_PIN_UART_WHICH_RX 2
+
+// The rule on one pin's status, without touching the table (the unit the
+// host test checks). reserved: fmrb_pin_manager_is_gpio_reserved(pin);
+// input_only: a line a chip drives; tx: the pin is to be TX.
+static inline fmrb_pin_uart_verdict_t
+fmrb_pin_uart_judge(fmrb_pin_status_t st, bool reserved, bool input_only, bool tx,
+                    const void *caller)
+{
+    if (reserved || st.usage == FMRB_PIN_SYSTEM_EXCLUSIVE) {
+        return FMRB_PIN_UART_NO_SYSTEM;
+    }
+    if (tx && input_only) {
+        return FMRB_PIN_UART_NO_INPUT_ONLY;
+    }
+    if (st.usage == FMRB_PIN_UNUSED) {
+        return FMRB_PIN_UART_OK;
+    }
+    if (st.usage == FMRB_PIN_USER_UART && st.owner != NULL && st.owner == caller) {
+        return FMRB_PIN_UART_OK;
+    }
+    return FMRB_PIN_UART_NO_IN_USE;
+}
+
+// How the board uses UART unit `unit`.
+fmrb_pin_uart_unit_t fmrb_pin_manager_uart_unit(int unit);
+
+// The units an app may open, one bit each (bit n = unit n).
+uint32_t fmrb_pin_manager_uart_app_units(void);
+
+// Judge tx and rx (either may be -1, not both: the caller checks) for caller
+// and, when both pass, take them for caller as FMRB_PIN_USER_UART. Both or
+// neither: a refusal leaves the table as it was and, when which is not NULL,
+// says which pin it is about (FMRB_PIN_UART_WHICH_*). Give them back with
+// fmrb_pin_manager_release() (or release_by_owner when the app ends).
+fmrb_pin_uart_verdict_t fmrb_pin_manager_claim_uart(int tx, int rx, void *caller, int *which);
+
 // How the pin looks to an app (FmrbHw.pin_status): the table's status, except
 // that a free pin fmrb_pin_manager_is_gpio_reserved() names reads as
 // FMRB_PIN_SYSTEM_EXCLUSIVE. Out of range is FMRB_PIN_UNUSED, as in

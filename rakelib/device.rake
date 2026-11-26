@@ -189,7 +189,7 @@ namespace :flash do
   # An app-only flash writes neither the partition table nor the P4's font
   # partition (doc/flash_layout F4), so first the board's are compared with
   # the build's; when they differ this stops and says to use keep_home.
-  desc "App-only flash, then send what differs between build/storage_root and the board over WiFi; /home untouched; stops when the board's partition table or font image is not the build's (HOST=, CONF=1 sends /etc/system_conf.toml too)"
+  desc "App-only flash, then send what differs between build/storage_root and the board over WiFi; /home untouched; stops when the board's partition table or font image is not the build's; lists the system's files the build no longer has (HOST=, CONF=1 sends /etc/system_conf.toml too, PRUNE=1 deletes those files)"
   task :app_sync => :flash_options do
     host = flash_keep_host
     flash_keep_need_storage_root
@@ -199,8 +199,14 @@ namespace :flash do
     Rake::Task["flash:app"].invoke
     t1 = Time.now
     conf = ENV['CONF'] == "1" ? ["--conf"] : []
+    # Files of the system's part (/usr, /help, /lib, /boot, /bin,
+    # /cache, the /app folders the image has) that the new image does not
+    # have are listed at the end; PRUNE=1 deletes them. /home, /app/usr,
+    # /app/test, /mnt, /tmp, /var, /etc and what config/storage_exclude_*.txt
+    # leaves out are never touched (../tools/fmrb_rd_fs.rb).
+    prune = ENV['PRUNE'] == "1" ? ["--prune"] : []
     flash_keep_tool("sync", host, "--storage-root", FLASH_KEEP_ROOT,
-                    *(name ? ["--name", name] : []), *conf)
+                    *(name ? ["--name", name] : []), *conf, *prune)
     puts format("app_sync: flash %ds, sync %ds", t1 - t0, Time.now - t1)
   end
 

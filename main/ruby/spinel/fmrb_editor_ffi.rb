@@ -36,6 +36,7 @@ module FmrbSpxEc
   ffi_func :fmrb_spx_ec_delete_range, [:int, :int, :int, :int, :int], :int
   ffi_func :fmrb_spx_ec_insert_multiline, [:int, :int, :int, :str, :int], :binstr
   ffi_func :fmrb_spx_ec_load_file,   [:int, :str], :int
+  ffi_func :fmrb_spx_ec_load_range,  [:int, :str, :int, :int], :int
   ffi_func :fmrb_spx_ec_save_file,   [:int, :str], :int
   ffi_func :fmrb_spx_ec_replace_file, [:int, :str], :int
   ffi_func :fmrb_spx_ec_doc_version, [:int], :int
@@ -109,6 +110,10 @@ module EditorCore
   end
 
   def self.load_file(path); FmrbSpxEc.fmrb_spx_ec_load_file(slot, path); end
+  # One section of a file: length bytes from offset (the F1 help).
+  def self.load_range(path, offset, length)
+    FmrbSpxEc.fmrb_spx_ec_load_range(slot, path, offset, length)
+  end
   def self.save_file(path); FmrbSpxEc.fmrb_spx_ec_save_file(slot, path); end
   # Whole-document replacement that leaves the text alone when the file
   # cannot be read in full, and the version that moves with every edit.

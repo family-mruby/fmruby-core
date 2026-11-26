@@ -15,6 +15,10 @@
 #include "fmrb_rtos.h"
 #include "fmrb_log.h"
 #include "fmrb_app.h"
+#include "fmrb_app_uart.h"
+#if !defined(FMRB_PLATFORM_HOSTED)
+#include "fmrb_midi_serial.h"
+#endif
 #include "fmrb_mem.h"
 /* The Spinel runtime component is in every build (the sample gems always use
    it), so the header is too: the gem release on app exit needs it whatever
@@ -996,7 +1000,8 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
     // Set the source filename so the prism codegen emits debug_info (filename
     // and line numbers). Without a filename, codegen skips debug_info and the
     // remote debugger cannot map pc -> file:line for on-device compiled apps.
-    // ctx->filepath is empty for BYTECODE mode (which does not compile here).
+    // ctx->filepath is empty for BYTECODE mode (which does not compile here),
+    // or a built-in app's builtin_path.
     if (ctx->filepath[0] != '\0') {
         mrc_ccontext_filename(cc, ctx->filepath);
     }
@@ -1799,6 +1804,14 @@ cleanup:
     // Delete message queue
     fmrb_msg_delete_queue(ctx->app_id);
 
+    // The app's UARTs (every target: the sim has a stand-in for them).
+    fmrb_uart_release_owner((void *)fmrb_task_get_current());
+#if !defined(FMRB_PLATFORM_HOSTED)
+    // The serial MIDI output, when this app was the last that had asked for
+    // it: its UART and pin go back (after the VM, whose MIDI gem ended the
+    // app's notes on its way out).
+    fmrb_midi_serial_release_owner((void *)fmrb_task_get_current(), (uint8_t)ctx->app_id);
+#endif
 #ifndef CONFIG_IDF_TARGET_LINUX
     // Release HW resources (I2C, RMT, GPIO pins)
     hw_proxy_release_resources((hw_proxy_task_handle_t)fmrb_task_get_current());
@@ -1901,6 +1914,18 @@ static int cwd_slot_of_current(void) {
         return -1;
     }
     return (int)ctx->app_id;
+}
+
+fmrb_semaphore_t fmrb_app_mutex_once(fmrb_semaphore_t* slot) {
+    if (*slot != NULL || g_ctx_lock == NULL) {
+        return *slot;
+    }
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    if (*slot == NULL) {
+        *slot = fmrb_semaphore_create_mutex();
+    }
+    fmrb_semaphore_give(g_ctx_lock);
+    return *slot;
 }
 
 bool fmrb_app_init(void) {
@@ -2143,10 +2168,15 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     strncpy(ctx->app_name, attr->name, sizeof(ctx->app_name) - 1);
     ctx->app_name[sizeof(ctx->app_name) - 1] = '\0';
 
-    // Copy filepath if provided (for FILE load mode, and a checkpoint image)
+    // Copy filepath if provided (for FILE load mode, and a checkpoint image),
+    // or the name a built-in app goes by as a path (builtin_path)
     if ((attr->load_mode == FMRB_LOAD_MODE_FILE ||
          attr->load_mode == FMRB_LOAD_MODE_CHECKPOINT) && attr->filepath) {
         strncpy(ctx->filepath, attr->filepath, sizeof(ctx->filepath) - 1);
+        ctx->filepath[sizeof(ctx->filepath) - 1] = '\0';
+    } else if (attr->vm_type != FMRB_VM_TYPE_NATIVE &&
+               attr->load_mode == FMRB_LOAD_MODE_BYTECODE && attr->builtin_path) {
+        strncpy(ctx->filepath, attr->builtin_path, sizeof(ctx->filepath) - 1);
         ctx->filepath[sizeof(ctx->filepath) - 1] = '\0';
     } else {
         ctx->filepath[0] = '\0';
@@ -2432,12 +2462,14 @@ static void force_release_resources(fmrb_app_task_context_t* ctx,
 
     fmrb_msg_delete_queue(ctx->app_id);
 
-#ifndef CONFIG_IDF_TARGET_LINUX
-    // The handle is only a lookup key in the resource table, so releasing
+    // The handle is only a lookup key in the resource tables, so releasing
     // after the delete is fine and it is the only order available here.
+    fmrb_uart_release_owner((void *)task);
+#if !defined(FMRB_PLATFORM_HOSTED)
+    fmrb_midi_serial_release_owner((void *)task, (uint8_t)ctx->app_id);
+#endif
+#ifndef CONFIG_IDF_TARGET_LINUX
     hw_proxy_release_resources((hw_proxy_task_handle_t)task);
-#else
-    (void)task;
 #endif
 
     if (ctx->mem_handle >= 0) {

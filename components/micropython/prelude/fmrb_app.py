@@ -43,6 +43,14 @@ class FmrbFile(_FmrbFileBoundary):
         return s.split("\n")[:-1]
 
 
+# An app's UART (the app boundary's, _FmrbUartBoundary): FmrbUart.open(unit,
+# txd_pin, rxd_pin, baudrate, data_bits, stop_bits, parity, rx_buffer_size)
+# answers 0 or why not (sig/uart.rbs); read and read_line give bytes and never
+# wait (read_line None until a b"\n" has arrived).
+class FmrbUart(_FmrbUartBoundary):
+    pass
+
+
 # The *_raw functions are the app boundary's (generated, _LogBoundary): one
 # line tagged with the app's name. These wrappers take any value, as Ruby's.
 class Log(_LogBoundary):

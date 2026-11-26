@@ -18,6 +18,7 @@ set(COMPONENT_SRCS
     "app/fmrb_boundary_app.c"
     "app/fmrb_boundary_file.c"
     "app/fmrb_boundary_log.c"
+    "app/fmrb_boundary_uart.c"
     "app/fmrb_app_checkpoint.c"
     "app/fmrb_app_transfer.c"
     "kernel/fmrb_kernel.c"
@@ -117,6 +118,18 @@ if(NOT FMRB_BUILD_IS_MODERN)
          ${CMAKE_CURRENT_LIST_DIR}/ruby/default_app/services.app.rb)
 endif()
 
+# The remote shell's mark on the menu bar is for Modern (and the browser
+# build, which builds its own bytecode): doc/remote_shell. A Retro desktop
+# (S3 and the Retro sim) takes the stand-in that draws nothing, so its VM
+# pool does not carry the mark's code. generate_ruby_bytecode_commands reads
+# FMRB_MIXIN_EXCLUDE_<app> / FMRB_MIXIN_EXTRA_<app> for an app's subdirectory.
+if(NOT FMRB_BUILD_IS_MODERN)
+    set(FMRB_MIXIN_EXCLUDE_system_desktop
+        ${CMAKE_CURRENT_LIST_DIR}/ruby/kernel/system_desktop/rshell_mark.rb)
+    set(FMRB_MIXIN_EXTRA_system_desktop
+        ${CMAKE_CURRENT_LIST_DIR}/ruby/kernel/system_desktop_retro/rshell_mark.rb)
+endif()
+
 # The editor (default/editor, default/editor_fs) is not in an ESP32 firmware
 # built with FMRB_EDITOR=0 (the AtomS3R's and StickS3's default; the
 # Rakefile): no bytecode here, no Spinel editor below, and FMRB_NO_EDITOR
@@ -129,6 +142,18 @@ if(NOT IDF_TARGET STREQUAL "linux" AND "$ENV{FMRB_EDITOR}" STREQUAL "0")
     set(FMRB_NO_EDITOR ON)
     list(REMOVE_ITEM DEFAULT_APP_RUBY_FILES
          ${CMAKE_CURRENT_LIST_DIR}/ruby/default_app/editor.app.rb)
+endif()
+
+# The transfer app (default/transfer, doc/release_3_1 R3) talks over
+# Asterism, which an ESP32-S3 has only when built with FMRB_ASTERISM=1 (the
+# S3 boards' default; the Rakefile): elsewhere on the S3 it is left out --
+# no bytecode, and FMRB_NO_TRANSFER_APP takes its entry out of the
+# spawner's table. The P4 and the Linux simulation always have Asterism.
+set(FMRB_NO_TRANSFER_APP OFF)
+if(IDF_TARGET STREQUAL "esp32s3" AND NOT "$ENV{FMRB_ASTERISM}" STREQUAL "1")
+    set(FMRB_NO_TRANSFER_APP ON)
+    list(REMOVE_ITEM DEFAULT_APP_RUBY_FILES
+         ${CMAKE_CURRENT_LIST_DIR}/ruby/default_app/transfer.app.rb)
 endif()
 
 # The keyboard-only desktop (doc/linux_native, L4) runs on the native
@@ -799,6 +824,9 @@ if(FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel")
         "${SPINEL_GEN_TU_FLAGS}")
 endif()
 
+if(FMRB_NO_TRANSFER_APP)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_NO_TRANSFER_APP)
+endif()
 if(FMRB_NO_EDITOR)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_NO_EDITOR)
 endif()

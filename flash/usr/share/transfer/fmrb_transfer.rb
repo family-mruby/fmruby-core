@@ -43,7 +43,7 @@
 # asked), "failed" (reason). sent / size: the bytes the other machine holds,
 # of the whole.
 #
-# The sending is the transfer app's (/usr/share/transfer/transfer.app.rb,
+# The sending is the transfer app's (default/transfer, built in,
 # which holds the machine's Asterism connection): this asks it over Pub/Sub
 # (TOPIC) and it answers this app by message (transfer_queued,
 # transfer_progress, transfer_done). It is started when it is not running.
@@ -52,7 +52,7 @@
 # that).
 class FmrbTransfer
   TOPIC = "transfer/ctl"
-  APP_PATH = "/usr/share/transfer/transfer.app.rb"
+  APP_PATH = "default/transfer"
   APP_NAME = "Transfer"
   # a request not taken yet is published again this often (the transfer app
   # may be starting, and Pub/Sub keeps nothing for an app not subscribed yet)

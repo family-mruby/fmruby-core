@@ -7,10 +7,17 @@
 # the 7MB that was sitting unallocated at the end; storage keeps its 5M
 # (the tree in it is about 3M).
 #
+#
+# 2026-11-27: building the transfer app into the firmware (doc/release_3_1)
+# left 6M at 1% free (69 KB), so factory is 8M and storage takes the rest of
+# the flash (0x7F0000, 7.94 MB; it was 5M with about 0.45 MB free). The 4.94
+# MB that sat unallocated at the end is used up: the layout now fills the
+# 16MB exactly (0x10000 + 8M = 0x810000, + 0x7F0000 = 0x1000000).
+#
 # A partition-table change cannot ship as an app-only update: it needs a full
 # flash (bootloader + table + app + storage), which erases /home.
 # Name,   Type, SubType,  Offset,  Size, Flags
 nvs,      data, nvs,      0x9000,  24K,
 phy_init, data, phy,             ,  4K,
-factory,  app,  factory,         ,  6M,
-storage,  data, littlefs,        ,  5M,
+factory,  app,  factory,         ,  8M,
+storage,  data, littlefs,        ,  0x7F0000,

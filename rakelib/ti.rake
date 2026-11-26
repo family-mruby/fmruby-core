@@ -36,6 +36,16 @@ namespace :ti do
     picoruby_ti_gen_help
   end
 
+  namespace :help do
+    # The F1 help files (one page per class in ja.md / en.md, their tables
+    # and index.txt) and the editor's way of reading a page out of them
+    # (ti_ui.rb over stand-ins).
+    desc "Tests of the F1 help files and how the editor reads them (host Ruby, no docker)"
+    task :test do
+      sh "#{RbConfig.ruby} tools/ti/test_help/run.rb"
+    end
+  end
+
   desc "Run the picoruby-ti host regression tests against our sig/ + test fixtures"
   task :test do
     dir = picoruby_ti_dir!

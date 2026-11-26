@@ -16,9 +16,10 @@ it wholesale:
                                  wifi.md (Wi-Fi: the window, wifi.toml),
                                  editor.md (the editor: several files),
                                  display.md (Modern: the resolution,
-                                 and the way back) and remote_shell.md
+                                 and the way back), remote_shell.md
                                  (the remote shell: who comes in, what
-                                 they see, how to cut it)
+                                 they see, how to cut it) and uart.md
+                                 (serial: wiring, units and pins, apps)
 - /app/                          the installed apps (tests under /app/test)
 
 To play with a sample, copy it into /home first and edit your copy. That way

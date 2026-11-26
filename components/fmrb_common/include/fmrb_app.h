@@ -301,6 +301,10 @@ typedef struct {
         const char*           filepath;     // Script file path
         void (*native_func)(void*);         // Native C function pointer
     };
+    // A built-in (BYTECODE) app's path in place of a file's: what ps shows
+    // and single_instance compares ("default/transfer"). NULL: none, as for
+    // the other built-ins.
+    const char*           builtin_path;
 
     uint32_t              stack_words;      // Stack size in words (not bytes)
     fmrb_task_priority_t  priority;
@@ -377,6 +381,11 @@ typedef struct {
 
 // Core APIs
 bool fmrb_app_init(void);
+// Make *slot (a mutex) the first time it is asked for, under the app table's
+// lock, so two tasks asking at once get the same one: a part that needs a
+// lock only once an app uses it (the app UART) pays for it then. Never call
+// it while holding the app table's lock. NULL when it could not be made.
+fmrb_semaphore_t fmrb_app_mutex_once(fmrb_semaphore_t* slot);
 fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id);
 fmrb_err_t fmrb_app_spawn_simple(const fmrb_spawn_attr_t* attr, int32_t* out_id);
 bool fmrb_app_kill(int32_t id);
