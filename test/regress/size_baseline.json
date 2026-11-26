@@ -465,7 +465,7 @@
     "narya_v3": {
       "board": "narya_v3",
       "firmware": "NARYAv3",
-      "commit": "f3ede00c",
+      "commit": "147bb556+dirty",
       "env": {
         "FMRB_KERNEL_ENGINE": "spinel",
         "FMRB_APP_ENGINE_DESKTOP": "mruby",
@@ -481,15 +481,15 @@
         "FMRB_HW_TARGET": "NARYAv3"
       },
       "memory": {
-        "Flash Data": 9334612,
-        "Flash Code": 3569576,
+        "Flash Data": 9485468,
+        "Flash Code": 3575092,
         "DIRAM": 121307,
         "IRAM": 16384,
         "RTC FAST": 72,
         "RTC SLOW": 32
       },
-      "app_bin": 6066448,
-      "app_partition": 6291456,
+      "app_bin": 6222752,
+      "app_partition": 8388608,
       "archives": {
         "/opt/esp/idf/components/bt/controller/lib_esp32c3_family/esp32s3/libbtdm_app.a": {
           "Flash Code": 49221,
@@ -545,8 +545,8 @@
           "Flash Code": 219
         },
         "/project/components/picoruby-esp32/picoruby/build/esp32/lib/libmruby.a": {
-          "Flash Data": 1011400,
-          "Flash Code": 608035,
+          "Flash Data": 1011549,
+          "Flash Code": 608040,
           "DIRAM": 2713
         },
         "esp-idf/app_update/libapp_update.a": {
@@ -578,7 +578,7 @@
           "DIRAM": 40
         },
         "esp-idf/esp_app_format/libesp_app_format.a": {
-          "Flash Data": 327939,
+          "Flash Data": 328183,
           "Flash Code": 370,
           "DIRAM": 10
         },
@@ -760,7 +760,7 @@
           "DIRAM": 36
         },
         "esp-idf/fmrb_hal/libfmrb_hal.a": {
-          "Flash Code": 15673,
+          "Flash Code": 15733,
           "Flash Data": 5476,
           "DIRAM": 4660
         },
@@ -836,8 +836,8 @@
           "DIRAM": 12
         },
         "esp-idf/main/libmain.a": {
-          "Flash Code": 1135125,
-          "Flash Data": 1010427,
+          "Flash Data": 1160870,
+          "Flash Code": 1139709,
           "DIRAM": 1399
         },
         "esp-idf/mbedtls/libmbedtls.a": {
@@ -885,8 +885,8 @@
           "Flash Code": 5
         },
         "esp-idf/picoruby-esp32/libpicoruby-esp32.a": {
-          "Flash Code": 138814,
-          "Flash Data": 6017,
+          "Flash Code": 139677,
+          "Flash Data": 6053,
           "DIRAM": 398
         },
         "esp-idf/pthread/libpthread.a": {
@@ -936,7 +936,7 @@
       },
       "spinel": {
         "editor": {
-          "flash": 515204,
+          "flash": 519767,
           "internal": 92
         },
         "fft": {
@@ -948,7 +948,7 @@
           "internal": 76
         },
         "kernel": {
-          "flash": 396526,
+          "flash": 396510,
           "internal": 128
         },
         "raycast": {
@@ -1830,7 +1830,7 @@
     "tab5": {
       "board": "tab5",
       "firmware": "TAB5",
-      "commit": "f5e0d1f1",
+      "commit": "147bb556",
       "env": {
         "FMRB_KERNEL_ENGINE": "spinel",
         "FMRB_APP_ENGINE_DESKTOP": "mruby",
@@ -1846,13 +1846,13 @@
         "FMRB_HW_TARGET": "TAB5"
       },
       "memory": {
-        "External RAM": 18279340,
-        "Flash": 6924484,
+        "External RAM": 18279396,
+        "Flash": 7082460,
         "DIRAM": 129354,
         "HP core RAM": 892,
         "LP RAM": 56
       },
-      "app_bin": 7025312,
+      "app_bin": 7183296,
       "app_partition": 8323072,
       "archives": {
         "/opt/esp/tools/riscv32-esp-elf/esp-14.2.0_20260121/riscv32-esp-elf/bin/../lib/gcc/riscv32-esp-elf/14.2.0/../../../../riscv32-esp-elf/lib/rv32imafc_zicsr_zifencei/ilp32f/no-rtti/libc.a": {
@@ -1870,7 +1870,7 @@
           "Flash": 16722
         },
         "/project/components/picoruby-esp32/picoruby/build/esp32p4/lib/libmruby.a": {
-          "Flash": 1559044,
+          "Flash": 1559169,
           "External RAM": 16384,
           "DIRAM": 2713
         },
@@ -1904,7 +1904,7 @@
           "DIRAM": 40
         },
         "esp-idf/esp_app_format/libesp_app_format.a": {
-          "Flash": 536495,
+          "Flash": 536763,
           "DIRAM": 10
         },
         "esp-idf/esp_common/libesp_common.a": {
@@ -2066,7 +2066,7 @@
           "DIRAM": 36
         },
         "esp-idf/fmrb_hal/libfmrb_hal.a": {
-          "Flash": 18238,
+          "Flash": 18340,
           "External RAM": 12768,
           "DIRAM": 51
         },
@@ -2136,8 +2136,8 @@
           "DIRAM": 620
         },
         "esp-idf/main/libmain.a": {
-          "Flash": 2427985,
-          "External RAM": 320522,
+          "Flash": 2584171,
+          "External RAM": 320538,
           "DIRAM": 11600
         },
         "esp-idf/mbedtls/libmbedtls.a": {
@@ -2179,8 +2179,8 @@
           "Flash": 2
         },
         "esp-idf/picoruby-esp32/libpicoruby-esp32.a": {
-          "Flash": 162276,
-          "External RAM": 5685,
+          "Flash": 163584,
+          "External RAM": 5721,
           "DIRAM": 398
         },
         "esp-idf/pthread/libpthread.a": {
@@ -2216,8 +2216,8 @@
       },
       "spinel": {
         "editor": {
-          "flash": 603286,
-          "psram": 17825,
+          "flash": 608512,
+          "psram": 17841,
           "internal": 92
         },
         "fft": {
@@ -2231,7 +2231,7 @@
           "internal": 76
         },
         "kernel": {
-          "flash": 485140,
+          "flash": 485124,
           "psram": 13821,
           "internal": 128
         },
@@ -2243,5 +2243,5 @@
       }
     }
   },
-  "commit": "f3ede00c,f5e0d1f1"
+  "commit": "147bb556+dirty,147bb556"
 }
