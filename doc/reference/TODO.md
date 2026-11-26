@@ -401,3 +401,14 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
 - (2026-11-27 追記) 転送のアプリを本体に焼き込んだ (`default/transfer`、doc/release_3_1/report/r3.md)。`require` を
   通らなくなった。sim ではスタックの値が前後で変わらず (13 KB 余り)、仮説は sim では確かめられない。P4-Nano の
   周期ダンプで余りを測るのが次。
+
+## require したアプリだけに部品を読み込む (2026-11-27 記録、ユーザの希望。検討から)
+
+- 今は、gem の Ruby の部品 (`UART`・`GPIO`・`I2C` の包みなど、`lib/gems/*/mrblib` と上流の gem の mrblib) が、使わないアプリも
+  含めて全部のアプリの VM に最初から読み込まれる。UART を足しただけで、どのアプリも VM の使用量が約 1.5 KB 増えた
+  (sim、`regress:run`。StackChan Remote は mruby のヒープのページを 1 つ超えて +42 KB)。ユーザ決定で今回は受け入れた。
+- 希望: UART に限らず、アプリが `require "uart"` のように書いたときだけ読み込む仕組み。上流の PicoRuby の picogem
+  (`require` で読み込む gem。`picoruby-require` の `templates/mruby/picogem_init.c.erb`) の形が手本になる。
+- 検討すること: どの部品を対象にするか (全部のアプリが使う物は今のまま)、今あるアプリ・SDK の手順書・sig の例
+  (`require` の行が要るようになる) への影響、Spinel のアプリとほかの言語 (境界の関数は C なので影響なし) の扱い、
+  checkpoint の名前の表、減る量の見積もり (部品ごとの大きさ)。
