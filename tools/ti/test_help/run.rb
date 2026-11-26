@@ -152,6 +152,23 @@ Dir.mktmpdir("ti_help") do |out|
       check("#{lang} #{name}: the page has its section", has, true)
     end
 
+    # A section heading names a nested class with "::" while the index has
+    # "__": the jump takes the heading's form.
+    check("#{lang} class name for headings", editor.help_class_name("Asterism__Proxy"), "Asterism::Proxy")
+    check("#{lang} class name, plain", editor.help_class_name("Array"), "Array")
+
+    # A method called index has its own section; the class's comment is not
+    # lost to it (its page once took the same file name).
+    string = page_of.(lang, "String").force_encoding("UTF-8")
+    check("#{lang} String: class text first", string.start_with?("# String\n\n") &&
+                                               !string.start_with?("# String\n\n# "), true)
+    idx = string.index("# String#index\n")
+    check("#{lang} String#index: has a section", idx.nil?, false)
+    if idx
+      sec = string[idx, 400].split("\n# ", 2).first
+      check("#{lang} String#index: one language", sec.include?("<<en>>"), false)
+    end
+
     check("#{lang} no such name", editor.help_path_for("no_such_method_anywhere"), nil)
     check("#{lang} no such class", editor.help_section("NoSuchClass"), nil)
     # A class whose name ends another one's is not taken for it.

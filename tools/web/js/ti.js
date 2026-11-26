@@ -48,7 +48,9 @@ const HELP_HEAD_LINES_CLASS = 2;
 
 export function pickLangPage(text, path, lang) {
   const lines = String(text ?? "").split("\n");
-  const head = String(path ?? "").endsWith("index.md")
+  // The class comment's page is "<Class>/@class.md" (tools/ti/gen_help.rb
+  // CLASS_PAGE): a method called index has "index.md".
+  const head = String(path ?? "").endsWith("/@class.md")
     ? HELP_HEAD_LINES_CLASS : HELP_HEAD_LINES_METHOD;
 
   const kept = lines.slice(0, head)

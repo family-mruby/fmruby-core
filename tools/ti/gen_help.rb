@@ -51,6 +51,11 @@ module TiHelp
     "^" => "xor", "|" => "or", "~" => "invert", "->" => "arrow",
   }.freeze
 
+  # The class comment's page. No method's file is named so (file_name_for
+  # makes only letters, digits, "_" and "op_<word>"): a method called
+  # index once took the name "index.md" and overwrote the class's page.
+  CLASS_PAGE = "@class.md"
+
   def self.file_name_for(method_name)
     name = method_name.to_s
     if name.match?(/\A[A-Za-z_][A-Za-z0-9_]*[?!=]?\z/)
@@ -115,8 +120,8 @@ module TiHelp
 
         class_long = long_form(declaration.comment)
         if class_long
-          pages["#{dir}/index.md"] = "# #{class_name}\n\n#{class_long}\n"
-          index << [class_name, "#{dir}/index.md"]
+          pages["#{dir}/#{CLASS_PAGE}"] = "# #{class_name}\n\n#{class_long}\n"
+          index << [class_name, "#{dir}/#{CLASS_PAGE}"]
         end
 
         declaration.members.each do |member|
@@ -204,7 +209,7 @@ module TiHelp
   def self.class_pages(sig_dir:)
     pages, index = build(sig_dir: sig_dir)
 
-    # path is "<Class>/<method>.md" (or "<Class>/index.md" for the class
+    # path is "<Class>/<method>.md" (or "<Class>/@class.md" for the class
     # comment), and the class comment sorts first inside its class.
     by_class = {}
     pages.each do |path, body|
@@ -214,12 +219,12 @@ module TiHelp
 
     out = { "ja" => [], "en" => [] }
     by_class.each do |cls, entries|
-      entries.sort_by! { |file, _| [file == "index.md" ? 0 : 1, file] }
+      entries.sort_by! { |file, _| [file == CLASS_PAGE ? 0 : 1, file] }
       %w[ja en].each do |lang|
         text = entries.map { |file, body|
           # A class page is "# Class" and a blank line; a method page adds the
           # signature and the summary with their blanks.
-          pick_lang(body, lang, file == "index.md" ? 2 : 6)
+          pick_lang(body, lang, file == CLASS_PAGE ? 2 : 6)
         }.join("\n")
         out[lang] << [cls, text]
       end

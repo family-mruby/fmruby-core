@@ -584,8 +584,11 @@ module EditorTiUi
   # method is written "# Class#name", a singleton one "# Class.name".
   # Scanning by length first, so only a line that could be one is read.
   def help_jump_to(cls, name)
-    a = "# " + cls + "#" + name
-    b = "# " + cls + "." + name
+    # The index names a nested class with "__" (a file-name form); its
+    # page's headings name it as Ruby does ("# Asterism::Proxy#call").
+    shown = help_class_name(cls)
+    a = "# #{shown}##{name}"
+    b = "# #{shown}.#{name}"
     y = 0
     n = EditorCore.line_count
     while y < n
@@ -605,6 +608,24 @@ module EditorTiUi
       end
       y += 1
     end
+  end
+
+  # "Asterism__Proxy" -> "Asterism::Proxy". Byte by byte and with
+  # interpolation only, which Spinel types the same way as mruby.
+  def help_class_name(cls)
+    out = ""
+    i = 0
+    n = cls.bytesize
+    while i < n
+      if i + 1 < n && cls.getbyte(i) == 95 && cls.getbyte(i + 1) == 95
+        out = "#{out}::"
+        i += 2
+      else
+        out = "#{out}#{cls.byteslice(i, 1)}"
+        i += 1
+      end
+    end
+    out
   end
 
   # The word the help is asked for: the selected candidate when the list is
