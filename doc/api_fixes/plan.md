@@ -274,6 +274,7 @@ ESP32 のビルドの結果を変える 13 個の選択 (`FMRB_HW_TARGET`・エ�
 - `FMRB_HW_TARGET` をビルドのコンテナに渡す (`ENGINE_ENV_OPTS`)。libmruby を作る rake でも ATOM_DISPLAY を除く条件が効く。
   ほかの端末の結果は変わらない (S3・P4 のビルドの大きさは前と同じ)。`PICORB_DEBUG` は渡さず、ESP32 のビルドで
   設定されていたら警告を出す (渡すと libmruby だけデバッグの定義になり、CMake の側と食い違う恐れがある)。
+  **ESP32 のデバッグビルドは作らない** (ユーザ決定 2026-11-26: 大きさの面で ESP32 に載せるのは厳しい)。警告だけの今の形で確定。
 - 選択の記録を libmruby の隣 (`picoruby/build/<esp32|esp32p4>/fmrb_build_options.json`) にも置く。ビルドの前に見比べ、
   違うとき・記録が無くて build/ も新しいときは、libmruby と checkpoint の表を消して作り直す。今ある組はそのまま
   引き継ぐ。試験 65 件。P4-Nano 用の増分のビルド・`rake regress`・`regress:size` (S3・P4) で確認。
