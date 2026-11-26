@@ -144,6 +144,18 @@ if(NOT IDF_TARGET STREQUAL "linux" AND "$ENV{FMRB_EDITOR}" STREQUAL "0")
          ${CMAKE_CURRENT_LIST_DIR}/ruby/default_app/editor.app.rb)
 endif()
 
+# The transfer app (default/transfer, doc/release_3_1 R3) talks over
+# Asterism, which an ESP32-S3 has only when built with FMRB_ASTERISM=1 (the
+# S3 boards' default; the Rakefile): elsewhere on the S3 it is left out --
+# no bytecode, and FMRB_NO_TRANSFER_APP takes its entry out of the
+# spawner's table. The P4 and the Linux simulation always have Asterism.
+set(FMRB_NO_TRANSFER_APP OFF)
+if(IDF_TARGET STREQUAL "esp32s3" AND NOT "$ENV{FMRB_ASTERISM}" STREQUAL "1")
+    set(FMRB_NO_TRANSFER_APP ON)
+    list(REMOVE_ITEM DEFAULT_APP_RUBY_FILES
+         ${CMAKE_CURRENT_LIST_DIR}/ruby/default_app/transfer.app.rb)
+endif()
+
 # The keyboard-only desktop (doc/linux_native, L4) runs on the native
 # program only, which builds its bytecode itself (rakelib/hosted.rake): no
 # device or simulation firmware carries it.
@@ -812,6 +824,9 @@ if(FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel")
         "${SPINEL_GEN_TU_FLAGS}")
 endif()
 
+if(FMRB_NO_TRANSFER_APP)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_NO_TRANSFER_APP)
+endif()
 if(FMRB_NO_EDITOR)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_NO_EDITOR)
 endif()

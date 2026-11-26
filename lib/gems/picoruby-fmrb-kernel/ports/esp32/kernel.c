@@ -600,6 +600,10 @@ static mrb_value mrb_kernel_get_app_info(mrb_state *mrb, mrb_value self)
     if (ctx->load_mode == FMRB_LOAD_MODE_FILE && ctx->load_data) {
         mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "path")),
                      mrb_str_new_cstr(mrb, (const char *)ctx->load_data));
+    } else if (ctx->load_mode == FMRB_LOAD_MODE_BYTECODE && ctx->filepath[0] != '\0') {
+        // a built-in app's builtin_path (default/transfer)
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "path")),
+                     mrb_str_new_cstr(mrb, ctx->filepath));
     }
 
     // Expose VM type as a symbol so the kernel can route behavior per runtime

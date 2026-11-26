@@ -83,16 +83,20 @@ def hosted_regen_mrb!(label, mruby_build, mruby_task)
       name = File.basename(rb).sub(/\..*\z/, "")
       out_c = File.join(dir, "mrb", "#{name}.c")
       subdir = File.join(dir, name)
-      sources = [rb]
-      sources += Dir[File.join(subdir, "*.rb")].sort if File.directory?(subdir)
-      # A program built for the hosted builds only can take its mixins from
-      # another program's directory: a "# combine: a/x.rb b/y.rb" line names
-      # them, relative to this directory (system_desktop_keys.app.rb shares
-      # the mouse desktop's panels).
+      # Parts from elsewhere in the tree: a "# combine: a/x.rb b/y.rb" line
+      # names them, relative to this directory, put in front of the
+      # subdirectory's parts as compile_ruby_to_bytecode.cmake does
+      # (system_desktop_keys.app.rb shares the mouse desktop's panels, the
+      # transfer app takes Asterism::Transfer and FmrbReceiveConf).
+      sources = []
       combine = File.foreach(rb).first(80).find { |l| l.start_with?("# combine:") }
       if combine
-        sources += combine.sub("# combine:", "").split.map { |f| File.join(dir, f) }
+        sources += combine.sub("# combine:", "").split.map { |f| File.expand_path(f, dir) }
+        missing = sources.reject { |f| File.exist?(f) }
+        abort "#{label}: #{rb}: its combine part(s) #{missing.join(', ')} missing (rake setup?)" unless missing.empty?
       end
+      sources += Dir[File.join(subdir, "*.rb")].sort if File.directory?(subdir)
+      sources << rb
       # An app gets the call that starts it after its own code
       # (main/ruby/autostart.rb, as the CMake build does).
       tail = rb.end_with?(".app.rb") ? [HOSTED_AUTOSTART_RB] : []
@@ -102,8 +106,7 @@ def hosted_regen_mrb!(label, mruby_build, mruby_task)
       if sources.size > 1 || !tail.empty?
         combined = File.join(dir, "mrb", "#{name}_combined.rb")
         map = File.join(dir, "mrb", "#{name}_combined.map.json")
-        sh "python3 #{gen} #{combined} #{map} " \
-           "#{(sources - [rb] + [rb] + tail).join(' ')}"
+        sh "python3 #{gen} #{combined} #{map} #{(sources + tail).join(' ')}"
         sh "#{mrbc} -g -B#{name}_irep -o#{out_c} #{combined}"
       else
         sh "#{mrbc} -g -B#{name}_irep -o#{out_c} #{rb}"

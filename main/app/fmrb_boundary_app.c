@@ -562,7 +562,8 @@ int32_t fmrb_bnd_app_pid(void)
     return ctx ? (int32_t)ctx->app_id : ERR_FAILED;
 }
 
-// The file the app was started from; "" for one built into the firmware.
+// The file the app was started from; "" for one built into the firmware
+// (its builtin_path for one that goes by a path name, default/transfer).
 int32_t fmrb_bnd_app_script_path(char *out, int32_t out_size)
 {
     if (out_size < 0 || (out_size > 0 && !out)) {

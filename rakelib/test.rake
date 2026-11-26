@@ -23,7 +23,7 @@ task :test => ["ui:test", "text:test", "toml:test", "receive_conf:test", "rshell
                "secret:test", "remote_guard:test", "wificonf:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "kanji:test", "font_ja:test", "wire:check", "system:check", "boundary:check", "sig:test", "api_fixes:test", "app_uart:test", "build_options:test", "ti:site:test", "ti:help:test", "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :rshell do
-  # The remote shell's machine side (flash/usr/share/transfer/rshell.rb,
+  # The remote shell's machine side (main/ruby/default_app/transfer/rshell.rb,
   # doc/remote_shell): reading a line, folding paths, the secrets kept out,
   # the output in pieces, the completion and who is let in, under host Ruby.
   desc "Remote shell machine side: lines, paths, secrets, pieces, completion (host Ruby, no docker)"
@@ -117,7 +117,7 @@ end
 
 namespace :app_package do
   # An app's package for installing it over Asterism (doc/wasm_apps W6):
-  # flash/usr/share/transfer/app_package.rb on the host.
+  # main/ruby/default_app/transfer/app_package.rb on the host.
   desc "App package tests: pack, unpack, check and place an app for /app/usr (host Ruby + cc, no docker)"
   # The transfer code it loads is the pinned asterism checkout (public over
   # https, so CI fetches it here too; the Zenoh gem asterism:setup also

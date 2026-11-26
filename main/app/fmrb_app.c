@@ -1000,7 +1000,8 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
     // Set the source filename so the prism codegen emits debug_info (filename
     // and line numbers). Without a filename, codegen skips debug_info and the
     // remote debugger cannot map pc -> file:line for on-device compiled apps.
-    // ctx->filepath is empty for BYTECODE mode (which does not compile here).
+    // ctx->filepath is empty for BYTECODE mode (which does not compile here),
+    // or a built-in app's builtin_path.
     if (ctx->filepath[0] != '\0') {
         mrc_ccontext_filename(cc, ctx->filepath);
     }
@@ -2167,10 +2168,15 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     strncpy(ctx->app_name, attr->name, sizeof(ctx->app_name) - 1);
     ctx->app_name[sizeof(ctx->app_name) - 1] = '\0';
 
-    // Copy filepath if provided (for FILE load mode, and a checkpoint image)
+    // Copy filepath if provided (for FILE load mode, and a checkpoint image),
+    // or the name a built-in app goes by as a path (builtin_path)
     if ((attr->load_mode == FMRB_LOAD_MODE_FILE ||
          attr->load_mode == FMRB_LOAD_MODE_CHECKPOINT) && attr->filepath) {
         strncpy(ctx->filepath, attr->filepath, sizeof(ctx->filepath) - 1);
+        ctx->filepath[sizeof(ctx->filepath) - 1] = '\0';
+    } else if (attr->vm_type != FMRB_VM_TYPE_NATIVE &&
+               attr->load_mode == FMRB_LOAD_MODE_BYTECODE && attr->builtin_path) {
+        strncpy(ctx->filepath, attr->builtin_path, sizeof(ctx->filepath) - 1);
         ctx->filepath[sizeof(ctx->filepath) - 1] = '\0';
     } else {
         ctx->filepath[0] = '\0';

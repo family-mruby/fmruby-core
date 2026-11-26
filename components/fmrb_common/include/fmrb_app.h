@@ -301,6 +301,10 @@ typedef struct {
         const char*           filepath;     // Script file path
         void (*native_func)(void*);         // Native C function pointer
     };
+    // A built-in (BYTECODE) app's path in place of a file's: what ps shows
+    // and single_instance compares ("default/transfer"). NULL: none, as for
+    // the other built-ins.
+    const char*           builtin_path;
 
     uint32_t              stack_words;      // Stack size in words (not bytes)
     fmrb_task_priority_t  priority;

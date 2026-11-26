@@ -32,6 +32,9 @@ extern const uint8_t monitor_irep[];
 extern const uint8_t inspector_irep[];
 extern const uint8_t appstore_irep[];
 extern const uint8_t wifi_irep[];
+#ifndef FMRB_NO_TRANSFER_APP
+extern const uint8_t transfer_irep[];
+#endif
 #if defined(FMRB_PLATFORM_NATIVE)
 // The keyboard-only desktop (doc/linux_native, L4). Built for the hosted
 // programs only (main/CMakeLists.txt leaves it out of the device and
@@ -428,6 +431,46 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .window_pos_y = 20,
         .rounded_corners = true
     }},
+#ifndef FMRB_NO_TRANSFER_APP
+    /* The transfer app (doc/release_3_1 R3): files and apps between
+     * machines over Asterism, and the remote shell. It was an app in the
+     * storage that read some 220 KB of Ruby with require at every start;
+     * the build now puts its parts together (main/ruby/default_app/
+     * transfer.app.rb and transfer/) and nothing is compiled here. The
+     * attributes are the ones its .app.toml carried: headless (background),
+     * the large pool (with Asterism's gems a VM on the S3 holds about 300 KB
+     * before it loads anything), one at a time, and movable -- not to be
+     * moved (an Asterism session cannot be carried), but so that its VM
+     * keeps the table of this build's method names that the receiving side
+     * of a move answers from (doc/checkpoint F5). builtin_path is the name
+     * it goes by as a path: what ps shows, what single_instance compares and
+     * what the kernel adopts (fmrb_kernel.rb TRANSFER_APP). The stack,
+     * priority and flags are an ordinary user app's. */
+    { "default/transfer", {
+        .app_id = -1,
+        .type = APP_TYPE_USER_APP,
+        .name = "Transfer",
+        .vm_type = FMRB_VM_TYPE_MRUBY,
+        .load_mode = FMRB_LOAD_MODE_BYTECODE,
+        .bytecode = transfer_irep,
+        .builtin_path = "default/transfer",
+        .stack_words = FMRB_USER_APP_TASK_STACK_SIZE,
+        .priority = FMRB_USER_APP_PRIORITY,
+        .flags = FMRB_USER_APP_TASK_FLAGS,
+        .core_affinity = -1,
+        .headless = true,
+        .large_memory = true,
+        .single_instance = true,
+#ifdef FMRB_HAVE_CHECKPOINT
+        .movable = true,
+#endif
+        .window_width = 0,
+        .window_height = 0,
+        .window_pos_x = 0,
+        .window_pos_y = 0,
+        .rounded_corners = false
+    }},
+#endif /* FMRB_NO_TRANSFER_APP */
 };
 
 #define BUILTIN_APP_COUNT (sizeof(builtin_app_table) / sizeof(builtin_app_table[0]))

@@ -1,5 +1,5 @@
 # The owner's question about an app another machine sent to be installed
-# (doc/wasm_apps W6). The transfer app (/usr/share/transfer/transfer.app.rb)
+# (doc/wasm_apps W6). The transfer app (default/transfer, built in)
 # has unpacked the app beside /app/usr and looked at it (a wasm app imports
 # only what this firmware gives); it starts this app with a ticket (the
 # kernel's open_path: a file_selected message), one "key<TAB>value" a line:

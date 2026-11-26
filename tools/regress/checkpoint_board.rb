@@ -76,7 +76,8 @@ module Regress
       NODE_A = AsterismRounds::NODE_A
       BOARD_ASTERISM = "/home/asterism"
       BOARD_ASTERISM_FILES = %w[config.toml receive.toml].freeze
-      TRANSFER = "/usr/share/transfer/transfer.app.rb"
+      # built into the firmware (doc/release_3_1 R3): started by name, not put
+      TRANSFER = "default/transfer"
       SELF_APP = "/app/test/ckpt_self.app.rb"
       COUNTER_APP = "/app/test/ckpt_counter.app.rb"
       WINDOW_APP = "/app/test/ckpt_window.app.rb"
@@ -85,7 +86,7 @@ module Regress
       # The files the rounds start on the board, from this tree's flash/: put
       # there for the run when the board's copy is missing or differs (an app
       # only flash leaves the storage as it was), and put back after it
-      BOARD_FILES = [SELF_APP, COUNTER_APP, WINDOW_APP, CALLS_APP_B, REQUIRES_APP_B, TRANSFER]
+      BOARD_FILES = [SELF_APP, COUNTER_APP, WINDOW_APP, CALLS_APP_B, REQUIRES_APP_B]
                     .flat_map { |p| [p, p.sub(/\.rb\z/, ".toml")] }.freeze
       MCP_LOG = File.expand_path(File.join(ENV["FMRB_MCP_STATE_DIR"] || "~/.fmrb_mcp", "current.log"))
 

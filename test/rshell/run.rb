@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 # Host tests for the remote shell's machine side
-# (flash/usr/share/transfer/rshell.rb, doc/remote_shell R1): reading a line
+# (main/ruby/default_app/transfer/rshell.rb, doc/remote_shell R1): reading a line
 # (blanks, "a b", a\ b), folding paths (".", "..", "//"), the secrets kept
 # out (cat, ls, cd, stat, read and the completion; /flash/... and ".." too),
 # the output in pieces (OUT_MAX a call, cut where a UTF-8 character starts,
@@ -178,7 +178,7 @@ module Box
     end
   end
 end
-Box.module_eval(File.read("#{ROOT}/flash/usr/share/transfer/rshell.rb"), "rshell.rb")
+Box.module_eval(File.read("#{ROOT}/main/ruby/default_app/transfer/rshell.rb"), "rshell.rb")
 R = Box::RShell
 
 def put(path, text)
@@ -690,13 +690,6 @@ check("switch on: exposed with caller: :from", [link.conn.exposed.keys, link.con
 D.open(from: "pc")
 D.switch(false, link)
 check("switch off: taken away, the session ends", [link.conn.exposed.keys, D.s], [[], nil])
-
-# The app loader takes a script of 64 KB at most (main/app/fmrb_app.c,
-# "Script file too large"): the transfer app was 57 bytes under it after
-# the look commands, and its receiving side went to transfer_inbox.rb to
-# keep at least 8 KB free (R2).
-check("transfer.app.rb 8 KB under the loader's 64 KB",
-      File.size("#{ROOT}/flash/usr/share/transfer/transfer.app.rb") <= 65536 - 8192, true)
 
 puts($failed.zero? ? "rshell: all #{$count} ok" : "rshell: #{$failed} of #{$count} FAILED")
 exit($failed.zero? ? 0 : 1)

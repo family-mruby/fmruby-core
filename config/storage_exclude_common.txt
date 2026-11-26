@@ -25,3 +25,12 @@ app/demo/walk_scroller.app.rb
 app/demo/walk_scroller.app.toml
 app/demo/walk_scroller
 usr/share/sprites/walk_scroller
+
+# Asterism::Transfer (rake setup copies it from the asterism checkout): built
+# into the firmware with the transfer app (default/transfer, doc/release_3_1
+# R3), so no board's storage needs the source. It stays in flash/ for the
+# test app /app/test/xfer_probe.app.rb, which requires it on the simulator,
+# the native program and the development browser bundle. sha256.rb beside it
+# stays: Asterism::Transfer reads it only on a build with neither
+# Digest::SHA256 nor MbedTLS::Digest.
+usr/share/asterism/transfer/transfer.rb

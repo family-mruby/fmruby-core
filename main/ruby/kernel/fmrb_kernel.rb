@@ -38,7 +38,8 @@ class FmrbKernelImpl < FmrbKernel
   # them in when this machine accepts them (RECEIVE_CONF names who may send:
   # the user's, else the system's RECEIVE_CONF_SYS). It is started at boot
   # when receiving is on there (enabled = true), and when a move is asked.
-  TRANSFER_APP = "/usr/share/transfer/transfer.app.rb"
+  # Built into the firmware (fmrb_app_spawner.c); its path in ps is this name.
+  TRANSFER_APP = "default/transfer"
   RECEIVE_CONF = "/home/asterism/receive.toml"
   RECEIVE_CONF_SYS = "/etc/asterism/receive.toml"
   ASTERISM_DIR = "/home/asterism"
@@ -913,7 +914,7 @@ class FmrbKernelImpl < FmrbKernel
   # ---- moving an app over Asterism (doc/checkpoint F5) ----
   #
   # The kernel holds the steps (D14); the transfer app (TRANSFER_APP, an
-  # ordinary mruby app: the kernel cannot hold an Asterism session) does the
+  # mruby app built in: the kernel cannot hold an Asterism session) does the
   # talking to the other machine:
   #
   #   1. the transfer app is started and connected, when it is not yet

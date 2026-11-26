@@ -1,6 +1,17 @@
 # Transfer app: files between machines over Asterism (doc/checkpoint F5,
 # doc/asterism_file_transfer).
 #
+# combine: ../../../flash/usr/share/asterism/transfer/transfer.rb ../../../flash/usr/share/transfer/receive_conf.rb
+#
+# Built into the firmware as default/transfer (fmrb_app_spawner.c, where
+# its attributes are: headless, a large pool, single_instance, movable).
+# The build puts in front of this file the shared parts the line above
+# names (Asterism::Transfer, which rake setup copies from the asterism
+# checkout, and FmrbReceiveConf, which the shell and the Receiving app read
+# from the storage too), then the parts in transfer/ (FmrbAppPackage,
+# RShell, TransferInbox), so nothing is read with require at run time
+# (doc/release_3_1 R3).
+#
 # The kernel cannot hold an Asterism session (on the standard configuration
 # it is a Spinel program), so this headless app holds the machine's for
 # moving apps. The kernel holds the steps of a move (D14,
@@ -62,7 +73,7 @@
 #
 #   checkpoint   an app's image (doc/checkpoint F5): started here
 #   app          an app to install (doc/wasm_apps W6): a package (a tar of
-#                its folder, /usr/share/transfer/app_package.rb) under the
+#                its folder, FmrbAppPackage in transfer/) under the
 #                app's name (meta {"app" => the name, "overwrite"}),
 #                written to /app/usr/.<name>.app.part, unpacked beside it
 #                and looked at (a wasm app must import only what this
@@ -201,8 +212,10 @@
 #                            to its certificate (a tls/ router), so the names
 #                            are checked ones
 #
-# The remote shell (rshell_enabled, doc/remote_shell): rshell.rb, read only
-# while it is on, keeps the app up as the other switches do. Its kill and
+# The remote shell (rshell_enabled, doc/remote_shell): RShell (transfer/
+# rshell.rb) is defined in every transfer app, but its door is made and
+# exposed only while the switch is on; it keeps the app up as the other
+# switches do. Its kill and
 # open hear the kernel's answers (kill_result, spawn_result, spawn_failed,
 # app/died) through on_control; while a session is open the desktop shows
 # a mark, which the kernel is told of (rshell_state).
@@ -213,14 +226,9 @@
 # kernel hears "transfer_ready" {node} once connected and "transfer_down"
 # {reason} when it is not.
 #
-# .app.toml says movable = true: not to be moved (an Asterism session cannot
+# Its attributes say movable = true: not to be moved (an Asterism session cannot
 # be carried, so a request is refused), but so that its VM keeps the table
 # of this build's method names (the baseline) that check answers from.
-
-# The receiving side (TransferInbox), in its own file so that this script
-# stays well under the loader's 64 KB; it requires Asterism::Transfer,
-# FmrbReceiveConf and FmrbAppPackage, which this app uses too.
-require "/usr/share/transfer/transfer_inbox"
 
 # The app. Sending is done a call at a time from on_update, each call left
 # on its way (conn.call_async) while the app returns to its message
@@ -347,10 +355,7 @@ class TransferApp < FmrbApp
   def rshell(on)
     @rshell_on = on
     return unless on || @rshell
-    unless @rshell
-      require "/usr/share/transfer/rshell"
-      @rshell = ::RShell::Door.new(self)
-    end
+    @rshell ||= ::RShell::Door.new(self)
     @rshell.switch(on, @link)
   end
 

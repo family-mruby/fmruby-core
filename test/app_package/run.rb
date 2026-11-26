@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# Host tests for FmrbAppPackage (flash/usr/share/transfer/app_package.rb,
+# Host tests for FmrbAppPackage (main/ruby/default_app/transfer/app_package.rb,
 # doc/wasm_apps W6): the package an app travels in (a tar of its folder),
 # as the machines write it (pack), as the PC tool writes it
 # (tools/fmrb_send.rb, CRuby's Gem::Package::TarWriter) and as tar writes
@@ -79,7 +79,7 @@ at_exit { FileUtils.rm_rf(TMP) }
 USR = "#{TMP}/app/usr"
 CACHE = "#{TMP}/launcher_index"
 FileUtils.mkdir_p(USR)
-src = File.read("#{ROOT}/flash/usr/share/transfer/app_package.rb")
+src = File.read("#{ROOT}/main/ruby/default_app/transfer/app_package.rb")
           .gsub("\"/app/usr\"", "\"#{USR}\"").gsub("/var/cache/launcher_index", CACHE)
 eval(src, TOPLEVEL_BINDING, "app_package.rb")
 P = FmrbAppPackage

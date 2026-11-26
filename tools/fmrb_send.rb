@@ -130,7 +130,7 @@ module FmrbSend
   end
 
   # The app at path packed into a tar (ustar, what the machines read:
-  # /usr/share/transfer/app_package.rb). -> [name, the tar's path, files]
+  # FmrbAppPackage, main/ruby/default_app/transfer/app_package.rb). -> [name, the tar's path, files]
   def self.pack_app(path, out)
     require "rubygems/package"
     name, files = app_files(path)

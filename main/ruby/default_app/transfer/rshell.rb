@@ -1,9 +1,10 @@
 # The remote shell's machine side (doc/remote_shell R1, R2): the commands
 # that look at the machine and change it, run without a screen in the
-# transfer app, which
-# reads this file only while rshell_enabled = true in receive.toml (a
-# machine with it off holds none of it) and stays up for it as for its
-# other switches (TransferApp#rshell). Door#switch exposes the door as
+# transfer app, which is built with this file in front of it
+# (main/ruby/default_app/transfer/) but makes its Door only while
+# rshell_enabled = true in receive.toml (a machine with it off has the
+# module defined and nothing made or exposed) and stays up for it as for
+# its other switches (TransferApp#rshell). Door#switch exposes the door as
 # <node>/transfer/rshell while it is on.
 #
 # A line at a time: the console's Terminal sends one line, the machine runs
