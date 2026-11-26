@@ -382,10 +382,11 @@ D.switch(false, link)
 check("switch off: taken away, the session ends", [link.conn.exposed.keys, D.s], [[], nil])
 
 # The app loader takes a script of 64 KB at most (main/app/fmrb_app.c,
-# "Script file too large"): the transfer app was 534 bytes under it before
-# the remote shell.
-check("transfer.app.rb under the loader's 64 KB",
-      File.size("#{ROOT}/flash/usr/share/transfer/transfer.app.rb") <= 65536, true)
+# "Script file too large"): the transfer app was 57 bytes under it after
+# the look commands, and its receiving side went to transfer_inbox.rb to
+# keep at least 8 KB free (R2).
+check("transfer.app.rb 8 KB under the loader's 64 KB",
+      File.size("#{ROOT}/flash/usr/share/transfer/transfer.app.rb") <= 65536 - 8192, true)
 
 puts($failed.zero? ? "rshell: all #{$count} ok" : "rshell: #{$failed} of #{$count} FAILED")
 exit($failed.zero? ? 0 : 1)
