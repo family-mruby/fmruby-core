@@ -398,3 +398,6 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   余りが数 KB ある。転送のアプリも同じ形 (まとめて焼き込む) にすれば、`require` を通らなくなる。
 - 今は溢れていないが、余裕が無い。直し方 (山を作っている所を浅くする / 転送のアプリだけ `task_stack_kb` を上げる =
   動いている間の内蔵 RAM +8 KB) は、原因を特定してからユーザが決める。
+- (2026-11-27 追記) 転送のアプリを本体に焼き込んだ (`default/transfer`、doc/release_3_1/report/r3.md)。`require` を
+  通らなくなった。sim ではスタックの値が前後で変わらず (13 KB 余り)、仮説は sim では確かめられない。P4-Nano の
+  周期ダンプで余りを測るのが次。
