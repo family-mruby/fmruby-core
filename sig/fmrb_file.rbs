@@ -156,6 +156,26 @@ module FmrbFile
   # ```
   def self.path_read_only?: (String path) -> bool
 
+  # 遠くから読ませない鍵の場所か <<en>> Whether the path is a secret kept from remote reading
+  #
+  # WiFi のパスワード (wifi.toml)・API の鍵 (secrets.toml) と、/home/asterism の中すべて
+  # (フォルダとその config.toml も) で true。WiFi の遠隔操作と BLE の設定と同じ決まりで、
+  # パスは file HAL の読み方で見る ("/flash/..." は "/" と同じ、".." を含むと true)。
+  # 相対パスや "." は先に絶対パスへ直してから渡す。
+  # ```ruby
+  # FmrbFile.secret_path?("/home/wifi.toml")
+  # ```
+  # <<en>>
+  # true for the WiFi password (wifi.toml), the API keys (secrets.toml) and
+  # everything in /home/asterism (the directory and its config.toml too):
+  # the rules of the WiFi remote control and the BLE settings. The path is
+  # read as the file HAL reads it ("/flash/..." is "/"; one with ".." is
+  # true). Make a relative path absolute first.
+  # ```ruby
+  # FmrbFile.secret_path?("/home/wifi.toml")
+  # ```
+  def self.secret_path?: (String path) -> bool
+
   # その場所にあと何バイト書けるか <<en>> How many more bytes can be written where the path lives
   #
   # /tmp は RAM のファイルシステムの空き、ほかはその下のファイルシステムの空き。

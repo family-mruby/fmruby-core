@@ -15,6 +15,11 @@
 #   enabled = true                  # receive at all (T7; no line: off)
 #   send_enabled = true             # keep the list of the machines to send
 #                                   # to (doc/window_menu M2; no line: off)
+#   rshell_enabled = true           # let the remote shell in (doc/remote_shell;
+#                                   # no line: off), from the rshell kind
+#   rshell_uncertified = true       # also over a connection that is not
+#                                   # checked (no tls/ router): by hand only,
+#                                   # for the sim and development checks
 #
 #   [file]
 #   from = ["pc-desk"]
@@ -41,6 +46,9 @@
 #   from = ["fmruby-aaaaaa", "fmruby-*"]
 #
 #   [managed.checkpoint]
+#   from = []
+#
+#   [managed.rshell]
 #   from = []
 #
 # Nothing is taken unless enabled = true is in the part by hand: a file
@@ -76,11 +84,15 @@ module FmrbReceiveConf
   TMP_PATH = "/home/asterism/.receive.toml.new"
   MARK = "# ---- managed by the console"
   MARK_LINE = "# ---- managed by the console (below this line; edit above it) ----"
-  # The kinds the console's list carries (T6: Admin > Members, policy_set).
-  KINDS = ["file", "checkpoint"]
+  # The kinds the console's list carries (T6: Admin > Members, policy_set;
+  # rshell: who may open the remote shell, doc/remote_shell).
+  KINDS = ["file", "checkpoint", "rshell"]
   # The kinds written by hand: those, and apps to install (doc/wasm_apps
   # W6), which the console does not list yet (a list of its own by hand).
+  # The remote shell's (rshell) is changed by hand only from the Receiving
+  # app (allow / deny with all_kinds), not from the shell's areceive.
   HAND_KINDS = ["file", "checkpoint", "app"]
+  RSHELL = "rshell"
   INSTALL_MODES = ["ask", "auto"]
   ANYONE = "*"
   # what one list may hold (a call carries about 4 KB)
@@ -144,6 +156,22 @@ module FmrbReceiveConf
   def self.send_enabled?(p = parts)
     h = hand(p)
     h.is_a?(Hash) && h["send_enabled"] == true
+  end
+
+  # The remote shell is on: rshell_enabled = true in the part by hand
+  # (doc/remote_shell; the same rules as enabled). Who may open it is the
+  # rshell kind: [rshell] from by hand, and the console's [managed.rshell].
+  def self.rshell_enabled?(p = parts)
+    h = hand(p)
+    h.is_a?(Hash) && h["rshell_enabled"] == true
+  end
+
+  # The remote shell is let in over a connection that is not checked too
+  # (rshell_uncertified = true by hand; the Receiving app never writes it):
+  # for the sim and development checks, where the router is not a tls/ one.
+  def self.rshell_uncertified?(p = parts)
+    h = hand(p)
+    h.is_a?(Hash) && h["rshell_uncertified"] == true
   end
 
   # How an app sent here is installed (doc/wasm_apps W6): "auto" when the
@@ -218,7 +246,7 @@ module FmrbReceiveConf
   end
 
   # Everything the Receiving app shows (one read): {"enabled",
-  # "send_enabled", "path" (nil:
+  # "send_enabled", "rshell_enabled", "path" (nil:
   # no file), "hand_ok" (the part by hand is TOML, or empty), "by", "at",
   # and per kind {"hand" => [...] | nil, "managed" => [...] | nil}}.
   def self.view
@@ -226,7 +254,8 @@ module FmrbReceiveConf
     h = hand(p)
     m = managed(p)
     out = { "enabled" => h.is_a?(Hash) && h["enabled"] == true,
-            "send_enabled" => h.is_a?(Hash) && h["send_enabled"] == true, "path" => path,
+            "send_enabled" => h.is_a?(Hash) && h["send_enabled"] == true,
+            "rshell_enabled" => h.is_a?(Hash) && h["rshell_enabled"] == true, "path" => path,
             "hand_ok" => p.nil? || p[0].strip.empty? || h.is_a?(Hash),
             "by" => m ? m["by"] : "", "at" => m ? m["at"] : "" }
     i = 0
@@ -235,6 +264,7 @@ module FmrbReceiveConf
       out[k] = { "hand" => hand_senders(k, h), "managed" => m ? m[k] : nil }
       i += 1
     end
+    out[RSHELL] = { "hand" => hand_senders(RSHELL, h), "managed" => m ? m[RSHELL] : nil }
     t = h.is_a?(Hash) ? h["app"] : nil
     out["install"] = t.is_a?(Hash) && t["install"] == "auto" ? "auto" : "ask"
     out
@@ -330,7 +360,7 @@ module FmrbReceiveConf
     i = 0
     while i < KINDS.size
       k = KINDS[i]
-      s << "\n[managed.#{k}]\nfrom = [#{quoted(lists[k])}]\n"
+      s << "\n[managed.#{k}]\nfrom = [#{quoted(lists[k] || [])}]\n"
       i += 1
     end
     s
@@ -381,11 +411,22 @@ module FmrbReceiveConf
     save_hand(p, head, "send_enabled", on)
   end
 
+  # Turns the remote shell on or off (rshell_enabled, doc/remote_shell). The
+  # same answers as set_enabled.
+  def self.set_rshell_enabled(on)
+    p = parts || ["", ""]
+    h = hand_for_edit(p)
+    return false if (h["rshell_enabled"] == true) == on
+    head = set_key(p[0], "", "rshell_enabled", on ? "true" : "false")
+    save_hand(p, head, "rshell_enabled", on)
+  end
+
   # Lets node send kind (a node ID or a pattern, "*" everyone on the
   # network). Returns whether the file was written (false: it was in the
-  # list by hand).
-  def self.allow(kind, node)
-    k = kind_of(kind)
+  # list by hand). all_kinds: the remote shell's kind is taken too (the
+  # Receiving app).
+  def self.allow(kind, node, all_kinds = false)
+    k = kind_of(kind, all_kinds)
     n = node.to_s
     raise ArgumentError, "not a node ID or pattern: #{n.byteslice(0, ENTRY_MAX)}" unless node_ok?(n)
     p = parts || ["", ""]
@@ -402,8 +443,8 @@ module FmrbReceiveConf
   # from, for checkpoint). Returns whether the file was written. Raises
   # ArgumentError when node is not in it (in the console's list only: that
   # is changed on the console).
-  def self.deny(kind, node)
-    k = kind_of(kind)
+  def self.deny(kind, node, all_kinds = false)
+    k = kind_of(kind, all_kinds)
     n = node.to_s
     p = parts || ["", ""]
     h = hand_for_edit(p)
@@ -430,7 +471,8 @@ module FmrbReceiveConf
   # Starts the transfer app when a switch is on (and it is not running),
   # and tells a running one to look at receive.toml again: with both off,
   # it ends once what is coming in is in. app: the FmrbApp asking; on:
-  # whether either switch is on now (enabled? || send_enabled?).
+  # whether any switch is on now (enabled? || send_enabled? ||
+  # rshell_enabled?).
   def self.tell_transfer(app, on)
     running = transfer_running?
     if on && !running
@@ -538,8 +580,9 @@ module FmrbReceiveConf
 
   # ---- inside ----
 
-  def self.kind_of(kind)
+  def self.kind_of(kind, all_kinds = false)
     k = kind.to_s
+    return k if all_kinds && k == RSHELL
     raise ArgumentError, "not a kind: #{k} (file, checkpoint or app)" unless HAND_KINDS.include?(k)
     k
   end
@@ -561,12 +604,12 @@ module FmrbReceiveConf
 
   # The new part by hand, read back (what was asked for must be what the
   # file now says), then written with the managed part as it is. what:
-  # "enabled" or "send_enabled" (want: true/false) or a kind (want: its list; nil: only
+  # "enabled", "send_enabled" or "rshell_enabled" (want: true/false) or a kind (want: its list; nil: only
   # checked to be TOML).
   def self.save_hand(p, head, what, want)
     h = FmrbToml.parse(head)
     raise ArgumentError, "the change would not be TOML (#{FmrbToml.error}); not written" if h.nil?
-    switch = what == "enabled" || what == "send_enabled"
+    switch = what == "enabled" || what == "send_enabled" || what == "rshell_enabled"
     got = switch ? h[what] == true : (want.nil? ? nil : table_list(h, what))
     if !want.nil? && got != want
       raise ArgumentError, "the change does not read back (#{what}); not written"

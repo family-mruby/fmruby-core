@@ -76,6 +76,36 @@ module FmrbReceiveConf
   # ```
   def self.send_enabled?: () -> bool
 
+  # リモートシェルを入れているか <<en>> Whether the remote shell is on
+  #
+  # `rshell_enabled = true` があれば true。同じ規則。入ってよい相手は種類 `"rshell"` の一覧
+  # (doc/remote_shell)。
+  # ```ruby
+  # FmrbReceiveConf.rshell_enabled?
+  # ```
+  # <<en>>
+  # true with `rshell_enabled = true`. The same rules. Who may come in is the `"rshell"` kind's
+  # list (doc/remote_shell).
+  # ```ruby
+  # FmrbReceiveConf.rshell_enabled?
+  # ```
+  def self.rshell_enabled?: () -> bool
+
+  # 確かめない接続も受けるか <<en>> Whether unchecked connections are taken
+  #
+  # `rshell_uncertified = true` (手で書くときだけ) があれば true。sim や開発の確認用で、
+  # ふだんは tls/ のルータ (ブラウザ版は console の door) の接続でだけ受ける。
+  # ```ruby
+  # FmrbReceiveConf.rshell_uncertified?
+  # ```
+  # <<en>>
+  # true with `rshell_uncertified = true` (written by hand only). For the sim and development
+  # checks; otherwise only a tls/ router's connection (the console's door in the browser) is taken.
+  # ```ruby
+  # FmrbReceiveConf.rshell_uncertified?
+  # ```
+  def self.rshell_uncertified?: () -> bool
+
   # app の入れ方 ("ask" か "auto") <<en>> How apps are installed ("ask" or "auto")
   #
   # `[app]` の `install = "auto"` があれば "auto" (証明書で確かめた送り手のものは聞かずに入れる)、
@@ -95,7 +125,8 @@ module FmrbReceiveConf
   #
   # Receiving アプリが見せるものを Hash で返す: `"enabled"`・`"send_enabled"`・`"path"` (ファイルが
   # 無ければ nil)・`"hand_ok"` (手で書く部分が TOML か空)・`"by"`・`"at"` (console の書いたもの)・
-  # `"install"`、種類 (`"file"`・`"checkpoint"`・`"app"`) ごとの `{ "hand" => 一覧か nil, "managed" => 一覧か nil }`。
+  # `"install"`・`"rshell_enabled"`、種類 (`"file"`・`"checkpoint"`・`"app"`・`"rshell"`) ごとの
+  # `{ "hand" => 一覧か nil, "managed" => 一覧か nil }`。
   # ```ruby
   # v = FmrbReceiveConf.view
   # v["file"]["hand"]
@@ -103,8 +134,8 @@ module FmrbReceiveConf
   # <<en>>
   # A Hash of what the Receiving app shows: `"enabled"`, `"send_enabled"`, `"path"` (nil without
   # a file), `"hand_ok"` (the part by hand is TOML or empty), `"by"` and `"at"` (what the console
-  # wrote), `"install"`, and per kind (`"file"`, `"checkpoint"`, `"app"`) `{ "hand" => list or nil,
-  # "managed" => list or nil }`.
+  # wrote), `"install"`, `"rshell_enabled"`, and per kind (`"file"`, `"checkpoint"`, `"app"`,
+  # `"rshell"`) `{ "hand" => list or nil, "managed" => list or nil }`.
   # ```ruby
   # v = FmrbReceiveConf.view
   # v["file"]["hand"]
@@ -142,6 +173,21 @@ module FmrbReceiveConf
   # ```
   def self.set_send_enabled: (bool on) -> bool
 
+  # リモートシェルを入れる・切る <<en>> Turn the remote shell on or off
+  #
+  # `set_enabled` と同じ答えと例外。入れると、許した相手がこの端末のファイルを遠くから見たり
+  # 変えたりできる。入れ切りの後は `tell_transfer` で転送アプリに知らせる。
+  # ```ruby
+  # FmrbReceiveConf.set_rshell_enabled(true)
+  # ```
+  # <<en>>
+  # The same answers and exceptions as `set_enabled`. On, the machines allowed can see and
+  # change the files here from afar. After switching, tell the transfer app with `tell_transfer`.
+  # ```ruby
+  # FmrbReceiveConf.set_rshell_enabled(true)
+  # ```
+  def self.set_rshell_enabled: (bool on) -> bool
+
   # app の入れ方を決める <<en>> Choose how apps are installed
   #
   # `"ask"` か `"auto"` (Symbol も可)。ほかは ArgumentError ("not a way to install")。
@@ -159,7 +205,8 @@ module FmrbReceiveConf
 
   # 送り手を許す <<en>> Let a sender in
   #
-  # `kind` は `"file"`・`"checkpoint"`・`"app"` (Symbol も可。ほかは ArgumentError)。`node` は
+  # `kind` は `"file"`・`"checkpoint"`・`"app"` (Symbol も可。ほかは ArgumentError。`all_kinds` が
+  # true なら `"rshell"` も)。`node` は
   # ノード名か型 (英数字と `.` `_` `-` `*` だけ、`ENTRY_MAX` バイトまで。`"*"` はネットワークの
   # 全員、`"pc-*"` のような型も可)。そうでないと ArgumentError。1 つの一覧は 64 件まで
   # (超えると ArgumentError)。書いたら true、すでに手で書く一覧にあれば false。
@@ -168,14 +215,14 @@ module FmrbReceiveConf
   # ```
   # <<en>>
   # `kind` is `"file"`, `"checkpoint"` or `"app"` (a Symbol works; anything else is an
-  # ArgumentError). `node` is a node name or pattern (letters, digits and `.` `_` `-` `*` only, up
+  # ArgumentError; with `all_kinds` true `"rshell"` too). `node` is a node name or pattern (letters, digits and `.` `_` `-` `*` only, up
   # to `ENTRY_MAX` bytes; `"*"` is everyone on the network, and a pattern like `"pc-*"` works), else
   # an ArgumentError. One list holds at most 64 entries (more is an ArgumentError). true when it
   # wrote, false when the list by hand already had it.
   # ```ruby
   # FmrbReceiveConf.allow("file", "pc-desk")
   # ```
-  def self.allow: ((String | Symbol) kind, String node) -> bool
+  def self.allow: ((String | Symbol) kind, String node, ?bool all_kinds) -> bool
 
   # 送り手を外す <<en>> Take a sender out
   #
@@ -191,18 +238,18 @@ module FmrbReceiveConf
   # ```ruby
   # FmrbReceiveConf.deny("file", "pc-desk")
   # ```
-  def self.deny: ((String | Symbol) kind, String node) -> bool
+  def self.deny: ((String | Symbol) kind, String node, ?bool all_kinds) -> bool
 
   # 転送アプリに設定の変更を知らせる <<en>> Tell the transfer app the settings changed
   #
-  # `app` は呼ぶアプリ (self)、`on` は受け取り・送りのどちらかが入っているか。入っていて転送アプリが
+  # `app` は呼ぶアプリ (self)、`on` は受け取り・送り・リモートシェルのどれかが入っているか。入っていて転送アプリが
   # 動いていなければ起動して `:started`、動いていれば設定を読み直させて `:running`
   # (`on` が false なら `:stopping`: 受け取り中の分が済んだら終わる)。動いておらず切る側なら `:none`。
   # ```ruby
   # FmrbReceiveConf.tell_transfer(self, on)
   # ```
   # <<en>>
-  # `app` is the calling app (self), `on` whether receiving or sending is on. When on and the
+  # `app` is the calling app (self), `on` whether receiving, sending or the remote shell is on. When on and the
   # transfer app is not running it is started (`:started`); when running it is asked to read the
   # settings again (`:running`, or `:stopping` when `on` is false: it ends once what is coming in
   # is in). `:none` when it is not running and `on` is false.

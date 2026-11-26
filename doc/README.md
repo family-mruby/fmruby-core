@@ -29,7 +29,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 ## 参照資料 (doc/reference/)
 
 - [TODO](reference/TODO.md)
-- [アプリのメモリ (VM プール)](reference/app_memory.md) — **完了** (2026-11-07) mruby アプリの VM プールの大きさ (機種別)、`.app.toml` の `large_memory`、何が尽きると NoMemoryError になるか (総量ではなく一続きの空き)、ログでの見方、コンパイルの山の実測 (麻雀の卓)
+- [アプリのメモリ (VM プール)](reference/app_memory.md) — **完了** (2026-11-26) mruby アプリの VM プールの大きさ (機種別)、`.app.toml` の `large_memory`、何が尽きると NoMemoryError になるか (総量ではなく一続きの空き)、ログでの見方、コンパイルの山の実測 (麻雀の卓)
 - [APU の 2 つの音源がフィルタの状態を共有していた (60 Hz のビリビリ)](reference/apu_shared_filter_state.md) — **解決** (2026-10-19) 内蔵の音源 (nofrendo の APU) の低域フィルタが「直前のサンプル」を関数の中の `static` 1 つに持っていて、BGM 用 (MAIN) と効果音用 (SUB) の 2 つの音源で共有していた。1 コマごとに相手の最後の値を引き継ぐので、1 秒に 60 回の段差が出る。BGM だけの音量 (MJ12) を足して BGM を小さくしたら、それが「ビリビリ」として聞こえるようになった。値を音源ごとの構造体へ移して直した
 - [音の出力: ミュートと音量 (使い方と仕組み)](reference/audio_output.md) — **完了** (2026-10-19) 本体の音を一括で消すミュートと 0-10 の音量。音源は動かしたまま、出力の最後の段で無音・倍率をかける。全機種・sim・ブラウザ版で同じ。経緯は archive/audio_mute/。APU の MAIN 側 (BGM) だけの音量も一節 (MJ12)
 - [Tab5 (ESP32-P4) BLE有効化 — Web コンソールの Modern 対応](reference/ble_c6_web_console.md)
@@ -130,6 +130,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `remote_debug/` [PicoRuby VM リモートデバッグ検討 (Bluetooth / VSCode)](remote_debug/vm_remote_debug_design.md) — - 〔9 files〕
 - `remote_desktop/` [リモートデスクトップ機能 設計書 (ESP32-P4 / Modern)](remote_desktop/design.md) — - 〔1 files〕
 - `remote_guard/` [WiFi の遠隔操作に制約を付ける計画](remote_guard/plan.md) — **進行中** (2026-11-16) G0・G1・G2 実装済 (G2 は 2026-11-16 の決定の追従まで済: スイッチは閉じるまで残る、登録は「PCを登録」の間だけ、OFF で接続を切る、トークンはハッシュで保存、`/mnt/sd` も書ける)・実機の確認待ち (report/g0.md、report/g12.md 8 章)。開発用の遠隔操作 (アプリの起動・終了、ファイルの読み書き、画面と入力) は今は無認証で、同じ LAN の誰でも使える。開発のビルドは読み書きを自由のままにし (鍵の読み出しも許して /home の退避を WiFi でできるように)、リリースのビルドでは書ける場所を絞り (G1)、端末の上で許可したときだけ開く (G2)。正式な経路は Asterism の認証に寄せる (G3)。SDK の利用者がリリースのファームでも端末で許可すれば wasm のアプリを送って試せる形にする 〔4 files〕
+- `remote_shell/` [Console から端末に入るリモートシェル](remote_shell/plan.md) — **進行中** (2026-11-26) asterism-console の Terminal から、Asterism 越しに Family mruby の端末 (Tab5・P4-Nano・ブラウザ版) に入り、行ごとのコマンドでファイルの確認・出し入れとアプリの一覧・起動・停止をする。遠くにいる利用者のサポート用。段は R0〜R6、R0〜R4 済 (見る・変える・補完・権限・get・put。sim で全部通過)。TLS 越しのネイティブ版の put が通信の gem の不具合で通らず調査中。次は R5 (通しと公開) 〔10 files〕
 - `robo_explorer/` [ロボットエクスプローラー: Pub/Sub で操作する二人羽織パズル](robo_explorer/plan.md) — - 〔3 files〕
 - `ruby34/` [Ruby を 3.4 系の最新に上げる](ruby34/plan.md) — **進行中 (R5 だけ)** (2026-10-22) 手元 (WSL の rbenv) と asterism-console・asterism-games の image が、サポートの終わった Ruby 3.2.6 のまま。3.4 系の最新に上げる。手元とリポジトリはまとめて一気に、公開と VPS は許可を得て 1 回で 〔3 files〕
 - `ruby_asterism/` [Asterism: 計画](ruby_asterism/plan.md) — **進行中** (2026-10-16) 異なる Ruby・機体・Web を一つのオブジェクトの網として扱う構想の実装計画。Z1 (sim)・Z2 (P4 実機、WiFi 越し)・Z3 (問い合わせ・生存の監視・ルータなしの直接の接続) 完了。A1 (遠くのオブジェクトの代理)・R1 (ROS 2 の最小の疎通)・R2 (ROS 2 のサービス)・R3 (メッセージ型の変換器)・C1 (CRuby 版) 完了 〔193 files〕

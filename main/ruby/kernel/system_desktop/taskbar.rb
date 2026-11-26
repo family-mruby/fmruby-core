@@ -29,7 +29,8 @@ module TaskbarMixin
   # one, its POWER_PAD is added), clock, speaker, wifi, BLE, kana and the
   # free-IRAM readout, whose leftmost cell starts at width-180-POWER_PAD; 4 px
   # more is the margin. draw_taskbar and handle_taskbar_click both stop here,
-  # so a click never lands on an icon that was not drawn.
+  # so a click never lands on an icon that was not drawn. While a remote
+  # shell session is open its mark takes rshell_pad more (the desktop's).
   TASKBAR_RIGHT_RESERVE = 184
 
   def init_taskbar
@@ -81,7 +82,7 @@ module TaskbarMixin
   def draw_taskbar
     return if @taskbar_apps.empty?
 
-    max_x = @window_width - TASKBAR_RIGHT_RESERVE - self.class::POWER_PAD
+    max_x = @window_width - TASKBAR_RIGHT_RESERVE - self.class::POWER_PAD - rshell_pad
     x = TASKBAR_X_START
 
     @taskbar_apps.each do |app|
@@ -111,7 +112,7 @@ module TaskbarMixin
 
     # Must match draw_taskbar: clicks past the drawn icons would otherwise
     # focus an app whose icon was cut off by the status cells.
-    max_x = @window_width - TASKBAR_RIGHT_RESERVE - self.class::POWER_PAD
+    max_x = @window_width - TASKBAR_RIGHT_RESERVE - self.class::POWER_PAD - rshell_pad
     x = TASKBAR_X_START
 
     @taskbar_apps.each do |app|

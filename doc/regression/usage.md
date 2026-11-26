@@ -169,6 +169,7 @@ ruby tools/regress/size.rb --restore   # 途中で殺したときに、退避し
   - `running`: picoruby の FmrbUI のアプリ (kamon)・MML の再生 (音)・StackChan Remote (ボタンと publish)、Spinel のプログラム (Spinel Hello)。2026-11-16 より前の台本と同じ組なので、前の基準と比べられる。
   - `running_langs`: ほかのエンジン。Lua (`/app/lua/lua.app.lua`)・MicroPython (`/app/python/python.app.py`)・wasm (`/app/tinygo/hello.app.wasm`、WAMR)。wasm のアプリのメモリは WAMR のもので VM プールの外なので、ps の使用量は 0 で、比べるのはスタックの空き (と、ほかの VM への影響)。
   - `running_tools`: エディタ (`default/editor`、Spinel、組込みで一番使うアプリ) とゲーム (`/app/game/flappy.app.rb`、BMP のスプライト)。
+  - `running_transfer`: 転送のアプリ (`/usr/share/transfer/transfer.app.rb`、画面なし・Asterism・大きい方のプール。doc/remote_shell R2 で足した)。sim の /home (flash/home) に Asterism の設定が無ければつながらずに起き、receive.toml でリモートシェルを入れていなければ切の形で測る (どちらも置かずに流す)。基準はまだ無い (次の `regress:run` で new と出る)。
   - 種類ごとに、その端末の storage に載るアプリだけを流す (`targets.rb` の `carries?`、storage_exclude の一覧): Retro は wasm のアプリを外す (S3 には WAMR が無い)。
   - Family BASIC は入れていない: `.bas` のアプリは全画面で開いてほかのアプリを止め (suspend)、debug server の ps に出ないため。
   - 組を変えたら基準を作り直す (`rake regress:run` → 要約を読んで `regress:run:update`)。基準に無い数は「new」と出るだけで落ちない。閉じた後 (closed) の数は組の数で少し動きうる。

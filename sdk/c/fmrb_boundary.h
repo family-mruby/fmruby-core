@@ -51,7 +51,7 @@ extern "C" {
  * refuses an app that imports a function it lacks, before the app starts.
  */
 /** Hash of the function list and records; changes whenever one of them changes. */
-#define FMRB_ABI_HASH 0x1439f5e7u
+#define FMRB_ABI_HASH 0x0eaa155du
 
 #define FMRB_BOUNDARY_ERR_FAILED (-1)
 #define FMRB_BOUNDARY_ERR_ARG    (-2)
@@ -906,6 +906,16 @@ int32_t fmrb_file_list_raw(const char *dir, int32_t dir_len, char *out, int32_t 
  */
 FMRB_IMPORT("file_path_read_only")
 int32_t fmrb_file_path_read_only(const char *path, int32_t path_len);
+
+/**
+ * 遠くから読ませない鍵の場所か
+ * Whether the path is a secret kept from remote reading
+ *
+ * Ruby: FmrbFile.secret_path?(path)
+ * @return the answer, 1 or 0
+ */
+FMRB_IMPORT("file_secret_path")
+int32_t fmrb_file_secret_path(const char *path, int32_t path_len);
 
 /**
  * その場所にあと何バイト書けるか
