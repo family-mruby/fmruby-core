@@ -57,6 +57,6 @@
 ## 後片付けと report
 
 sim・ネイティブ版・サーバ・bridge・ルータ・ブラウザを止め、試験用のファイルと設定を消し、console の開発用の DB を元に
-戻す。画面は `/tmp/claude-1000/-home-kishima-fmrb-family-mruby/2488ad3e-d680-4f55-88f7-804cff8c4d43/scratchpad/r4/`。
+戻す。画面は 作業用の場所 (リポジトリの外)。
 `doc/remote_shell/report/r4.md` (日本語の常体) にメソッドの形・通した結果・測った数・見立てと違った点・残件を書く。
 console の側は `docs/` に R3 と同じ形で。実在の値 (ドメイン・IP・ノード名・人の名前) を書かない。

@@ -1,10 +1,10 @@
 # R3 の指示: console の Terminal から端末に入る
 
-作業するリポジトリは **asterism-console** (`/home/kishima/fmrb/family-mruby/asterism-console`)。ブランチ `remote-shell` を
+作業するリポジトリは **asterism-console** (fmruby-core の隣の checkout)。ブランチ `remote-shell` を
 main から切って作業する。
 
 先に読む (読むだけ。fmruby-core は変えない):
-- `/home/kishima/fmrb/family-mruby/fmruby-core/doc/remote_shell/plan.md` (7 章の決定が正)
+- fmruby-core の `doc/remote_shell/plan.md` (7 章の決定が正)
 - 同 `report/r0.md` (3 章が console の側の調査の要点)、`report/r1.md` (2 章が端末のメソッドの引数と答えの形)
 - 同 `instruction_r2.md` (端末の側で今作っている変えるコマンド。`kill`・`open` は「頼んだ」と返し、結果は `more` で取る)
 - asterism-console の `CLAUDE.md` (あれば)・`docs/terminal.md`・`docs/files.md`・`README.md` の試験の節
