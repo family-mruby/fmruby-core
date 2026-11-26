@@ -1,6 +1,6 @@
 # Console から端末に入るリモートシェル
 
-> 状態: 進行中 | 更新: 2026-11-26 | asterism-console の Terminal から、Asterism 越しに Family mruby の端末 (Tab5・P4-Nano・ブラウザ版) に入り、行ごとのコマンドでファイルの確認・出し入れとアプリの一覧・起動・停止をする。遠くにいる利用者のサポート用。段は R0〜R6、R0〜R3 済 (端末の側と console の側。sim・ネイティブ版と本物どうしで通した)。次は R4 (get・put)、未着手
+> 状態: 進行中 | 更新: 2026-11-26 | asterism-console の Terminal から、Asterism 越しに Family mruby の端末 (Tab5・P4-Nano・ブラウザ版) に入り、行ごとのコマンドでファイルの確認・出し入れとアプリの一覧・起動・停止をする。遠くにいる利用者のサポート用。段は R0〜R6、R0〜R4 済 (見る・変える・補完・権限・get・put。sim で全部通過)。TLS 越しのネイティブ版の put が通信の gem の不具合で通らず調査中。次は R5 (通しと公開)
 
 ## 1. 目的
 
@@ -81,7 +81,7 @@
 | R1 (済) | **端末: 見るコマンド**。画面なしの実行部と `rshell` のオブジェクト (`open`・`exec`・`more`・`complete`・`close`)、見るコマンド、鍵を読ませない線引き。sim で asterism の CLI (`call`) から呼んで確認する。ホストの試験を足す | 済 (report/r1.md。sim で確認、ESP32 は R2 の検収で) |
 | R2 (済) | **端末: 変えるコマンドと許可**。`cp`・`mv`・`rm`・`mkdir`・`kill`・`open`、Config の「リモートシェル」(既定は切)、入ってよいノードの確認、入られている間の印、切のときは常駐しないこと。sig と F1 のヘルプは、アプリが呼ぶ API を足したときだけ | 済 (report/r2.md。sim で確認、ESP32 の S3・P4 のビルドが通る、内蔵 RAM の増分なし) |
 | R3 (済) | **console: Terminal から入る**。`remote <node>`・プロンプト・`exit`・Tab の補完 (端末の `complete` を呼ぶ)・履歴、権限の 2 段、Call log、入れない理由 (切・許されていない・端末がいない) を分かる言葉で返す。入れる端末の一覧。console の試験 | 済 (asterism-console のブランチ remote-shell、同 docs/remote_shell_r3.md。本物の端末との通しは report/r3.md: sim と、TLS のルータ + ネイティブ版) |
-| R4 | **ファイルの出し入れ**。`get`・`put` (ブラウザとの間)、大きいファイルの進み具合の表示、途中で切れたときの続き。Files ページから「端末の中を見て選ぶ」画面を足すかは、ここで決める (未確定 2) | 未着手 |
+| R4 (済) | **ファイルの出し入れ**。`get`・`put` (ブラウザとの間)、大きいファイルの進み具合の表示、途中で切れたときの続き。Files ページから「端末の中を見て選ぶ」画面を足すかは、ここで決める (未確定 2) | 済 (report/r4.md、console は docs/remote_shell_r4.md。sim で全部通過。TLS 越しのネイティブ版の put は通信の gem の不具合で通らず、原因を調査中) |
 | R5 | **通しと公開**。sim・ブラウザ版・ESP32 (Tab5・P4-Nano) で通す。重い回帰 (`regress:run`・`regress:size`・`regress:screens`) をここで 1 回。console の版を上げて VPS を更新、ブラウザ版の配置、文書 (console の docs、端末の利用者向けの説明) | 未着手 |
 | R6 | **構想 (この計画では作らない)**: 文字ごとの対話 (less・irb)、任意の Ruby の実行 (`run`) を別の許可で、Family mruby の端末から別の端末へ入るアプリ、CRuby の Linux GUI アプリ、落ちたときのログを端末の中に残して取れるようにする | 構想 |
 
@@ -148,6 +148,13 @@ S3 の端末 (NARYA v3・StickS3・AtomS3R) はこの計画の対象にしない
 25. (R3 の後) 汎用の `call` (Terminal・図のページ) からは `transfer/rshell` を呼べない。
 26. (R3 の後) sim の zenoh-pico には TLS が無いので、sim では確かめられた接続の道を通せない (`rshell_uncertified` を使う)。
     TLS の道はネイティブ版で通す。
+27. (R4。6 を変える) `get` も `put` もリモートシェルのメソッドで運ぶ (転送の受け取りに乗せない。許可がリモートシェルの
+    3 つ = 端末のスイッチ・端末の印・人の権限で閉じる)。書く側は `write_begin`・`write_chunk`・`write_end`・`write_cancel`。
+    途中は隠しの `.part` に書き、終わりで名前を付け替える。`close`・時間切れ・Ctrl+C で `.part` を消す。
+28. (R4) 1 ファイルの上限は 16 MB (console の `ASTERISM_RSHELL_FILE_MAX_BYTES`)、1 回の `put` は 16 ファイルまで。
+    `get` のリンクは頼んだ本人が 1 回だけ使え、10 分で消える。`get` は見るだけの人も使える。
+29. (R4) 64 KB を超える `cp` (と付け替えが通らない `mv`) は「頼んだ → `more` で進み具合と結果」。`stop(id)` で止める。
+30. (R4) 同じ名前への `put` と本体の領域への `put` は、console が y/N を聞く。
 
 ## 8. 未確定事項
 
