@@ -425,3 +425,10 @@ sync (`fmrb_rd_fs.rb sync`・`fmrb_flash_keep.rb sync`、つまり `rake flash:a
   `$LOADED_FEATURES`・`.mrb`)。その前に、今の `require` のどこが深いかを測る (小さく済む直し方があるかで道が変わる)。
   上流へ出すかは、比べた後に上流の関心 (mruby/c との共通の作り、Sandbox の役目) で決める。今の差分は
   `lib/upstream/patch/picoruby-require` (表を const にしただけ) と `picoruby-sandbox` (依存の調整) で、作りは上流のまま。
+
+## 回帰が sim を起こすとき、graphics-audio のビルドの古さを見ていない (2026-11-27 記録)
+
+- `rake regress:checkpoint SIM=1` などが sim を起こすとき、fmruby-core の側の古さは見るが、graphics-audio の `build-linux` が
+  古い (版の番号を変えたコミットより前に作った) かどうかは見ていない。版が食い違うと、sim の起動の待ち (90 秒) が切れて
+  初めて分かる (2026-11-27、描画側の版を 3.2.0 → 3.1.0 に戻した後)。sim_up は古いビルドを断るので、回帰の道具も同じ確かめを
+  通すかを決める。
