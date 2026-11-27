@@ -159,23 +159,13 @@ static int tcp_poll(uint8_t *buf, size_t cap, uint32_t timeout_ms) {
         return 0;
     }
 
-    // New connection.
-    if (s_listen_fd >= 0 && FD_ISSET(s_listen_fd, &rfds)) {
-        int fd = FMRB_RETRY_EINTR(accept(s_listen_fd, NULL, NULL));
-        if (fd >= 0) {
-            if (s_client_fd >= 0) {
-                // One session only: reject the new comer.
-                close(fd);
-            } else {
-                set_nonblock(fd);
-                s_client_fd = fd;
-                s_rx_fill = 0;
-                FMRB_LOGI(TAG, "client connected");
-            }
-        }
-    }
-
-    // Client data.
+    // The client's data, and its end, before a new connection: a client that
+    // closes and a next one that connects at once (a tool's ps, then its
+    // kill) can both be waiting in one select(), and the new comer is only
+    // turned away while a client is really there. The end is reported on its
+    // own (return 0 before accepting), so the caller sees the session go down
+    // (debugd detaches what the old client attached) before the next comes
+    // up; the listening socket stays readable and the next poll accepts it.
     if (s_client_fd >= 0 && FD_ISSET(s_client_fd, &rfds)) {
         size_t room = sizeof(s_rx) - s_rx_fill;
         if (room == 0) {
@@ -197,6 +187,30 @@ static int tcp_poll(uint8_t *buf, size_t cap, uint32_t timeout_ms) {
         }
         s_rx_fill += (size_t)r;
         return try_extract(buf, cap);
+    }
+
+    // New connection (accepted once the old client's end has been seen).
+    if (s_listen_fd >= 0 && FD_ISSET(s_listen_fd, &rfds)) {
+        if (s_client_fd >= 0) {
+            // The old client's end may have come in after select() looked
+            // at it: leave the new comer waiting rather than turn it away,
+            // and the next poll reads that end first.
+            char probe;
+            ssize_t p = FMRB_RETRY_EINTR(recv(s_client_fd, &probe, 1, MSG_PEEK | MSG_DONTWAIT));
+            if (p == 0) return 0;
+        }
+        int fd = FMRB_RETRY_EINTR(accept(s_listen_fd, NULL, NULL));
+        if (fd >= 0) {
+            if (s_client_fd >= 0) {
+                // One session only: reject the new comer.
+                close(fd);
+            } else {
+                set_nonblock(fd);
+                s_client_fd = fd;
+                s_rx_fill = 0;
+                FMRB_LOGI(TAG, "client connected");
+            }
+        }
     }
     return 0;
 }

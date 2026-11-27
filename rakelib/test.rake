@@ -18,9 +18,9 @@
 # The ROS 2 message type tests moved to the asterism repository with the
 # code they test (rake asterism:test runs them on the pinned checkout); they
 # live there with the code they test.
-desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + receive.toml + the remote shell + the app package (W6) + the kernel's msgpack + services + assoc + desktop icons + Asterism link and table client + WAV + the sprite editor's PNG + NSF end of a song + tts + native backends + secret files + saved Wi-Fi networks + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + the kanji dictionary + the font partition image + the shared wire headers + no FmrbSystem call left on FmrbApp + the sig coverage tool + the F1 help files + the API fixes found while writing sig (File.path, JSON, MIDI) + an app's UART (ring, pins, the UART class) + the ESP32 build option guard + picoruby-ti + BASIC + MicroPython)"
+desc "Run all native host test suites (FmrbUI + FmrbText/HitAreas + FmrbToml + receive.toml + the remote shell + the app package (W6) + the kernel's msgpack + services + assoc + desktop icons + Asterism link and table client + WAV + the sprite editor's PNG + NSF end of a song + tts + native backends + secret files + the debug server's TCP transport + saved Wi-Fi networks + CA bundle + mahjong screen overflow and voices + BMI270 and step detector + boot log reader and calibration + the browser CRT look's curve + the kanji dictionary + the font partition image + the shared wire headers + no FmrbSystem call left on FmrbApp + the sig coverage tool + the F1 help files + the API fixes found while writing sig (File.path, JSON, MIDI) + an app's UART (ring, pins, the UART class) + the ESP32 build option guard + picoruby-ti + BASIC + MicroPython)"
 task :test => ["ui:test", "text:test", "toml:test", "receive_conf:test", "rshell:test", "app_package:test", "msgpack:test", "services:test", "assoc:test", "desktop_icons:test", "asterism:link_test", "asterism:table_test", "wav:test", "png332:test", "nsf:test", "tts:test", "native:test",
-               "secret:test", "remote_guard:test", "wificonf:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "kanji:test", "font_ja:test", "wire:check", "system:check", "boundary:check", "sig:test", "api_fixes:test", "app_uart:test", "build_options:test", "ti:site:test", "ti:help:test", "ti:test", "basic:test", "micropython:smoke"]
+               "secret:test", "remote_guard:test", "debug_tcp:test", "wificonf:test", "certs:test", "mahjong:overflow", "voice:test", "imu:test", "regress:boot:test", "webcrt:test", "kanji:test", "font_ja:test", "wire:check", "system:check", "boundary:check", "sig:test", "api_fixes:test", "app_uart:test", "build_options:test", "ti:site:test", "ti:help:test", "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :rshell do
   # The remote shell's machine side (main/ruby/default_app/transfer/rshell.rb,
@@ -335,6 +335,28 @@ namespace :remote_guard do
        "main/kernel/fmrb_remote_guard.c #{RGUARD_TEST_DIR}/main.c #{RGUARD_TEST_DIR}/sha256.c " \
        "-o #{RGUARD_RUNNER_BIN}"
     sh RGUARD_RUNNER_BIN
+  end
+end
+
+namespace :debug_tcp do
+  # The remote debugger's TCP transport (main/drivers/debug/
+  # fmrb_debug_transport_tcp.c; the simulation and the native program listen
+  # with it): a client that closes and a next one that connects before the
+  # transport polls again (a tool's ps, then its kill) is let in, after the
+  # old session is reported down; a second client while one is there is
+  # turned away. Pure C over loopback sockets, so it builds with the host cc.
+  DEBUG_TCP_TEST_BUILD = "test/debug_tcp/build"
+
+  desc "Debug server TCP transport: reconnect at once, one session (host cc, no docker)"
+  task :test do
+    cc = ENV["CC"] || "cc"
+    abort "#{cc} not found (install a C compiler or set CC)" unless system("which #{cc} > /dev/null 2>&1")
+    mkdir_p DEBUG_TCP_TEST_BUILD
+    bin = "#{DEBUG_TCP_TEST_BUILD}/debug_tcp_test"
+    sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror -DFMRB_PLATFORM_NATIVE -I test/native/stub " \
+       "-I components/fmrb_common/include -I main/drivers/debug -I components/msgpack-esp32/msgpack-c/include " \
+       "main/drivers/debug/fmrb_debug_transport_tcp.c test/debug_tcp/main.c -o #{bin}"
+    sh bin
   end
 end
 
