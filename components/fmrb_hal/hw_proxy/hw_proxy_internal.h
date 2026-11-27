@@ -82,6 +82,29 @@ typedef struct {
     int *out_is_dir;     // 1 if directory, 0 otherwise
 } hw_proxy_dir_stat_params_t;
 
+// ----- File system change params (HW_PROXY_OP_FILE_REMOVE ..) -----
+
+// FILE_REMOVE, DIR_MAKE, DIR_REMOVE: a resolved path. FS_FORMAT, FS_ERASE:
+// the path or volume name fmrb_hal_file_mkfs / fmrb_hal_file_erase take.
+typedef struct {
+    const char *path;
+} hw_proxy_path_params_t;
+
+typedef struct {
+    const char *old_path;  // resolved
+    const char *new_path;  // resolved
+} hw_proxy_file_rename_params_t;
+
+// FILE_UTIME (value: mtime) and FILE_CHMOD (value: mode).
+typedef struct {
+    const char *path;      // resolved
+    uint32_t value;
+} hw_proxy_path_value_params_t;
+
+typedef struct {
+    fmrb_file_t handle;
+} hw_proxy_file_sync_params_t;
+
 // ----- GPIO params -----
 
 typedef struct {

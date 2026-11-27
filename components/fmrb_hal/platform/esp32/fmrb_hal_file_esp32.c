@@ -789,6 +789,23 @@ fmrb_err_t fmrb_hal_file_tell(fmrb_file_t handle, uint32_t *position) {
     return FMRB_OK;
 }
 
+// The changes by path (remove, rename, mkdir, rmdir, utime, chmod) write the
+// flash, so a PSRAM-stack caller hands them to hw_proxy like the file ops
+// above. The path is resolved and the change hook told here, in the caller's
+// task (its working directory; the hook may wait for another task's close,
+// which goes through hw_proxy itself); only the VFS call moves.
+static int proxy_path_op(hw_proxy_op_t op, const char *full_path) {
+    hw_proxy_path_params_t p = { .path = full_path };
+    hw_proxy_request_t req = { .op = op, .params = &p };
+    return hw_proxy_call(&req) == FMRB_OK ? 0 : -1;
+}
+
+static int proxy_path_value_op(hw_proxy_op_t op, const char *full_path, uint32_t value) {
+    hw_proxy_path_value_params_t p = { .path = full_path, .value = value };
+    hw_proxy_request_t req = { .op = op, .params = &p };
+    return hw_proxy_call(&req) == FMRB_OK ? 0 : -1;
+}
+
 // Delete a file
 fmrb_err_t fmrb_hal_file_remove(const char *path) {
     if (path == NULL) {
@@ -799,9 +816,14 @@ fmrb_err_t fmrb_hal_file_remove(const char *path) {
     build_path(path, full_path, sizeof(full_path));
 
     const bool watched = fmrb_hal_file_change(full_path, FMRB_FILE_CHANGE_BEGIN);
-    LOCK();
-    int ret = unlink(full_path);
-    UNLOCK();
+    int ret;
+    if (hw_proxy_needs_proxy()) {
+        ret = proxy_path_op(HW_PROXY_OP_FILE_REMOVE, full_path);
+    } else {
+        LOCK();
+        ret = unlink(full_path);
+        UNLOCK();
+    }
     if (watched) {
         fmrb_hal_file_change(full_path, ret == 0 ? FMRB_FILE_CHANGE_REMOVED : FMRB_FILE_CHANGE_WRITTEN);
     }
@@ -822,9 +844,16 @@ fmrb_err_t fmrb_hal_file_rename(const char *old_path, const char *new_path) {
 
     const bool old_watched = fmrb_hal_file_change(old_full_path, FMRB_FILE_CHANGE_BEGIN);
     const bool new_watched = fmrb_hal_file_change(new_full_path, FMRB_FILE_CHANGE_BEGIN);
-    LOCK();
-    int ret = rename(old_full_path, new_full_path);
-    UNLOCK();
+    int ret;
+    if (hw_proxy_needs_proxy()) {
+        hw_proxy_file_rename_params_t p = { .old_path = old_full_path, .new_path = new_full_path };
+        hw_proxy_request_t req = { .op = HW_PROXY_OP_FILE_RENAME, .params = &p };
+        ret = hw_proxy_call(&req) == FMRB_OK ? 0 : -1;
+    } else {
+        LOCK();
+        ret = rename(old_full_path, new_full_path);
+        UNLOCK();
+    }
     if (old_watched) {
         fmrb_hal_file_change(old_full_path, ret == 0 ? FMRB_FILE_CHANGE_REMOVED : FMRB_FILE_CHANGE_WRITTEN);
     }
@@ -904,9 +933,14 @@ fmrb_err_t fmrb_hal_file_mkdir(const char *path) {
     char full_path[MAX_PATH_LEN];
     build_path(path, full_path, sizeof(full_path));
 
-    LOCK();
-    int ret = mkdir(full_path, 0755);
-    UNLOCK();
+    int ret;
+    if (hw_proxy_needs_proxy()) {
+        ret = proxy_path_op(HW_PROXY_OP_DIR_MAKE, full_path);
+    } else {
+        LOCK();
+        ret = mkdir(full_path, 0755);
+        UNLOCK();
+    }
 
     return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
 }
@@ -920,9 +954,14 @@ fmrb_err_t fmrb_hal_file_rmdir(const char *path) {
     char full_path[MAX_PATH_LEN];
     build_path(path, full_path, sizeof(full_path));
 
-    LOCK();
-    int ret = rmdir(full_path);
-    UNLOCK();
+    int ret;
+    if (hw_proxy_needs_proxy()) {
+        ret = proxy_path_op(HW_PROXY_OP_DIR_REMOVE, full_path);
+    } else {
+        LOCK();
+        ret = rmdir(full_path);
+        UNLOCK();
+    }
 
     return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
 }
@@ -1041,6 +1080,12 @@ fmrb_err_t fmrb_hal_file_sync(fmrb_file_t handle) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
+    if (hw_proxy_needs_proxy()) {
+        hw_proxy_file_sync_params_t p = { .handle = handle };
+        hw_proxy_request_t req = { .op = HW_PROXY_OP_FILE_SYNC, .params = &p };
+        return hw_proxy_call(&req);
+    }
+
     LOCK();
 
     if (!is_valid_file_handle(handle)) {
@@ -1110,6 +1155,10 @@ fmrb_err_t fmrb_hal_file_utime(const char *path, uint32_t mtime) {
     char full_path[MAX_PATH_LEN];
     build_path(path, full_path, sizeof(full_path));
 
+    if (hw_proxy_needs_proxy()) {
+        return proxy_path_value_op(HW_PROXY_OP_FILE_UTIME, full_path, mtime) == 0 ? FMRB_OK : FMRB_ERR_FAILED;
+    }
+
     struct utimbuf times;
     times.actime = mtime;
     times.modtime = mtime;
@@ -1128,6 +1177,10 @@ fmrb_err_t fmrb_hal_file_chmod(const char *path, uint32_t attr) {
 
     char full_path[MAX_PATH_LEN];
     build_path(path, full_path, sizeof(full_path));
+
+    if (hw_proxy_needs_proxy()) {
+        return proxy_path_value_op(HW_PROXY_OP_FILE_CHMOD, full_path, attr) == 0 ? FMRB_OK : FMRB_ERR_FAILED;
+    }
 
     // On ESP32 VFS, chmod is supported
     LOCK();
@@ -1184,6 +1237,12 @@ fmrb_err_t fmrb_hal_file_mkfs(const char *path) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
+    if (hw_proxy_needs_proxy()) {
+        hw_proxy_path_params_t p = { .path = path };
+        hw_proxy_request_t req = { .op = HW_PROXY_OP_FS_FORMAT, .params = &p };
+        return hw_proxy_call(&req);
+    }
+
     // For ESP32, we can format LittleFS by re-registering with format flag
     if (strncmp(path, LITTLEFS_PATH, strlen(LITTLEFS_PATH)) == 0 ||
         strncmp(path, "/flash", 6) == 0) {
@@ -1234,6 +1293,12 @@ fmrb_err_t fmrb_hal_file_physical_address(fmrb_file_t handle, uintptr_t *addr) {
 fmrb_err_t fmrb_hal_file_erase(const char *volume) {
     if (volume == NULL) {
         return FMRB_ERR_INVALID_PARAM;
+    }
+
+    if (hw_proxy_needs_proxy()) {
+        hw_proxy_path_params_t p = { .path = volume };
+        hw_proxy_request_t req = { .op = HW_PROXY_OP_FS_ERASE, .params = &p };
+        return hw_proxy_call(&req);
     }
 
     // Erase LittleFS partition

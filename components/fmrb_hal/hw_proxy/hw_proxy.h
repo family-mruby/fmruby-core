@@ -43,7 +43,27 @@ typedef enum {
     // RMT ops (0x30-0x3F)
     HW_PROXY_OP_RMT_INIT  = 0x30,
     HW_PROXY_OP_RMT_WRITE = 0x31,
+
+    // File system changes (0x40-0x4F): the rest of the file HAL's calls that
+    // write or erase the flash. The path ones take paths the caller already
+    // resolved (its working directory is its own) and only reach the VFS here.
+    HW_PROXY_OP_FILE_REMOVE = 0x40,
+    HW_PROXY_OP_FILE_RENAME = 0x41,
+    HW_PROXY_OP_DIR_MAKE    = 0x42,
+    HW_PROXY_OP_DIR_REMOVE  = 0x43,
+    HW_PROXY_OP_FILE_UTIME  = 0x44,
+    HW_PROXY_OP_FILE_CHMOD  = 0x45,
+    HW_PROXY_OP_FILE_SYNC   = 0x46,
+    HW_PROXY_OP_FS_FORMAT   = 0x47,
+    HW_PROXY_OP_FS_ERASE    = 0x48,
 } hw_proxy_op_t;
+
+// File and directory ops, which hw_proxy_file_execute serves.
+static inline bool hw_proxy_op_is_file(hw_proxy_op_t op)
+{
+    return op <= HW_PROXY_OP_DIR_STAT ||
+           (op >= HW_PROXY_OP_FILE_REMOVE && op <= HW_PROXY_OP_FS_ERASE);
+}
 
 // Opaque task handle type (avoids FreeRTOS header dependency)
 typedef void *hw_proxy_task_handle_t;
