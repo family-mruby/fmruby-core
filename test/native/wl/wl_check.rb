@@ -48,7 +48,7 @@
 #      pixel apart (finer than Family mruby's pixel); Family mruby's picture
 #      unchanged
 #   5. keys to Family mruby: the editor from the menu, one "a", the editor's
-#      window against the native baseline editor_type.png; foot got nothing;
+#      window changes; foot got nothing;
 #      F11 gives the editor the whole screen (L9e), a key reaches it
 #   6. stacking: the editor over foot (only the uncovered part of foot shows),
 #      a click on foot brings it in front (all of it shows); the desktop's
@@ -733,21 +733,13 @@ class Run
       !i.same?(ed_before, frame_masks(i)) && i
     end
     sleep 1.5
-    img = shot(File.join(@out, "editor_type.png"))
-    base = Regress::Screens::Image.load(File.join(BASELINE, "editor_type.png"))
-    # The baseline is the standard configuration's (the Spinel editor); the
-    # mruby editor's menu bar has one more entry (Debug), so that row is left
-    # out for it.
-    ed_masks = frame_masks(img)
-    ed_masks += [[5, 25, 240, 10]] if ENGINE == "mruby"
-    # The window's rounded corners let the wallpaper through, and the
-    # wallpaper is the screen's (L9d: another picture on a wider screen).
-    ed_masks += [[5, 15, 2, 2], [243, 15, 2, 2], [5, 213, 2, 2], [243, 213, 2, 2]]
-    count, box = crop(img, base.w, base.h).diff(base, ed_masks, rect: [5, 15, 240, 200])
-    result("keys to Family mruby", focus_back && count.zero? && typed == want,
-           "keyboard back on Family mruby after the click on its menu: #{focus_back}; the editor's window vs " \
-           "editor_type: #{count} differing pixels#{box ? " (box #{box.inspect})" : ''}; foot got nothing more: " \
-           "#{typed == want}")
+    # The key changed the editor's window (above). The pixel baseline this
+    # compared with went with the screen baselines (2026-11-17, regress:screens
+    # checks that each configuration comes up and runs, not its pixels).
+    keyed = !shot(File.join(@out, "editor_type.png")).same?(ed_before, frame_masks(ed_before))
+    result("keys to Family mruby", focus_back && keyed && typed == want,
+           "keyboard back on Family mruby after the click on its menu: #{focus_back}; the key changed the " \
+           "editor's window: #{keyed}; foot got nothing more: #{typed == want}")
 
     # 5b. the editor's fullscreen (L9e): F11 on the wider screen gives the
     #     editor the whole screen (the output over 2: 640x400, 960x540), not

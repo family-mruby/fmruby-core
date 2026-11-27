@@ -317,7 +317,7 @@ begin
 
   # 4. the editor and one key
   t0 = now
-  input("click", 30, 5)
+  input("click", 6, 5) # the gem opens the menu (since 2026-11-17)
   sleep 2
   input("click", 30, MENU_BAR_H + 1 * MENU_ITEM_H + MENU_ITEM_H / 2)
   wait_until("the editor's window", opts[:timeout]) { |i| i.pixel(150, 20) == TITLE_RGB }

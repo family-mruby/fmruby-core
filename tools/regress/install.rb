@@ -228,7 +228,7 @@ module Regress
         # the launcher (the desktop's menu, its first entry) reads /app again
         # as it opens, and shows the app; Esc closes it
         m1 = log_lines(T::RUN_DIR_B).size
-        native(T::RUN_DIR_B, T::PORT_B, "input", "move", "30", "5", "sleep", "200", "click", "30", "5", "sleep", "800",
+        native(T::RUN_DIR_B, T::PORT_B, "input", "move", "6", "5", "sleep", "200", "click", "6", "5", "sleep", "800",
                "click", "30", "19")
         wait_line(T::RUN_DIR_B, %r{Found app: W6 Ruby \(/app/usr/w6rb/w6rb.app.rb\)}, m1, "the launcher's rescan",
                   timeout: 20)

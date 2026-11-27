@@ -467,7 +467,7 @@ class DialogRun
     sleep 1.0
     dlg = win(info, dlg[:id])
     full = dlg[:w] * dlg[:h] - BTN_W * BTN_H - CORNER
-    comp("click", *to_out(30, 5))
+    comp("click", *to_out(6, 5)) # the gem opens the menu (since 2026-11-17)
     sleep 1.2
     comp("click", *to_out(30, MENU_BAR_H + MENU_ITEM_H + MENU_ITEM_H / 2))
     wait_for("the editor's window", 60) { shot(File.join(@out, "editor.png")).pixel(150, 20) == TITLE_RGB }
