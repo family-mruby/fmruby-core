@@ -241,7 +241,8 @@
 // HW proxy task (internal RAM, handles file I/O for PSRAM tasks)
 // M-2 session (S3, 2026-08-02) peaked at 2.0KB with file traffic flowing;
 // 6KB keeps a 2x margin over that. Its file I/O serves the PSRAM-stack tasks
-// only (today the kanji lookup task); GPIO, I2C and RMT always come here.
+// only (today the kanji lookup and the Wi-Fi manager; rename and remove come
+// too, not only open/read/write/close); GPIO, I2C and RMT always come here.
 // Priority 4, below the input drivers (5) on the same core: a long file op
 // (flash write or erase) here must not hold off USB HID. Every caller runs at
 // 4 or below (kanji 3, apps 2-3, status LED 3, RTC 3, ble_fs 4, boot in main),

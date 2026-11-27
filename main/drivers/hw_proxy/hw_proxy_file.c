@@ -2,7 +2,10 @@
 #include "fmrb_hal_file.h"
 #include "fmrb_log.h"
 #include <dirent.h>
+#include <stdio.h>
 #include <sys/stat.h>
+#include <unistd.h>
+#include <utime.h>
 
 static const char *TAG = "hw_proxy_file";
 
@@ -90,6 +93,75 @@ void hw_proxy_file_execute(hw_proxy_request_t *req)
             *(p->out_is_dir) = 0;
         }
         req->result = FMRB_OK;
+        break;
+    }
+    // The changes below reach the VFS directly under the file HAL lock, as the
+    // directory ops do; the caller resolved the paths and told the change
+    // hook in its own task (fmrb_hal_file_esp32.c).
+    case HW_PROXY_OP_FILE_REMOVE: {
+        hw_proxy_path_params_t *p = (hw_proxy_path_params_t *)req->params;
+        fmrb_hal_file_lock(UINT32_MAX);
+        const int ret = unlink(p->path);
+        fmrb_hal_file_unlock();
+        req->result = (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
+        break;
+    }
+    case HW_PROXY_OP_FILE_RENAME: {
+        hw_proxy_file_rename_params_t *p = (hw_proxy_file_rename_params_t *)req->params;
+        fmrb_hal_file_lock(UINT32_MAX);
+        const int ret = rename(p->old_path, p->new_path);
+        fmrb_hal_file_unlock();
+        req->result = (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
+        break;
+    }
+    case HW_PROXY_OP_DIR_MAKE: {
+        hw_proxy_path_params_t *p = (hw_proxy_path_params_t *)req->params;
+        fmrb_hal_file_lock(UINT32_MAX);
+        const int ret = mkdir(p->path, 0755);
+        fmrb_hal_file_unlock();
+        req->result = (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
+        break;
+    }
+    case HW_PROXY_OP_DIR_REMOVE: {
+        hw_proxy_path_params_t *p = (hw_proxy_path_params_t *)req->params;
+        fmrb_hal_file_lock(UINT32_MAX);
+        const int ret = rmdir(p->path);
+        fmrb_hal_file_unlock();
+        req->result = (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
+        break;
+    }
+    case HW_PROXY_OP_FILE_UTIME: {
+        hw_proxy_path_value_params_t *p = (hw_proxy_path_value_params_t *)req->params;
+        struct utimbuf times = { .actime = p->value, .modtime = p->value };
+        fmrb_hal_file_lock(UINT32_MAX);
+        const int ret = utime(p->path, &times);
+        fmrb_hal_file_unlock();
+        req->result = (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
+        break;
+    }
+    case HW_PROXY_OP_FILE_CHMOD: {
+        hw_proxy_path_value_params_t *p = (hw_proxy_path_value_params_t *)req->params;
+        fmrb_hal_file_lock(UINT32_MAX);
+        const int ret = chmod(p->path, (mode_t)p->value);
+        fmrb_hal_file_unlock();
+        req->result = (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
+        break;
+    }
+    // These three hold no path of the caller's: the HAL runs them whole here,
+    // as it does open and write.
+    case HW_PROXY_OP_FILE_SYNC: {
+        hw_proxy_file_sync_params_t *p = (hw_proxy_file_sync_params_t *)req->params;
+        req->result = fmrb_hal_file_sync(p->handle);
+        break;
+    }
+    case HW_PROXY_OP_FS_FORMAT: {
+        hw_proxy_path_params_t *p = (hw_proxy_path_params_t *)req->params;
+        req->result = fmrb_hal_file_mkfs(p->path);
+        break;
+    }
+    case HW_PROXY_OP_FS_ERASE: {
+        hw_proxy_path_params_t *p = (hw_proxy_path_params_t *)req->params;
+        req->result = fmrb_hal_file_erase(p->path);
         break;
     }
     default:

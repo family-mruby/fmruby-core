@@ -19,7 +19,7 @@ static hw_proxy_request_t *s_current_req = NULL;
 
 static void execute_request(hw_proxy_request_t *req)
 {
-    if (req->op <= HW_PROXY_OP_DIR_STAT) {
+    if (hw_proxy_op_is_file(req->op)) {
         hw_proxy_file_execute(req);
     } else if (req->op >= HW_PROXY_OP_I2C_INIT && req->op <= HW_PROXY_OP_I2C_RELEASE) {
         hw_proxy_i2c_execute(req);
@@ -60,6 +60,15 @@ static void note_request_time(const hw_proxy_request_t *req, uint32_t ms)
     case HW_PROXY_OP_FILE_STAT:  path = ((const hw_proxy_file_stat_params_t *)pr)->path; break;
     case HW_PROXY_OP_DIR_OPEN:   path = ((const hw_proxy_dir_open_params_t *)pr)->path; break;
     case HW_PROXY_OP_DIR_STAT:   path = ((const hw_proxy_dir_stat_params_t *)pr)->path; break;
+    case HW_PROXY_OP_FILE_REMOVE:
+    case HW_PROXY_OP_DIR_MAKE:
+    case HW_PROXY_OP_DIR_REMOVE:
+    case HW_PROXY_OP_FS_FORMAT:
+    case HW_PROXY_OP_FS_ERASE:   path = ((const hw_proxy_path_params_t *)pr)->path; break;
+    case HW_PROXY_OP_FILE_RENAME: path = ((const hw_proxy_file_rename_params_t *)pr)->new_path; break;
+    case HW_PROXY_OP_FILE_UTIME:
+    case HW_PROXY_OP_FILE_CHMOD: path = ((const hw_proxy_path_value_params_t *)pr)->path; break;
+    case HW_PROXY_OP_FILE_SYNC:  handle = ((const hw_proxy_file_sync_params_t *)pr)->handle; break;
     case HW_PROXY_OP_FILE_CLOSE: handle = ((const hw_proxy_file_close_params_t *)pr)->handle; break;
     case HW_PROXY_OP_FILE_SEEK:  handle = ((const hw_proxy_file_seek_params_t *)pr)->handle; break;
     case HW_PROXY_OP_FILE_TELL:  handle = ((const hw_proxy_file_tell_params_t *)pr)->handle; break;

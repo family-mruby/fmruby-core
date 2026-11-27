@@ -212,6 +212,18 @@ namespace :native do
        "#{fincs.map { |i| "-I #{i}" }.join(' ')} #{fsrcs.join(' ')} -o #{NATIVE_TEST_BUILD}/native_file_test"
     sh "#{NATIVE_TEST_BUILD}/native_file_test"
 
+    # hw_proxy's file ops (main/drivers/hw_proxy/hw_proxy_file.c): the op
+    # table and the file system changes a PSRAM-stack task hands over, with
+    # the file HAL stood in for in the test; and that every flash-writing
+    # function of the ESP32 file HAL hands its PSRAM-stack callers over.
+    hincs = %W[#{NATIVE_TEST_DIR}/stub components/fmrb_hal components/fmrb_hal/hw_proxy
+               components/fmrb_common/include]
+    sh "#{cc} -std=gnu11 -O1 -g -Wall -Wextra -Werror -DCONFIG_IDF_TARGET_LINUX " \
+       "#{hincs.map { |i| "-I #{i}" }.join(' ')} main/drivers/hw_proxy/hw_proxy_file.c " \
+       "#{NATIVE_TEST_DIR}/hw_proxy_file.c -o #{NATIVE_TEST_BUILD}/native_hw_proxy_test"
+    sh "#{NATIVE_TEST_BUILD}/native_hw_proxy_test"
+    sh "ruby #{NATIVE_TEST_DIR}/hal_proxy_check.rb #{ROOT_DIR}"
+
     # Linux programs under pseudo terminals (L10): native/sys/linux_pty.c is
     # plain POSIX and runs as it is.
     pincs = %w[native/sys components/fmrb_common/include]
