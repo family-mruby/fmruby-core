@@ -62,13 +62,13 @@ end
   ArgumentError (no such unit or pin ...), with the reason in the message.
 - For the details, put the cursor on `UART` in the editor and press F1.
 
-## Not together with the serial MIDI output
+## With the serial MIDI output
 
-Once a MIDI app sends to "serial", MIDI keeps UART2 and its TX pin (the first
-line of the Grove port) until the machine restarts. After that, that unit and
-pin cannot be opened as a UART ("used by the MIDI serial output"). Use the
-UART before the serial MIDI output, or after a restart. The other way round,
-while a UART uses the Grove pins the serial MIDI output does not open.
+The serial MIDI output uses UART2 and its TX pin (the first line of the Grove
+port). While a MIDI app sends to "serial", that unit and pin cannot be opened
+as a UART ("used by the MIDI serial output"); they are free again once that
+app ends. The other way round, while a UART uses the Grove pins the serial
+MIDI output does not open.
 
 ## When it does not work
 

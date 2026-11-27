@@ -59,13 +59,13 @@ end
   ピンが無いなど) になり、理由の文が付きます。
 - 詳しくはエディタで `UART` にカーソルを置いて F1 を押してください。
 
-## シリアルの MIDI 出力と同時には使えません
+## シリアルの MIDI 出力との関係
 
-MIDI のアプリで出力先を serial にすると、MIDI は UART2 と TX のピン
-(Grove の 1 本目) を、再起動するまで持ち続けます。その後は同じ番号や
-ピンを UART で開けません ("used by the MIDI serial output")。UART を
-使うときは、MIDI の serial 出力を使う前か、再起動した後にしてください。
-逆に UART で Grove を使っている間は、MIDI の serial 出力が開きません。
+シリアルの MIDI 出力は UART2 と TX のピン (Grove の 1 本目) を使います。
+MIDI のアプリが出力先を serial にしている間は、その番号やピンを UART で
+開けません ("used by the MIDI serial output")。そのアプリが終わると、また
+開けます。逆に UART で Grove を使っている間は、MIDI の serial 出力が
+開きません。
 
 ## うまくいかないとき
 
