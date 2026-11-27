@@ -57,9 +57,9 @@
 # system's: opening one is an IOError. The browser and the native build have no
 # UART (IOError "not available in this environment"). Pins are guarded by the same
 # table as GPIO: a system pin, or one another app or I2C holds, is an IOError.
-# **It cannot be used together with the serial MIDI output** (once opened, MIDI keeps
-# UART2 and its TX pin until the machine restarts). The system closes it when the
-# app ends.
+# **It cannot be used together with the serial MIDI output**: while a MIDI app sends
+# to serial, UART2 and its TX pin are MIDI's, free again once that app ends. The
+# system closes a UART when the app ends.
 #
 # The Linux sim's UART is a stand-in: what is written comes back to be read (a
 # loopback). With `uart2_in.fifo` and `uart2_out.fifo` in the project directory, it
