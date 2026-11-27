@@ -1,6 +1,6 @@
 #pragma once
 
-#define FMRB_OS_VERSION "3.1.0"
+#define FMRB_OS_VERSION "3.1.1"
 // 3.1.0 / link 7: DRAW_TILE_SCALED and SPRITE_IMAGE_DATA, and a PNG read into
 // a sprite image keeps its transparent pixels (0x01). The GA was numbered
 // 3.2.0 for them while 3.1.0 was being made, and went back to 3.1.0 for the
