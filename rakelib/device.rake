@@ -4,13 +4,50 @@
 # docker command strings live in the top-level Rakefile, which Rake
 # loads before every file in rakelib/.
 
+# AUTO=1: usbipd attaches again by itself whenever the device comes back
+# (usbipd attach --auto-attach). A board whose USB is the chip's own (the
+# Tab5's USB Serial/JTAG, 303a:1001) drops off the bus each time the chip
+# restarts -- a crash, or a serial port opened with the reset lines -- and
+# comes back as a new device that a plain attach does not follow, so the log
+# after a crash would be lost. --auto-attach stays running until it is
+# stopped, so it is started as a hidden Windows process; rake detach stops it.
+def usbipd_attach_cmd(busid)
+  if ENV["AUTO"] == "1"
+    "powershell.exe -Command \"Start-Process -WindowStyle Hidden usbipd " \
+      "-ArgumentList 'attach','--wsl','--busid','#{busid}','--auto-attach'\""
+  else
+    "powershell.exe -Command \"usbipd attach --wsl --busid #{busid}\""
+  end
+end
+
+# Stops the hidden auto-attach processes for busid (all of them when nil).
+# The command goes as -EncodedCommand (UTF-16LE, base64) so that neither the
+# shell nor PowerShell's own quoting touches its $_ and quotes.
+def usbipd_stop_auto_attach(busid = nil)
+  filter = "$_.CommandLine -match '--auto-attach'"
+  filter += " -and $_.CommandLine -match '--busid #{busid}'" if busid
+  ps = "$ProgressPreference = 'SilentlyContinue'; " \
+       "Get-CimInstance Win32_Process -Filter \"Name='usbipd.exe'\" | " \
+       "Where-Object { #{filter} } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; $_.ProcessId }"
+  enc = [ps.encode("UTF-16LE")].pack("m0")
+  # PowerShell answers in the console's code page (Japanese on this PC).
+  out = `powershell.exe -NoProfile -EncodedCommand #{enc} 2>&1`.force_encoding("UTF-8").scrub.strip
+  pids = out.split.grep(/\A\d+\z/)
+  if pids.any?
+    puts "stopped auto-attach (usbipd pid #{pids.join(', ')})"
+  elsif !out.empty?
+    warn "could not look for auto-attach processes: #{out.lines.first.to_s.strip}"
+  end
+end
+
 desc "Attach USB serial devices to WSL2 via usbipd, selected by VID:PID " \
      "(default 1a86:7523 = CH340 and 1a86:55d3 = CH343 (P4-Nano); " \
      "VIDPID=xxxx:yyyy[,xxxx:yyyy] to override, " \
-     "BUSID=x-y to force one bus id). Attaches every matching device."
+     "BUSID=x-y to force one bus id; AUTO=1 attaches again after each " \
+     "restart of the board, until rake detach). Attaches every matching device."
 task :attach do
   if ENV["BUSID"]
-    sh "powershell.exe -Command \"usbipd attach --wsl --busid #{ENV['BUSID']}\""
+    sh usbipd_attach_cmd(ENV["BUSID"])
     next
   end
 
@@ -27,13 +64,13 @@ task :attach do
   abort "No connected USB device matches VID:PID #{vidpids.join(', ')} (usbipd list)" if targets.empty?
 
   targets.each do |busid, vidpid, device, state|
-    if state.start_with?("Attached")
+    if state.start_with?("Attached") && ENV["AUTO"] != "1"
       puts "#{busid} #{vidpid} (#{device}): already attached, skipping"
     elsif state == "Not shared"
       puts "#{busid} #{vidpid} (#{device}): NOT SHARED - run once as admin: usbipd bind --busid #{busid}"
     else
-      puts "#{busid} #{vidpid} (#{device}): attaching..."
-      sh "powershell.exe -Command \"usbipd attach --wsl --busid #{busid}\""
+      puts "#{busid} #{vidpid} (#{device}): attaching#{ENV['AUTO'] == '1' ? ' (auto-attach, until rake detach)' : ''}..."
+      sh usbipd_attach_cmd(busid)
     end
   end
 end
@@ -43,9 +80,13 @@ desc "Detach USB serial devices from WSL2 back to Windows (e.g. for the web " \
      "CH340 + CH343; VIDPID=... to override, BUSID=x-y to force one."
 task :detach do
   if ENV["BUSID"]
+    usbipd_stop_auto_attach(ENV["BUSID"])
     sh "powershell.exe -Command \"usbipd detach --busid #{ENV['BUSID']}\""
     next
   end
+  # An auto-attach left running (rake attach AUTO=1) would take the device
+  # back right after the detach.
+  usbipd_stop_auto_attach
 
   vidpids = (ENV["VIDPID"] || DEFAULT_VIDPIDS).downcase.split(",").map(&:strip)
   list = `powershell.exe -Command "usbipd list" 2>&1`
