@@ -213,10 +213,11 @@ module Regress
           end
         end
         # F4a: the simulation and the native program, after the native rounds
-        # (the native programs are built by then; build/ is borrowed)
+        # (the native programs are built by then; build-linux/ is borrowed)
         results += run_sims(configs)
         results.each { |r| puts r }
-        ok = results.all? { |r| r.include?(": ok") || r.start_with?("build/:") }
+        # the line saying how the borrowed build was put back is a note, not a result
+        ok = results.all? { |r| r.include?(": ok") || r.start_with?("build-linux/:") }
         puts format("checkpoint: %s (%.1f min)", ok ? "ok" : "FAILED", (now - t0) / 60.0)
         ok
       end
