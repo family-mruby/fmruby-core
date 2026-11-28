@@ -62,7 +62,6 @@
 #endif
 #include "mdns.h"
 
-#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -1084,14 +1083,37 @@ typedef struct {
     size_t len;
 } text_out_t;
 
-static void out_printf(text_out_t *o, const char *fmt, ...)
+// The text is built on the calling app's task (the Wi-Fi window, a mruby VM
+// with little stack left between its frames), so no printf here: newlib's
+// vsnprintf alone takes about 1 KB of stack, and on the Tab5 that ran the
+// window's 12 KB stack out whenever one of its buttons was pressed (Stack
+// protection fault in _svfprintf_r, 2026-11-28). Strings and small integers
+// are all the lines need.
+static void out_str(text_out_t *o, const char *str)
 {
-    va_list ap;
-    va_start(ap, fmt);
-    size_t room = o->len < o->cap ? o->cap - o->len : 0;
-    int n = vsnprintf(room ? o->buf + o->len : NULL, room, fmt, ap);
-    va_end(ap);
-    if (n > 0) o->len += (size_t)n;
+    for (; *str; str++) {
+        if (o->len + 1 < o->cap) {
+            o->buf[o->len] = *str;
+            o->buf[o->len + 1] = '\0';
+        }
+        o->len++;   // counted past cap too: the caller learns the size it needs
+    }
+}
+
+static void out_int(text_out_t *o, int v)
+{
+    char tmp[12];
+    size_t n = 0;
+    unsigned u = v < 0 ? 0u - (unsigned)v : (unsigned)v;
+    do {
+        tmp[n++] = (char)('0' + u % 10u);
+        u /= 10u;
+    } while (u);
+    if (v < 0) tmp[n++] = '-';
+    char rev[12];
+    for (size_t k = 0; k < n; k++) rev[k] = tmp[n - 1 - k];
+    rev[n] = '\0';
+    out_str(o, rev);
 }
 
 // A field must not carry the separators (an SSID can hold any byte).
@@ -1120,7 +1142,9 @@ int32_t wifi_list_text(bool scan, char *buf, size_t cap)
     if (!s_started) {
         const char *st = s_off_reason == OFF_BLE ? "ble"
                        : s_off_reason == OFF_FAILED ? "failed" : "disabled";
-        out_printf(&o, "wifi\t%s\t\t\t\t\tforget\n", st);
+        out_str(&o, "wifi\t");
+        out_str(&o, st);
+        out_str(&o, "\t\t\t\t\tforget\n");
         return (int32_t)o.len;
     }
     if (scan) mgr_notify(N_USER_SCAN);
@@ -1133,7 +1157,15 @@ int32_t wifi_list_text(bool scan, char *buf, size_t cap)
     const char *busy = s_phase == PH_CONNECTING ? "connecting"
                      : (s_scanning || scan) ? "scanning" : "";
     clean_field(f1, sizeof(f1), s_phase == PH_CONNECTING ? s_try_ssid : s_code_arg);
-    out_printf(&o, "wifi\tok\t%s\t%s\t%s\t%s\tforget\n", active, busy, s_code, f1);
+    out_str(&o, "wifi\tok\t");
+    out_str(&o, active);
+    out_str(&o, "\t");
+    out_str(&o, busy);
+    out_str(&o, "\t");
+    out_str(&o, s_code);
+    out_str(&o, "\t");
+    out_str(&o, f1);
+    out_str(&o, "\tforget\n");
     // In reach: the one in use first, then by strength.
     bool done[WIFI_SCAN_MAX] = { false };
     for (int round = 0; round < s_seen_count; round++) {
@@ -1151,8 +1183,13 @@ int32_t wifi_list_text(bool scan, char *buf, size_t cap)
         for (int i = 0; i < s_saved_count; i++) saved |= strcmp(s_saved[i], e->ssid) == 0;
         bool is_active = active[0] && strcmp(e->ssid, s_ssid) == 0;
         clean_field(f2, sizeof(f2), e->ssid);
-        out_printf(&o, "ap\t%s\t%d\t%d\t%d\t%d\t1\n", f2, strength_of(e->rssi),
-                   e->secured ? 1 : 0, is_active ? 1 : 0, saved ? 1 : 0);
+        out_str(&o, "ap\t");
+        out_str(&o, f2);
+        out_str(&o, "\t");
+        out_int(&o, strength_of(e->rssi));
+        out_str(&o, e->secured ? "\t1" : "\t0");
+        out_str(&o, is_active ? "\t1" : "\t0");
+        out_str(&o, saved ? "\t1\t1\n" : "\t0\t1\n");
     }
     // Saved but not in the last scan (out of reach, or hidden): listed so
     // they can be forgotten (the 7th field 0: not in reach).
@@ -1162,7 +1199,9 @@ int32_t wifi_list_text(bool scan, char *buf, size_t cap)
         if (seen) continue;
         bool is_active = active[0] && strcmp(s_saved[i], s_ssid) == 0;
         clean_field(f2, sizeof(f2), s_saved[i]);
-        out_printf(&o, "ap\t%s\t0\t0\t%d\t1\t0\n", f2, is_active ? 1 : 0);
+        out_str(&o, "ap\t");
+        out_str(&o, f2);
+        out_str(&o, is_active ? "\t0\t0\t1\t1\t0\n" : "\t0\t0\t0\t1\t0\n");
     }
     unlock();
     return (int32_t)o.len;

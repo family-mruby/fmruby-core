@@ -131,6 +131,14 @@
 // its lowest. Own name so it can move without the tools.
 #define FMRB_APPSTORE_APP_TASK_STACK_SIZE (16 * 1024)
 
+// The Wi-Fi window (default/wifi). 12KB (the tools') had 1,224 bytes left at
+// rest on the Tab5, and pressing Scan, Disconnect or Connect ran it out
+// inside the C that lists the networks (2026-11-28): the window's button
+// handling sits deeper in the VM than its polling. The listing no longer
+// uses printf; 16KB keeps the same room the App Store has, for the
+// esp_hosted calls the Tab5 makes from this task.
+#define FMRB_WIFI_APP_TASK_STACK_SIZE   (16 * 1024)
+
 // Editor task. The editor shared the shell's 12KB until the type support
 // (completion, hover, diagnostics, signature help) started parsing the
 // document on this task: prism's parser and the engine's tree walks are
